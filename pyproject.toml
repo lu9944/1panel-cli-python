@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "1panel-cli"
+version = "0.4.1"
+description = "1Panel v2 面板管理命令行工具(纯标准库实现)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+
+[project.scripts]
+1panel-cli = "panel_cli.main:main"
+
+[tool.setuptools]
+packages = ["panel_cli"]
+
+[tool.setuptools.package-data]
+panel_cli = ["data/*.json"]
