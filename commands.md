@@ -1,6 +1,6 @@
 # 1panel-cli v0.4.1 命令速查(Python / 1Panel v2.2.5)
 
-首次使用先运行 `1panel-cli init` 自动生成 `.env`(无需手填账号);然后运行 `1panel-cli doctor`,确认八项检查通过(含本地 SSH 连接连通性与 sudo 免密)。所有命令支持全局参数 `--env <PATH>`、`--profile <NAME>`、`--node <NODE>`;节点也可由 `PANEL_NODE` 设置。全局参数放在子命令前后均可。
+首次使用先运行 `1panel-cli init` 自动生成 `.env`(无需手填账号);然后运行 `1panel-cli doctor`,确认六项检查通过。所有命令支持全局参数 `--env <PATH>`、`--profile <NAME>`、`--node <NODE>`;节点也可由 `PANEL_NODE` 设置。全局参数放在子命令前后均可。
 
 > 本清单面向 1Panel v2.2.5 验证;新版面板的统一防火墙 API 与 Docker 端口守护命令会自动探测,旧版(v2.2.5)走旧接口。
 
@@ -13,7 +13,7 @@
 | `status` | 检查会话并显示面板版本/版本类型 |
 | `info` | 查看脱敏后的会话信息 |
 | `logout` | 登出并清除本地凭据 |
-| `doctor [--force]` | 检查配置、连通性、会话、登录、面板版本兼容性,并实测本地 SSH 连接(exec 身份)与 sudo 免密(exec --sudo 前置);别名 `check` |
+| `doctor [--force]` | 检查配置、连通性、会话、登录、面板版本兼容性(6 项);别名 `check` |
 
 ## apps — 应用商店
 
@@ -97,44 +97,6 @@
 
 v2.2.5 面板上执行 `firewall docker *` 会明确提示「当前面板不支持新版统一防火墙 API」。更高级的规则同步(`rules/sync`)、重置(`rules/reset`)与排序(`rules/reorder`)可通过 `api` 命令调用(仅新版面板存在)。
 
-## exec — 在面板本机执行命令
-
-通过终端 WebSocket(`/api/v2/hosts/terminal/local`)把单行命令推送到面板本机执行,等待完成后一次性取回输出,非交互。退出码透传:命令完成时 CLI 以命令退出码退出(0 成功;1-255 透传;124 超时;CLI 自身错误为 1,可用 `--json` 的 `error` 字段精确区分)。
-
-前置条件:面板已配置「设置 → 终端 → SSH 本地连接」。在 `.env` 中声明 `LINUX_SSH_USER` / `LINUX_SSH_PWD` 后,`login` 会自动写入该连接,`exec` 执行时也会自动对齐(连接缺失或用户不一致即覆盖);`--sync-ssh` 用于显式强制覆盖。
-
-执行身份说明:命令由面板服务端用**已保存的「SSH 本地连接」**凭据 SSH 到 `127.0.0.1` 执行,身份 = 该连接配置的用户,与面板登录账号无关。配置了 `LINUX_SSH_USER`/`LINUX_SSH_PWD` 时 exec 默认就以该(普通)用户执行、不接触 root;需要 root 权限的命令加 `--sudo`(需免密 sudo)。用 `exec 'whoami'` 确认实际身份,`doctor` 第 7/8 步会自动实测。
-
-| 命令 | 说明 |
-|---|---|
-| `exec <COMMAND> [--timeout SECS]` | 执行单行命令(不能含换行;默认超时 30s,超时返回 124 并打印已收集输出) |
-| `exec <CMD> --cwd DIR` | 执行前先 `cd -- 'DIR'` |
-| `exec <CMD> --json` | 输出单行 `{"exit_code","duration_ms","truncated","error","output"}` |
-| `exec <CMD> --tail N` | 仅显示清洗后输出的最后 N 行 |
-| `exec <CMD> --raw` | 不清洗输出(保留 ANSI/回显/提示符/哨兵;默认剥离) |
-| `exec <CMD> --cols N --rows N` | PTY 尺寸(默认 120x40) |
-| `exec <CMD> --sync-ssh [--ssh-port N]` | 先用 LINUX_SSH_USER/LINUX_SSH_PWD 自动配置本地 SSH 连接再执行 |
-| `exec <CMD> --sudo` | 以 root 身份执行(包进 `sudo -n -H bash -c`;要求 SSH 用户已配置免密 sudo,否则立即报 `a password is required` 而非挂到超时) |
-
-示例:
-
-```sh
-1panel-cli exec 'ls -la /var/www'
-1panel-cli exec 'echo hello && hostname' --sync-ssh
-1panel-cli exec 'whoami'                  # 确认实际身份(root / ubuntu …)
-1panel-cli exec 'apt-get install -y jq' --sudo   # 非 root 身份时提权执行
-1panel-cli exec 'bash deploy.sh' --cwd /opt/myapp --timeout 300
-1panel-cli exec 'systemctl status docker' --timeout 10; echo "exit=$?"
-1panel-cli exec 'whoami' --json
-1panel-cli exec 'bash build.sh' --cwd /opt/app --tail 50
-# 长任务推荐"无状态轮询",不要拉大 --timeout 硬等:
-1panel-cli exec 'nohup bash deploy.sh > /tmp/deploy.log 2>&1 &'
-1panel-cli exec 'tail -n 50 /tmp/deploy.log'
-1panel-cli exec 'pgrep -f deploy.sh'   # 退出码 0=还在跑
-```
-
-注意:交互式命令(`sudo` 要密码、`top`/`vim` 等 TUI)会挂到超时;用 `-y`、`</dev/null` 等非交互参数。命令经 `( )` 子 shell 执行,`exit`/`exec` 类命令安全且退出码仍可透传。
-
 ## api — 发现和调用 API
 
 | 命令 | 说明 |
@@ -146,11 +108,11 @@ v2.2.5 面板上执行 `firewall docker *` 会明确提示「当前面板不支�
 | `api put <PATH> [--body JSON]` | PUT |
 | `api delete <PATH>` | DELETE |
 
-路径相对 `/api/v2`,请求自动带 Cookie、CSRF、`Accept-Language` 和 `CurrentNode`。内置清单由 1Panel `v2.2.5` 源码生成(754 条路由,Swagger 收录 731 条;v2.2.5 无 DELETE/PUT 路由,PUT/DELETE 供新版面板使用)。示例:
+路径相对 `/api/v2`,请求自动带 Cookie、CSRF、`Accept-Language` 和 `CurrentNode`。内置清单由 1Panel `v2.2.5` 源码生成(754 条路由,Swagger 收录 731 条;v2.2.5 无 DELETE/PUT 路由,PUT/DELETE 供新版面板使用)。已在 v2.2.5 面板上全量核验:754 条路由全部注册可调用。`api describe` 支持用真实取值匹配参数路由(如 `websites/ca/1` 可匹配 `websites/ca/:id`);调用不存在的路由或方法不符时会给出明确报错,而不是打印 HTML。示例:
 
 ```sh
 1panel-cli api list --filter templates
 1panel-cli api describe POST websites/templates/search
-1panel-cli api describe POST containers/compose/pin   # 仅新版面板存在
+1panel-cli api describe POST containers/compose/pin   # v2.2.5 已注册,但未收录于 Swagger
 1panel-cli api post apps/search --body '{"page":1,"pageSize":10}'
 ```

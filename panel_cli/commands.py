@@ -118,10 +118,26 @@ def api_call(profile: str, method: str, path: str, body: str | None) -> None:
         for cookie in client.cookies():
             print(f"[debug] cookie {cookie.name}={cookie.value[:12]}", file=sys.stderr)
 
+    content_type = next(
+        (value.lower() for name, value in resp.headers if name.lower() == "content-type"),
+        "",
+    )
+    if resp.status == 404:
+        raise CliError(
+            f"面板未注册该路由: {method} /{full} (HTTP 404);"
+            "可用 `api list --filter <关键字>` 或 `api describe <METHOD> <PATH>` 核对"
+        )
+    if content_type.startswith("text/html"):
+        raise CliError(
+            f"{method} /{full} 返回了 HTML 页面而不是 API 响应:"
+            "通常是该路径不支持该方法(HTTP 405),或安全入口/登录态异常;"
+            "可用 `api describe <METHOD> <PATH>` 核对方法与路径"
+        )
+
     text = resp.text()
     try:
         print(json.dumps(json.loads(text), ensure_ascii=False, indent=2))
     except ValueError:
         print(text)
     if not resp.ok:
-        print(f"HTTP 状态码: {resp.status}", file=sys.stderr)
+        raise CliError(f"{method} /{full} 返回 HTTP {resp.status}")

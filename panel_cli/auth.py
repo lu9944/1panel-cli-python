@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 
 from .client import PanelClient
-from .config import PanelConfig, linux_ssh_creds
+from .config import PanelConfig
 from .crypto import debug_public_key, encrypt_password
 from .errors import CliError
 from .session import Session, save_session
@@ -102,25 +102,6 @@ def login(cfg: PanelConfig, profile: str) -> Session:
 
     print(f"登录成功! 用户名: {session.username} 面板: {session.panel_name}")
     print(f"会话凭据已保存到: {path}")
-
-    # 初始化面板本地 SSH 连接:.env 声明了 LINUX_SSH_USER/PWD 时立即写入,
-    # 保证 exec 默认以该用户执行,而不是残留的 root 连接(root 操作用 --sudo 提权)
-    from . import exec as exec_module
-
-    ssh_user, ssh_pwd = linux_ssh_creds()
-    if ssh_user and ssh_pwd:
-        try:
-            exec_module.ensure_local_conn(profile, ssh_user, ssh_pwd, exec_module.DEFAULT_SSH_PORT)
-            print(
-                f"面板本地 SSH 连接已配置为用户 {ssh_user}"
-                "(exec 将以该用户执行;root 操作加 --sudo)"
-            )
-        except CliError as exc:
-            print(
-                f"警告: 自动配置面板本地 SSH 连接失败: {exc}\n"
-                "(不影响登录;请修正 LINUX_SSH_USER/LINUX_SSH_PWD 后重跑 login,或运行 doctor 复查)",
-                file=sys.stderr,
-            )
 
     return session
 

@@ -9,7 +9,7 @@ import argparse
 import os
 import sys
 
-from . import apps, catalog, commands, config, db, doctor, exec as exec_module
+from . import apps, catalog, commands, config, db, doctor
 from . import firewall, initcmd, redis, web, auth
 from .errors import CliError
 
@@ -74,7 +74,6 @@ def build_parser() -> argparse.ArgumentParser:
     _add_redis(subparsers, common)
     _add_firewall(subparsers, common)
     _add_doctor(subparsers, common)
-    _add_exec(subparsers, common)
     return parser
 
 
@@ -123,7 +122,7 @@ def _add_api(subparsers, common) -> None:
     p = subparsers.add_parser("api", parents=[common], help="使用已保存的凭据调用面板 API")
     sub = p.add_subparsers(dest="api_action", metavar="<ACTION>", required=True)
 
-    q = sub.add_parser("list", help="列出 API 路由(合并内置 dev-v2 清单与当前面板 Swagger)")
+    q = sub.add_parser("list", help="列出 API 路由(内置 v2.2.5 清单 + 当前面板 Swagger)")
     q.add_argument("--filter", default="", help="按路径、处理器、摘要或标签过滤")
     q.set_defaults(func=lambda a: catalog.list_routes(a.profile, a.filter))
 
@@ -567,30 +566,9 @@ def _add_doctor(subparsers, common) -> None:
         help="检查环境配置是否合格(会尝试登录并给出修复指导)",
     )
     p.add_argument("--force", action="store_true", help="强制重新登录以验证 .env 中的账号密码")
-    p.set_defaults(func=lambda a: doctor.doctor(a.profile, a.force))
-
-
-def _add_exec(subparsers, common) -> None:
-    p = subparsers.add_parser(
-        "exec", parents=[common],
-        help="在面板本机执行单行命令(通过终端 WebSocket,非交互)",
+    p.set_defaults(
+        func=lambda a: doctor.doctor(a.profile, a.force, getattr(a, "env", None))
     )
-    p.add_argument("command", help="要执行的单行命令(不能包含换行符)")
-    p.add_argument("--timeout", type=int, default=exec_module.DEFAULT_TIMEOUT_SECS,
-                   help="超时秒数(超时返回 124,已收集内容仍会打印;默认 30)")
-    p.add_argument("--cwd", default=None, help="执行前先切换到指定目录")
-    p.add_argument("--cols", type=int, default=exec_module.DEFAULT_COLS, help="PTY 列数(默认 120)")
-    p.add_argument("--rows", type=int, default=exec_module.DEFAULT_ROWS, help="PTY 行数(默认 40)")
-    p.add_argument("--json", action="store_true", help="输出单行结构化 JSON(适合脚本/AI 消费)")
-    p.add_argument("--tail", type=int, default=None, help="仅显示清洗后输出的最后 N 行")
-    p.add_argument("--raw", action="store_true", help="不做输出清洗(保留 ANSI/回显/提示符/哨兵)")
-    p.add_argument("--sync-ssh", dest="sync_ssh", action="store_true",
-                   help="用 LINUX_SSH_USER / LINUX_SSH_PWD 自动配置面板本地 SSH 连接后执行")
-    p.add_argument("--ssh-port", dest="ssh_port", type=int, default=exec_module.DEFAULT_SSH_PORT,
-                   help="--sync-ssh 时使用的 SSH 端口(默认 22)")
-    p.add_argument("--sudo", action="store_true",
-                   help="以 root 身份执行(包进 sudo -n -H bash -c;要求 SSH 用户已配置免密 sudo)")
-    p.set_defaults(func=_cmd_exec)
 
 
 # ---------------------------------------------------------------------------
@@ -620,23 +598,6 @@ def _cmd_login(args: argparse.Namespace) -> None:
     )
     cfg = config.PanelConfig.from_env(overrides)
     auth.login(cfg, args.profile)
-
-
-def _cmd_exec(args: argparse.Namespace) -> None:
-    opts = exec_module.ExecOptions(
-        command=args.command,
-        timeout=args.timeout,
-        cwd=args.cwd,
-        cols=args.cols,
-        rows=args.rows,
-        json=args.json,
-        tail=args.tail,
-        raw=args.raw,
-        sync_ssh=args.sync_ssh,
-        ssh_port=args.ssh_port,
-        sudo=args.sudo,
-    )
-    sys.exit(exec_module.run(args.profile, opts))
 
 
 # ---------------------------------------------------------------------------

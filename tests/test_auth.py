@@ -34,8 +34,6 @@ def _cfg(captcha=None, captcha_id=None):
         captcha_id=captcha_id,
         language="zh",
         insecure=False,
-        linux_ssh_user=None,
-        linux_ssh_pwd=None,
     )
 
 

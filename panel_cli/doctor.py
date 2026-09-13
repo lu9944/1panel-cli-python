@@ -5,12 +5,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from .client import PanelClient
-from .config import ConfigOverrides, PanelConfig, env_search_paths, linux_ssh_creds
+from .config import ConfigOverrides, PanelConfig, env_search_paths
 from .errors import CliError
 from .session import Session, load_session
 
-TOTAL = 8
+TOTAL = 6
 
 
 def step(n: int, title: str, ok: bool, detail: str) -> None:
@@ -27,7 +29,10 @@ def guidance(lines: list[str]) -> None:
         print(f"    - {line}")
 
 
-def find_env_file():
+def find_env_file(explicit: str | None = None):
+    if explicit:
+        path = Path(explicit).expanduser()
+        return path if path.exists() else None
     for candidate in env_search_paths():
         if candidate.exists():
             return candidate
@@ -44,9 +49,8 @@ def verify_session(session: Session) -> bool:
         return False
 
 
-def doctor(profile: str, force: bool) -> None:
+def doctor(profile: str, force: bool, env_file: str | None = None) -> None:
     from . import auth
-    from . import exec as exec_module
     from .commands import panel_version
 
     all_ok = True
@@ -54,7 +58,7 @@ def doctor(profile: str, force: bool) -> None:
     print(f"1Panel CLI 环境检查 (profile: {profile})\n")
 
     # 1. .env 配置文件
-    env_path = find_env_file()
+    env_path = find_env_file(env_file)
     ok1 = env_path is not None
     step(1, ".env 配置文件", ok1, str(env_path) if env_path else "未找到")
     if not ok1:
@@ -210,133 +214,6 @@ def doctor(profile: str, force: bool) -> None:
     except CliError as exc:
         step(6, "面板版本兼容性", False, str(exc))
         all_ok = False
-
-    # 7. 本地 SSH 连接(exec 前置):配置状态 + 与 .env 声明用户对齐 + 实测连通性
-    creds_user, creds_pwd = linux_ssh_creds()
-    try:
-        conn = exec_module.local_conn_info(profile)
-        conn_user: str | None = conn.user if conn.addr else None
-    except CliError:
-        conn_user = None
-
-    if creds_user and creds_pwd:
-        mismatch = conn_user is None or (conn_user and conn_user != creds_user)
-        if mismatch:
-            try:
-                exec_module.ensure_local_conn(
-                    profile, creds_user, creds_pwd, exec_module.DEFAULT_SSH_PORT
-                )
-                print(
-                    f"[7/{TOTAL}] 本地 SSH 连接 ... 自动改配为用户 {creds_user}"
-                    f"(原为 {conn_user or '未配置'})"
-                )
-                conn_user = creds_user
-            except CliError as exc:
-                step(
-                    7,
-                    "本地 SSH 连接 (exec 前置)",
-                    False,
-                    f"自动改配失败: {exc}",
-                )
-                all_ok = False
-                guidance(
-                    [
-                        "写入面板「设置 → 终端 → SSH 本地连接」失败:",
-                        "  1) 检查 LINUX_SSH_USER / LINUX_SSH_PWD 是否正确",
-                        "  2) 确认主机 SSH 服务已启用(端口默认 22,可用 exec --ssh-port 调整)",
-                    ]
-                )
-
-    ssh_ok = False
-    who = conn_user or ""
-    if conn_user is None:
-        step(
-            7,
-            "本地 SSH 连接 (exec 前置)",
-            False,
-            "面板未配置,且 .env 未声明 LINUX_SSH_USER / LINUX_SSH_PWD",
-        )
-        all_ok = False
-        guidance(
-            [
-                "exec 需要面板先配置「设置 → 终端 → SSH 本地连接」:",
-                "  1) 在 .env 中添加 LINUX_SSH_USER / LINUX_SSH_PWD,重跑 doctor 或 login 即自动写入",
-                "  2) 或到面板 UI 手动配置",
-            ]
-        )
-    else:
-        try:
-            code, out = exec_module.run_capture(profile, "whoami", False, 20)
-            if code == 0:
-                actual = out.strip()
-                if not actual:
-                    extra = ""
-                elif actual == conn_user:
-                    extra = f",whoami 实测 {actual}"
-                else:
-                    extra = f",whoami 实测为 {actual}(与连接声明用户不一致)"
-                step(7, "本地 SSH 连接 (exec 前置)", True, f"用户 {conn_user}{extra}")
-                ssh_ok = True
-            else:
-                step(
-                    7,
-                    "本地 SSH 连接 (exec 前置)",
-                    False,
-                    f"whoami 退出码 {code}: {out.strip()}",
-                )
-                all_ok = False
-                guidance(
-                    [
-                        f"用户 {conn_user} 的本地 SSH 连接验证失败,exec 无法执行:",
-                        "  1) 凭据可能已变更:重跑 1panel-cli login 自动改配",
-                        f"  2) 或到面板「设置 → 终端 → SSH 本地连接」核对 {conn_user} 的密码与端口",
-                    ]
-                )
-        except CliError as exc:
-            step(7, "本地 SSH 连接 (exec 前置)", False, str(exc))
-            all_ok = False
-            guidance(
-                [
-                    "exec 连通性验证失败:",
-                    "  1) 重跑 1panel-cli login(或 exec --sync-ssh)改配本地 SSH 连接",
-                    "  2) 确认主机 SSH 服务可达",
-                ]
-            )
-
-    # 8. sudo 免密(exec --sudo 前置;不阻塞整体通过,仅告警)
-    if not ssh_ok:
-        print(f"[8/{TOTAL}] sudo 免密 ... 跳过 (上一步 SSH 连接未验证通过)")
-    else:
-        try:
-            code, out = exec_module.run_capture(profile, "true", True, 20)
-            if code == 0:
-                step(
-                    8,
-                    "sudo 免密 (exec --sudo 前置)",
-                    True,
-                    f"用户 {who} 可免密 sudo",
-                )
-            else:
-                step_warn(
-                    8,
-                    "sudo 免密 (exec --sudo 前置)",
-                    f"sudo -n 退出码 {code}: {out.strip()}",
-                )
-                guidance(
-                    [
-                        f"用户 {who} 未配置免密 sudo,exec --sudo 将失败;如需提权,在主机上配置:",
-                        f"  echo '{who} ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/1panel-cli",
-                        "  或将本地 SSH 连接改配为 root(此时不需要 --sudo)",
-                    ]
-                )
-        except CliError as exc:
-            step_warn(8, "sudo 免密 (exec --sudo 前置)", str(exc))
-            guidance(
-                [
-                    f"无法验证用户 {who} 的免密 sudo;如需 --sudo 提权,在主机上配置:",
-                    f"  echo '{who} ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/1panel-cli",
-                ]
-            )
 
     print()
     if all_ok:

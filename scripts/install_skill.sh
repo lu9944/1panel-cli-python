@@ -34,8 +34,10 @@ cp "$SRC/commands.md" "$DEST/commands.md"
 cp "$SRC/README.md" "$DEST/README.md"
 cp "$SRC/.env.example" "$DEST/.env.example"
 cp "$SRC/.env.example" "$DEST/bin/.env.example"
-mkdir -p "$DEST/docs"
-cp "$SRC/docs/exec-command-dev.md" "$DEST/docs/exec-command-dev.md"
+
+# 清理旧版本残留(exec 功能与说明文档已移除)
+rm -f "$DEST/panel_cli/exec.py" "$DEST/panel_cli/ws.py"
+rm -rf "$DEST/docs"
 
 # 参考资料:替换为 v2.2.5 基线
 cp "$SRC/references/compatibility-v2.2.5.md" "$DEST/references/"

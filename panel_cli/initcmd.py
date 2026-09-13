@@ -316,13 +316,7 @@ def render_env(url: str, username: str, password: str, insecure: bool) -> str:
     ]
     if insecure:
         lines.append("PANEL_INSECURE=true")
-    lines += [
-        "",
-        "# exec 自动对齐面板本地 SSH 连接(可选,按需取消注释):",
-        "# LINUX_SSH_USER=ubuntu",
-        "# LINUX_SSH_PWD=changeme",
-        "",
-    ]
+    lines += [""]
     return "\n".join(lines)
 
 

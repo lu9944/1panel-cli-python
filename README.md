@@ -8,8 +8,8 @@ API 路由清单由 1Panel `v2.2.5` 源码生成(754 条),登录 / 应用商店 
 ## 特点
 
 - **零第三方依赖**:仅使用 Python 标准库(`urllib` / `http.cookiejar` / `socket` / `ssl`),无需 `pip install`;系统自带的 `python3`(3.9+)即可运行。
-- **纯 Python 实现**:RSA PKCS#1 v1.5 公钥加密、AES-256-CBC、自定义 RFC6455 WebSocket 客户端、multipart 上传均为内置实现。
-- **与 Rust 版输出对齐**:命令树、参数、表格排版、`exec` 的 JSON 结构与退出码语义保持一致,可直接替换使用。
+- **纯 Python 实现**:RSA PKCS#1 v1.5 公钥加密、AES-256-CBC、multipart 上传均为内置实现。
+- **与 Rust 版输出对齐**:命令树、参数、表格排版与输出文本保持一致,可直接替换使用。
 - **Agent Skill**:符合 [Agent Skills](https://opencode.ai/docs/skills/) 标准的 `SKILL.md`,可直接用于 opencode / Claude Code 等工具。
 
 ## 功能
@@ -21,7 +21,6 @@ API 路由清单由 1Panel `v2.2.5` 源码生成(754 条),登录 / 应用商店 
 - **Redis `redis`**:实例状态/配置读写/密码
 - **网站 `web`**:网站列表、nginx 配置读写(保存后自动 reload)、HTTPS/SSL 证书、文件上传与解压
 - **防火墙 `firewall`**:自动探测并适配新版统一规则接口与 v2.2.5 旧接口;v2.2.5 走旧接口(状态/启停/Ping、端口/IP/转发规则增删查、批量放行);新版面板额外支持 Docker 端口守护(`firewall docker`)
-- **远程执行 `exec`**:通过终端 WebSocket 在面板本机执行单行命令,退出码透传,支持 `--cwd`、`--timeout`、`--json`、`--tail` 与输出清洗;配置 `LINUX_SSH_USER`/`LINUX_SSH_PWD` 后 `login` 自动配置、`exec` 自动对齐面板本地 SSH 连接(默认以该用户执行,不接触 root);`--sudo` 提权执行 root 命令(需免密 sudo);`doctor` 实测 SSH 连通性与免密 sudo
 - **API `api`**:内置 v2.2.5 源码生成的 754 条路由目录,可 list/describe 并调用 GET/POST/PUT/DELETE,自动携带 Cookie、CSRF、语言和节点头
 
 ## 环境要求
@@ -98,6 +97,16 @@ scripts/install_skill.sh /path/to/skill  # 或指定目录
 ~/.config/opencode/skills/1panel-skill/bin/1panel-cli --version
 ```
 
+### 从 GitHub Actions 下载技能包
+
+仓库自带 `.github/workflows/skill-package.yml`:
+
+1. 在 GitHub 仓库的 **Actions** 页选择 **Build Skill Package** → **Run workflow**;
+2. 运行完成后在该次运行的 **Artifacts** 区域下载 `1panel-skill-<版本>`;
+3. 解压得到 `1panel-skill/` 目录,执行 `bash install.sh` 自动安装(优先 opencode,其次 Claude Code,也可传入目标目录),或手动把该目录复制到对应 skills 目录。
+
+推送 `v*` tag 时,工作流还会把 `1panel-skill-<版本>.zip` 自动附加到 GitHub Release。
+
 ## 配置说明(.env)
 
 | 变量 | 必填 | 说明 |
@@ -111,7 +120,6 @@ scripts/install_skill.sh /path/to/skill  # 或指定目录
 | `PANEL_MFA_CODE` | 否 | 开启 MFA 时的动态验证码(自动化场景) |
 | `PANEL_CAPTCHA` / `PANEL_CAPTCHA_ID` | 否 | 登录验证码答案与 ID(配合外部 OCR 自动化) |
 | `PANEL_INSECURE` | 否 | 面板为 HTTPS 且使用自签名证书时设为 `true` |
-| `LINUX_SSH_USER` / `LINUX_SSH_PWD` | 否 | 面板所在主机的 SSH 凭据:`login` 自动写入面板本地 SSH 连接,`exec` 自动对齐(exec 默认以该用户执行,root 命令用 `--sudo`) |
 
 CLI 启动时依次从当前目录、入口脚本所在目录、仓库根目录查找 `.env`,也可用 `--env <path>` 指定,或通过 `--profile <name>` 保存多套配置;同时支持环境变量与命令行参数。配置优先级:**命令行参数 > 环境变量 > .env 文件**。
 
@@ -128,15 +136,15 @@ CLI 启动时依次从当前目录、入口脚本所在目录、仓库根目录�
 ```
 1panel-cli-python/
 ├── SKILL.md               # 技能主体(触发条件、环境检查、命令速查、关键约定)
-├── commands.md            # 完整命令速查表(会话 / apps / db / redis / web / firewall / exec / api)
+├── commands.md            # 完整命令速查表(会话 / apps / db / redis / web / firewall / api)
 ├── .env.example           # 面板账号配置模板
 ├── pyproject.toml         # 可选的 pip 安装配置(控制台入口 1panel-cli)
-├── docs/
-│   └── exec-command-dev.md    # exec 子命令实现说明(终端 WS / 哨兵 / 本地 SSH 连接)
+├── .github/workflows/skill-package.yml  # Actions:打包可下载的技能包(手动运行 / v* tag 发 Release)
 ├── references/
 │   └── compatibility-v2.2.5.md  # v2.2.5 接口兼容性核对
 ├── scripts/
 │   ├── generate_api_catalog.py  # 从 1Panel 源码生成 API 清单
+│   ├── verify_api_routes.py     # 逐条核验内置路由在真实面板上的注册情况
 │   └── install_skill.sh         # 安装/更新到 opencode skill 目录
 ├── panel_cli/             # Python 包(零第三方依赖)
 │   ├── main.py            #   argparse 命令树与分发
@@ -145,17 +153,15 @@ CLI 启动时依次从当前目录、入口脚本所在目录、仓库根目录�
 │   ├── crypto.py          #   RSA PKCS1v15 + AES-256-CBC + URL 解码
 │   ├── session.py         #   会话持久化(0600)
 │   ├── client.py          #   urllib + CookieJar HTTP 客户端
-│   ├── ws.py              #   极简 RFC6455 WebSocket 客户端
 │   ├── auth.py            #   登录(验证码 / MFA / 安全入口)
 │   ├── commands.py        #   status / info / logout / api 透传
 │   ├── catalog.py         #   API 清单 + Swagger 合并
 │   ├── apps.py / db.py / redis.py / web.py / firewall.py
-│   ├── exec.py            #   终端执行(哨兵 / 清洗 / 退出码)
-│   ├── doctor.py          #   8 项环境体检
+│   ├── doctor.py          #   6 项环境体检
 │   └── data/api-v2.2.5.json   # v2.2.5 源码生成的 754 条路由
 ├── bin/
 │   └── 1panel-cli         # 可执行入口(#!/usr/bin/env python3)
-└── tests/                 # unittest 单元测试(101 个用例)
+└── tests/                 # unittest 单元测试(84 个用例)
 ```
 
 ## 更新 API 清单(可选)
@@ -175,7 +181,18 @@ python3 scripts/generate_api_catalog.py \
 python3 -m unittest discover -s tests -v
 ```
 
-覆盖:密码加密(RSA/AES 已知向量与往返)、验证码 ID 解析、URL 解码、命令组装与哨兵匹配、输出清洗、WebSocket 帧编解码、请求头/SSL 上下文、防火墙规则构造、路由清单与路径归一化、.env 解析等。
+覆盖:密码加密(RSA/AES 已知向量与往返)、验证码 ID 解析、URL 解码、命令组装与哨兵匹配、输出清洗、请求头/SSL 上下文、防火墙规则构造、路由清单与路径归一化、API 调用结果归类、.env 解析等。
+
+### 核验 API 路由
+
+对已登录的面板逐条核验内置 754 条路由是否注册可用。写操作发送畸形 JSON 请求体,在参数校验阶段即失败,不会产生业务副作用;有副作用且无法用请求体拦截的路由自动跳过并标注。
+
+```sh
+python3 scripts/verify_api_routes.py
+python3 scripts/verify_api_routes.py --filter websites --output /tmp/api-verify.json
+```
+
+退出码:0=未发现异常,1=存在 404/HTML 等异常,2=环境或配置错误。
 
 ## License
 

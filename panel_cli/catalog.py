@@ -99,6 +99,77 @@ def swagger_operation(swagger: dict, method: str, full_path: str) -> dict | None
     return (swagger.get("paths", {}).get(swagger_path, {}) or {}).get(method.lower())
 
 
+def path_segments(path: str) -> list[str]:
+    return [segment for segment in path.strip("/").split("/") if segment]
+
+
+def is_param_segment(segment: str) -> bool:
+    """路由模板中的参数段,兼容 gin 的 `:id` 与 Swagger 的 `{id}` 写法。"""
+    return (segment.startswith(":") and len(segment) > 1) or (
+        segment.startswith("{") and segment.endswith("}") and len(segment) > 2
+    )
+
+
+def path_matches(template: str, path: str) -> bool:
+    """模板路径(含 `:param` / `{param}`)是否匹配具体请求路径。"""
+    template_segments = path_segments(template)
+    path_parts = path_segments(path)
+    if len(template_segments) != len(path_parts):
+        return False
+    return all(
+        is_param_segment(pattern) or pattern == actual
+        for pattern, actual in zip(template_segments, path_parts)
+    )
+
+
+def _static_score(template: str) -> int:
+    return sum(not is_param_segment(segment) for segment in path_segments(template))
+
+
+def resolve_route(routes: list[Route], method: str, path: str) -> tuple[Route | None, str | None]:
+    """在路由清单中定位 `method + path`;path 可为真实取值或模板写法。
+
+    先精确匹配,再按段通配匹配(如 `websites/ca/1` → `websites/ca/:id`),
+    返回 (路由, 匹配到的模板路径);未匹配返回 (None, None)。
+    """
+    exact = next((r for r in routes if r.method == method and r.path == path), None)
+    if exact is not None:
+        return exact, exact.path
+    matches = [
+        r for r in routes
+        if r.method == method and path_matches(r.path, path)
+    ]
+    if not matches:
+        return None, None
+    best = max(matches, key=lambda r: _static_score(r.path))
+    return best, best.path
+
+
+def resolve_swagger_operation(
+    swagger: dict, method: str, path: str
+) -> tuple[str | None, dict | None]:
+    """在 Swagger 中定位操作;支持用真实取值匹配 `{id}` / `:id` 模板。"""
+    operation = swagger_operation(swagger, method, path)
+    if operation is not None:
+        return path, operation
+    best: tuple[int, str, dict] | None = None
+    for swagger_path, path_item in (swagger.get("paths") or {}).items():
+        if not isinstance(path_item, dict):
+            continue
+        candidate = path_item.get(method.lower())
+        if not isinstance(candidate, dict):
+            continue
+        full_path = normalize_path(swagger_path)
+        if not path_matches(full_path, path):
+            continue
+        score = _static_score(full_path)
+        if best is None or score > best[0]:
+            best = (score, full_path, candidate)
+    if best is None:
+        return None, None
+    return best[1], best[2]
+
+
 def route_text(route: Route) -> str:
     return " ".join(
         [route.method, route.path, route.handler, route.summary, " ".join(route.tags)]
@@ -205,22 +276,22 @@ def _json_pointer(document: dict, pointer: str) -> object | None:
 
 def describe(profile: str, method: str, path: str) -> None:
     method = method.upper()
-    path = normalize_path(path)
+    requested = normalize_path(path)
     catalog = builtin()
-    route = next(
-        (r for r in catalog.routes if r.method == method and r.path == path), None
-    )
+    route, matched_path = resolve_route(catalog.routes, method, requested)
     runtime = runtime_swagger(profile)
-    operation = (
-        swagger_operation(runtime, method, path) if runtime else None
+    swagger_path, operation = (
+        resolve_swagger_operation(runtime, method, requested) if runtime else (None, None)
     )
     if route is None and operation is None:
         raise CliError(
-            f"内置 {catalog.panel_version} 清单和当前面板 Swagger 中均未找到 {method} {path};"
+            f"内置 {catalog.panel_version} 清单和当前面板 Swagger 中均未找到 {method} {requested};"
             "可运行 `api list --filter <关键字>`"
         )
 
-    result: dict = {"method": method, "path": path}
+    result: dict = {"method": method, "path": matched_path or swagger_path or requested}
+    if result["path"] != requested:
+        result["requestedPath"] = requested
     if route is not None:
         result.update(
             {

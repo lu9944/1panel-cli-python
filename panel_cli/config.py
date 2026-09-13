@@ -22,8 +22,6 @@ ENV_CAPTCHA_ID = "PANEL_CAPTCHA_ID"
 ENV_LANGUAGE = "PANEL_LANGUAGE"
 ENV_INSECURE = "PANEL_INSECURE"
 ENV_NODE = "PANEL_NODE"
-ENV_LINUX_SSH_USER = "LINUX_SSH_USER"
-ENV_LINUX_SSH_PWD = "LINUX_SSH_PWD"
 
 
 def set_node_override(node: str | None) -> None:
@@ -38,11 +36,6 @@ def encode_current_node(value: str) -> str:
     因此编码后必须能解码还原为原始节点名。
     """
     return urllib.parse.quote(value, safe="!*'()")
-
-
-def linux_ssh_creds() -> tuple[str | None, str | None]:
-    """读取面板所在主机的 SSH 凭据(exec --sync-ssh 自动配置本地连接时使用)。"""
-    return env_get(ENV_LINUX_SSH_USER), env_get(ENV_LINUX_SSH_PWD)
 
 
 def env_get(key: str) -> str | None:
@@ -131,8 +124,6 @@ class ConfigOverrides:
         captcha_id: str | None = None,
         language: str | None = None,
         insecure: bool | None = None,
-        linux_ssh_user: str | None = None,
-        linux_ssh_pwd: str | None = None,
     ) -> None:
         self.url = url
         self.entrance = entrance
@@ -143,8 +134,6 @@ class ConfigOverrides:
         self.captcha_id = captcha_id
         self.language = language
         self.insecure = insecure
-        self.linux_ssh_user = linux_ssh_user
-        self.linux_ssh_pwd = linux_ssh_pwd
 
 
 def split_url(raw: str) -> tuple[str, str]:
@@ -182,8 +171,6 @@ class PanelConfig:
         captcha_id: str | None,
         language: str,
         insecure: bool,
-        linux_ssh_user: str | None,
-        linux_ssh_pwd: str | None,
     ) -> None:
         self.url = url
         self.entrance = entrance
@@ -194,8 +181,6 @@ class PanelConfig:
         self.captcha_id = captcha_id
         self.language = language
         self.insecure = insecure
-        self.linux_ssh_user = linux_ssh_user
-        self.linux_ssh_pwd = linux_ssh_pwd
 
     @classmethod
     def from_env(cls, overrides: ConfigOverrides | None = None) -> "PanelConfig":
@@ -230,6 +215,4 @@ class PanelConfig:
             captcha_id=overrides.captcha_id or env_get(ENV_CAPTCHA_ID),
             language=overrides.language or env_get(ENV_LANGUAGE) or "zh",
             insecure=insecure,
-            linux_ssh_user=overrides.linux_ssh_user or env_get(ENV_LINUX_SSH_USER),
-            linux_ssh_pwd=overrides.linux_ssh_pwd or env_get(ENV_LINUX_SSH_PWD),
         )

@@ -3,7 +3,16 @@
 import unittest
 
 from panel_cli import catalog
-from panel_cli.catalog import Catalog, Route, builtin, merged_routes, normalize_path
+from panel_cli.catalog import (
+    Catalog,
+    Route,
+    builtin,
+    merged_routes,
+    normalize_path,
+    path_matches,
+    resolve_route,
+    resolve_swagger_operation,
+)
 from panel_cli.commands import normalize_api_path
 from panel_cli.config import PanelConfig, parse_env_file, split_url
 
@@ -73,6 +82,52 @@ class TestMergeRoutes(unittest.TestCase):
         if not route.summary:
             self.assertEqual(matched.summary, "运行时摘要")
         self.assertTrue(matched.swagger_documented)
+
+
+class TestPathMatching(unittest.TestCase):
+    def test_colon_and_brace_params(self):
+        self.assertTrue(path_matches("/api/v2/websites/ca/:id", "/api/v2/websites/ca/1"))
+        self.assertTrue(path_matches("/api/v2/websites/ca/{id}", "/api/v2/websites/ca/1"))
+        self.assertFalse(path_matches("/api/v2/websites/ca/:id", "/api/v2/websites/ssl/1"))
+        self.assertFalse(path_matches("/api/v2/websites/ca/:id", "/api/v2/websites/ca"))
+
+    def test_resolve_route_real_value(self):
+        route, matched = resolve_route(
+            builtin().routes, "GET", "/api/v2/websites/ca/42"
+        )
+        self.assertIsNotNone(route)
+        self.assertEqual(matched, "/api/v2/websites/ca/:id")
+        self.assertEqual(route.handler, "GetWebsiteCA")
+
+    def test_resolve_route_exact_match(self):
+        route, matched = resolve_route(
+            builtin().routes, "POST", "/api/v2/apps/search"
+        )
+        self.assertIsNotNone(route)
+        self.assertEqual(matched, "/api/v2/apps/search")
+
+    def test_resolve_route_missing(self):
+        route, matched = resolve_route(
+            builtin().routes, "GET", "/api/v2/no/such/route"
+        )
+        self.assertIsNone(route)
+        self.assertIsNone(matched)
+
+    def test_resolve_swagger_real_value(self):
+        swagger = {"paths": {"/websites/ca/{id}": {"get": {"summary": "CA 详情"}}}}
+        path, operation = resolve_swagger_operation(
+            swagger, "GET", "/api/v2/websites/ca/7"
+        )
+        self.assertEqual(path, "/api/v2/websites/ca/{id}")
+        self.assertEqual(operation["summary"], "CA 详情")
+
+    def test_resolve_swagger_exact_match(self):
+        swagger = {"paths": {"/health/check": {"get": {"summary": "ok"}}}}
+        path, operation = resolve_swagger_operation(
+            swagger, "GET", "/api/v2/health/check"
+        )
+        self.assertEqual(path, "/api/v2/health/check")
+        self.assertEqual(operation["summary"], "ok")
 
 
 class TestRoute(unittest.TestCase):
