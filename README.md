@@ -102,10 +102,10 @@ scripts/install_skill.sh /path/to/skill  # 或指定目录
 仓库自带 `.github/workflows/skill-package.yml`:
 
 1. 在 GitHub 仓库的 **Actions** 页选择 **Build Skill Package** → **Run workflow**;
-2. 运行完成后在该次运行的 **Artifacts** 区域下载 `1panel-skill-<版本>`;
+2. 运行完成后会自动发布 GitHub Release(手动运行使用 `v<pyproject 版本>` 作 tag,已存在则更新),也可在该次运行的 **Artifacts** 区域下载 `1panel-skill-<版本>`;
 3. 解压得到 `1panel-skill/` 目录,执行 `bash install.sh` 自动安装(优先 opencode,其次 Claude Code,也可传入目标目录),或手动把该目录复制到对应 skills 目录。
 
-推送 `v*` tag 时,工作流还会把 `1panel-skill-<版本>.zip` 自动附加到 GitHub Release。
+推送 `v*` tag 时同样触发构建,并以该 tag 发布 Release。
 
 ## 配置说明(.env)
 
