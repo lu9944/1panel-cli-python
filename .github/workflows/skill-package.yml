@@ -100,15 +100,26 @@ jobs:
 
           printf '%s' "$REL_JSON" | python3 -c 'import json,sys; [print(a["id"], a["name"]) for a in json.load(sys.stdin).get("assets", [])]' | while read -r AID ANAME; do
             if [ "$ANAME" = "$(basename "$ASSET")" ]; then
-              curl -sS -H "$AUTH" -X DELETE "$API/repos/$REPO/releases/$REL_ID/assets/$AID" >/dev/null
-              echo "已删除旧附件: $ANAME"
+              DEL_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" -X DELETE "$API/repos/$REPO/releases/$REL_ID/assets/$AID")"
+              echo "已删除旧附件: $ANAME (HTTP $DEL_CODE)"
+              sleep 2
             fi
           done
 
-          UP_JSON="$(curl -sS -H "$AUTH" -X POST \
-            "$UPLOAD_URL?name=$(basename "$ASSET")" \
-            -F "attachment=@${ASSET}")"
-          printf '%s' "$UP_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("已上传附件:", d.get("name"), d.get("size"), d.get("browser_download_url","")) if d.get("id") else sys.exit("附件上传失败: " + json.dumps(d, ensure_ascii=False)[:300])'
+          # 附件上传:GitHub 删除旧附件后同名重传可能短暂 already_exists(一致性延迟),失败自动重试
+          UP_OK=0
+          for i in 1 2 3 4 5 6; do
+            UP_JSON="$(curl -sS -H "$AUTH" -X POST \
+              "$UPLOAD_URL?name=$(basename "$ASSET")" \
+              -F "attachment=@${ASSET}")"
+            if printf '%s' "$UP_JSON" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("id") else 1)'; then
+              UP_OK=1; break
+            fi
+            echo "第 $i 次上传未成功,5 秒后重试: $(printf '%s' "$UP_JSON" | head -c 200)"
+            sleep 5
+          done
+          [ "$UP_OK" = "1" ] || { echo "附件上传失败,最后一次响应: $(printf '%s' "$UP_JSON" | head -c 300)"; exit 1; }
+          printf '%s' "$UP_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("已上传附件:", d.get("name"), d.get("size"), d.get("browser_download_url",""))'
           echo "Release: ${GITHUB_SERVER_URL:-https://github.com}/${REPO}/releases/tag/$TAG"
 
       - name: Job summary
