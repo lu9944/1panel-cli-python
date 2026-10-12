@@ -1,0 +1,882 @@
+package service
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/1Panel-dev/1Panel/core/app/auth"
+	"github.com/1Panel-dev/1Panel/core/app/dto"
+	"github.com/1Panel-dev/1Panel/core/app/model"
+	"github.com/1Panel-dev/1Panel/core/app/repo"
+	"github.com/1Panel-dev/1Panel/core/buserr"
+	"github.com/1Panel-dev/1Panel/core/constant"
+	"github.com/1Panel-dev/1Panel/core/global"
+	"github.com/1Panel-dev/1Panel/core/i18n"
+	"github.com/1Panel-dev/1Panel/core/utils/common"
+	"github.com/1Panel-dev/1Panel/core/utils/controller"
+	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/core/utils/menutree"
+	"github.com/1Panel-dev/1Panel/core/utils/passkey"
+	"github.com/1Panel-dev/1Panel/core/utils/req_helper/proxy_local"
+	"github.com/1Panel-dev/1Panel/core/utils/xpack"
+	"github.com/gin-gonic/gin"
+	"golang.org/x/net/proxy"
+	"gorm.io/gorm"
+)
+
+type SettingService struct{}
+
+var panelPortChangeMu sync.Mutex
+var fileDownloadPreferenceMu sync.Mutex
+
+type ISettingService interface {
+	GetFileDownloadPreference(userID string) (dto.FileDownloadPreference, error)
+	UpdateFileDownloadPreference(userID string, req dto.FileDownloadPreference) error
+	GetSettingInfo() (*dto.SettingInfo, error)
+	GetSettingBaseInfo() (*dto.SettingBaseInfo, error)
+	LoadInterfaceAddr() ([]string, error)
+	Update(c *gin.Context, key, value string) error
+	UpdatePort(port uint) error
+	UpdateBindInfo(req dto.BindInfo) error
+	UpdateSSL(c *gin.Context, req dto.SSLUpdate) error
+	LoadFromCert() (*dto.SSLInfo, error)
+
+	UpdateProxy(req dto.ProxyUpdate) error
+
+	GetTerminalInfo() (*dto.TerminalInfo, error)
+	UpdateTerminal(req dto.TerminalUpdate) error
+
+	UpdateSystemSSL() error
+	GenerateRSAKey() error
+
+	UpdateAppstoreConfig(req dto.AppstoreUpdate) error
+	GetAppstoreConfig() (*dto.AppstoreConfig, error)
+	DefaultMenu() error
+
+	GetMemo() (string, error)
+	UpdateMemo(content string) error
+}
+
+func NewISettingService() ISettingService {
+	return &SettingService{}
+}
+
+func (u *SettingService) GetFileDownloadPreference(userID string) (dto.FileDownloadPreference, error) {
+	var preference dto.FileDownloadPreference
+	if userID == "" {
+		return preference, buserr.New("ErrNotLogin")
+	}
+	fileDownloadPreferenceMu.Lock()
+	defer fileDownloadPreferenceMu.Unlock()
+	value, err := settingRepo.GetValueByKey("FileDownloadPreference:" + userID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return preference, nil
+	}
+	if err != nil {
+		return preference, err
+	}
+	err = json.Unmarshal([]byte(value), &preference)
+	return preference, err
+}
+
+func (u *SettingService) UpdateFileDownloadPreference(userID string, req dto.FileDownloadPreference) error {
+	if userID == "" {
+		return buserr.New("ErrNotLogin")
+	}
+	value, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	fileDownloadPreferenceMu.Lock()
+	defer fileDownloadPreferenceMu.Unlock()
+	return settingRepo.UpdateOrCreate("FileDownloadPreference:"+userID, string(value))
+}
+
+func (u *SettingService) GetSettingInfo() (*dto.SettingInfo, error) {
+	setting, err := settingRepo.List()
+	if err != nil {
+		return nil, buserr.New("ErrRecordNotFound")
+	}
+	settingMap := make(map[string]string)
+	for _, set := range setting {
+		settingMap[set.Key] = set.Value
+	}
+	repairAndSortHideMenu(settingMap)
+	var info dto.SettingInfo
+	arr, err := json.Marshal(settingMap)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(arr, &info); err != nil {
+		return nil, err
+	}
+	if info.Edition == "" {
+		info.Edition = "cn"
+		_ = settingRepo.UpdateOrCreate("Edition", info.Edition)
+	}
+	if info.MenuAccordion == "" {
+		info.MenuAccordion = constant.StatusDisable
+		_ = settingRepo.UpdateOrCreate("MenuAccordion", info.MenuAccordion)
+	}
+	if info.ProxyPasswdKeep != constant.StatusEnable {
+		info.ProxyPasswd = ""
+	} else {
+		info.ProxyPasswd, _ = encrypt.StringDecrypt(info.ProxyPasswd)
+	}
+
+	return &info, err
+}
+
+func (u *SettingService) GetSettingBaseInfo() (*dto.SettingBaseInfo, error) {
+	setting, err := settingRepo.List()
+	if err != nil {
+		return nil, buserr.New("ErrRecordNotFound")
+	}
+	settingMap := make(map[string]string)
+	for _, set := range setting {
+		settingMap[set.Key] = set.Value
+	}
+	repairAndSortHideMenu(settingMap)
+	var info dto.SettingBaseInfo
+	arr, err := json.Marshal(settingMap)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(arr, &info); err != nil {
+		return nil, err
+	}
+	if info.Edition == "" {
+		info.Edition = "cn"
+		_ = settingRepo.UpdateOrCreate("Edition", info.Edition)
+	}
+	if info.MenuAccordion == "" {
+		info.MenuAccordion = constant.StatusDisable
+		_ = settingRepo.UpdateOrCreate("MenuAccordion", info.MenuAccordion)
+	}
+
+	return &info, err
+}
+
+func repairAndSortHideMenu(settingMap map[string]string) {
+	hideMenu, ok := settingMap["HideMenu"]
+	if !ok || strings.TrimSpace(hideMenu) == "" {
+		return
+	}
+	var menus []dto.ShowMenu
+	if err := json.Unmarshal([]byte(hideMenu), &menus); err != nil || len(menus) == 0 {
+		return
+	}
+
+	menus, changed := menutree.ReconcileHideMenuIntegrity(menus, nil)
+	if changed {
+		repairedBytes, err := json.Marshal(menus)
+		if err != nil {
+			global.LOG.Warnf("marshal repaired HideMenu failed, err: %v", err)
+		} else {
+			updated, err := settingRepo.UpdateIfMatch("HideMenu", hideMenu, string(repairedBytes))
+			if err != nil {
+				global.LOG.Warnf("persist repaired HideMenu failed, err: %v", err)
+			} else if !updated {
+				global.LOG.Debug("skip persisting repaired HideMenu because the setting changed concurrently")
+			}
+		}
+	}
+	sortShowMenus(menus)
+	if sortedBytes, err := json.Marshal(menus); err == nil {
+		settingMap["HideMenu"] = string(sortedBytes)
+	}
+}
+
+func sortShowMenus(menus []dto.ShowMenu) {
+	for i := range menus {
+		if len(menus[i].Children) > 0 {
+			sortShowMenus(menus[i].Children)
+		}
+	}
+	sort.SliceStable(menus, func(i, j int) bool {
+		if menus[i].Sort == menus[j].Sort {
+			return menus[i].ID < menus[j].ID
+		}
+		return menus[i].Sort < menus[j].Sort
+	})
+}
+
+func (u *SettingService) Update(c *gin.Context, key, value string) error {
+	if auth.IsAPICredentialSetting(key) {
+		return buserr.New("ErrInvalidParams")
+	}
+	oldVal, err := settingRepo.Get(repo.WithByKey(key))
+	if err != nil {
+		return err
+	}
+	if oldVal.Value == value && key != "HideMenu" {
+		return nil
+	}
+	sessionLifeTime := 0
+	switch key {
+	case "SessionTimeout":
+		sessionLifeTime, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+	case "AppStoreLastModified":
+		exist, _ := settingRepo.Get(repo.WithByKey("AppStoreLastModified"))
+		if exist.ID == 0 {
+			_ = settingRepo.Create("AppStoreLastModified", value)
+			return nil
+		}
+	case "HideMenu":
+		var menus []dto.ShowMenu
+		if err := json.Unmarshal([]byte(value), &menus); err != nil {
+			return err
+		}
+		var previousMenus []dto.ShowMenu
+		_ = json.Unmarshal([]byte(oldVal.Value), &previousMenus)
+		menus, _ = menutree.PreserveMissingMenus(menus, previousMenus)
+		if len(menus) == 0 {
+			return fmt.Errorf("hide menu cannot be empty")
+		}
+		menus, _ = menutree.ReconcileHideMenuIntegrity(menus, previousMenus)
+		for i := 0; i < len(menus); i++ {
+			if menus[i].Label == "Home-Menu" || menus[i].Label == "App-Menu" || menus[i].Label == "Setting-Menu" {
+				menus[i].IsShow = true
+			}
+		}
+		menuItem, err := json.Marshal(&menus)
+		if err != nil {
+			return err
+		}
+		value = string(menuItem)
+	}
+	if oldVal.Value == value {
+		return nil
+	}
+
+	if err := settingRepo.Update(key, value); err != nil {
+		return err
+	}
+	if key == "ExpirationDays" {
+		if err := xpack.AuthProvider.SyncPasswordExpirationTime(value); err != nil {
+			return err
+		}
+	}
+	if key == "SessionTimeout" {
+		global.SESSION.ApplyTimeout(sessionLifeTime)
+	}
+
+	switch key {
+	case "BindDomain":
+		if len(value) != 0 {
+			_ = global.SESSION.Clean()
+			CloseTerminalSessions("all", "", "")
+		}
+		if err := u.clearPasskeySettings(); err != nil {
+			return err
+		}
+	case "Language":
+		i18n.SetCachedDBLanguage(value)
+		if err := xpack.MultiNodeProvider.Sync(constant.SyncLanguage); err != nil {
+			global.LOG.Errorf("sync language to node failed, err: %v", err)
+		}
+	case "UpgradeBackupCopies":
+		dropBackupCopies()
+	case "ScriptSync":
+		if value == constant.StatusEnable {
+			StartSync()
+		} else {
+			global.Cron.Remove(global.ScriptSyncJobID)
+		}
+	case "Edition":
+		global.CONF.Base.Edition = value
+		if err := xpack.MultiNodeProvider.Sync(constant.SyncEdition); err != nil {
+			global.LOG.Errorf("sync edition to node failed, err: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (u *SettingService) LoadInterfaceAddr() ([]string, error) {
+	addrMap := make(map[string]struct{})
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil, err
+	}
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if ok && ipNet.IP.To16() != nil {
+			addrMap[ipNet.IP.String()] = struct{}{}
+		}
+	}
+	var data []string
+	for key := range addrMap {
+		data = append(data, key)
+	}
+	return data, nil
+}
+
+func (u *SettingService) UpdateBindInfo(req dto.BindInfo) error {
+	if err := settingRepo.Update("Ipv6", req.Ipv6); err != nil {
+		return err
+	}
+	if err := settingRepo.Update("BindAddress", req.BindAddress); err != nil {
+		return err
+	}
+	go func() {
+		time.Sleep(1 * time.Second)
+		controller.RestartPanel(true, false, false)
+	}()
+	return nil
+}
+
+func (u *SettingService) UpdateProxy(req dto.ProxyUpdate) error {
+	if req.ProxyType == "https" || req.ProxyType == "http" {
+		req.ProxyUrl = req.ProxyType + "://" + req.ProxyUrl
+	}
+	if err := checkProxy(req); err != nil {
+		return err
+	}
+	if err := settingRepo.Update("ProxyUrl", req.ProxyUrl); err != nil {
+		return err
+	}
+	if err := settingRepo.Update("ProxyType", req.ProxyType); err != nil {
+		return err
+	}
+	if err := settingRepo.Update("ProxyPort", req.ProxyPort); err != nil {
+		return err
+	}
+	if err := settingRepo.Update("ProxyUser", req.ProxyUser); err != nil {
+		return err
+	}
+	pass, _ := encrypt.StringEncrypt(req.ProxyPasswd)
+	if err := settingRepo.Update("ProxyPasswd", pass); err != nil {
+		return err
+	}
+	if err := settingRepo.Update("ProxyPasswdKeep", req.ProxyPasswdKeep); err != nil {
+		return err
+	}
+	if err := xpack.MultiNodeProvider.ProxyDocker(loadDockerProxy(req)); err != nil {
+		return err
+	}
+	syncScope := constant.SyncSystemProxy
+	if req.WithDockerRestart {
+		syncScope = constant.SyncSystemProxyWithRestartDocker
+	}
+	if err := xpack.MultiNodeProvider.Sync(syncScope); err != nil {
+		global.LOG.Errorf("sync proxy to node failed, err: %v", err)
+	}
+	return nil
+}
+
+func (u *SettingService) UpdatePort(port uint) error {
+	panelPortChangeMu.Lock()
+	defer panelPortChangeMu.Unlock()
+
+	oldPort, err := settingRepo.Get(repo.WithByKey("ServerPort"))
+	if err != nil {
+		return err
+	}
+	if oldPort.Value == fmt.Sprintf("%v", port) {
+		return nil
+	}
+	if common.ScanPort(int(port)) {
+		return buserr.WithDetail("ErrPortInUsed", port, nil)
+	}
+	if err := proxy_local.UpdatePanelPort(oldPort.Value, port); err != nil {
+		return err
+	}
+
+	if err := settingRepo.Update("ServerPort", strconv.Itoa(int(port))); err != nil {
+		return err
+	}
+	if err := u.clearPasskeySettings(); err != nil {
+		return err
+	}
+	go func() {
+		time.Sleep(1 * time.Second)
+		controller.RestartPanel(true, false, false)
+	}()
+	return nil
+}
+
+func (u *SettingService) UpdateSSL(c *gin.Context, req dto.SSLUpdate) error {
+	secretDir := path.Join(global.CONF.Base.InstallDir, "1panel/secret")
+	if req.SSL == constant.StatusDisable {
+		c.SetCookie(constant.SessionName, "", -1, "/", "", false, true)
+		c.SetCookie(constant.CSRFTokenName, "", -1, "/", "", false, false)
+		if err := settingRepo.Update("SSL", constant.StatusDisable); err != nil {
+			return err
+		}
+		if err := settingRepo.Update("SSLType", "self"); err != nil {
+			return err
+		}
+		_ = os.Remove(path.Join(secretDir, "server.crt"))
+		_ = os.Remove(path.Join(secretDir, "server.key"))
+		go func() {
+			time.Sleep(1 * time.Second)
+			controller.RestartPanel(true, false, false)
+		}()
+		return nil
+	}
+	if _, err := os.Stat(secretDir); err != nil && os.IsNotExist(err) {
+		if err = os.MkdirAll(secretDir, os.ModePerm); err != nil {
+			return err
+		}
+	}
+	if err := settingRepo.Update("SSLType", req.SSLType); err != nil {
+		return err
+	}
+	var (
+		secret string
+		key    string
+	)
+
+	switch req.SSLType {
+	case "import-paste":
+		secret = req.Cert
+		key = req.Key
+	case "import-local":
+		keyFile, err := os.ReadFile(req.Key)
+		if err != nil {
+			return err
+		}
+		key = string(keyFile)
+		certFile, err := os.ReadFile(req.Cert)
+		if err != nil {
+			return err
+		}
+		secret = string(certFile)
+	case "select":
+		ssl, err := agentRepo.GetWebsiteSSL(repo.WithByID(req.SSLID))
+		if err != nil {
+			return err
+		}
+		secret = ssl.Pem
+		key = ssl.PrivateKey
+		if err := settingRepo.Update("SSLID", strconv.Itoa(int(req.SSLID))); err != nil {
+			return err
+		}
+	case "self":
+		ca, err := agentRepo.GetCA(repo.WithByName("1Panel"))
+		if err != nil {
+			return err
+		}
+		params := make(map[string]interface{})
+		params["domains"] = req.Domain
+		params["time"] = 10
+		params["unit"] = "year"
+		params["keyType"] = "EC256"
+		params["id"] = ca.ID
+		jsonData, err := json.Marshal(params)
+		if err != nil {
+			return err
+		}
+		res, err := proxy_local.NewLocalClient("/api/v2/websites/ca/obtain", http.MethodPost, bytes.NewReader(jsonData), nil)
+		if err != nil {
+			return err
+		}
+		jsonBytes, err := json.Marshal(res)
+		if err != nil {
+			return err
+		}
+		var ssl model.WebsiteSSL
+		if err := json.Unmarshal(jsonBytes, &ssl); err != nil {
+			return err
+		}
+		secret = ssl.Pem
+		key = ssl.PrivateKey
+		if err := settingRepo.Update("SSLID", strconv.Itoa(int(ssl.ID))); err != nil {
+			return err
+		}
+	}
+
+	if err := os.WriteFile(path.Join(secretDir, "server.crt.tmp"), []byte(secret), 0600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path.Join(secretDir, "server.key.tmp"), []byte(key), 0600); err != nil {
+		return err
+	}
+	if err := checkCertValid(); err != nil {
+		return err
+	}
+	if err := os.Rename(path.Join(secretDir, "server.crt.tmp"), path.Join(secretDir, "server.crt")); err != nil {
+		return err
+	}
+	if err := os.Rename(path.Join(secretDir, "server.key.tmp"), path.Join(secretDir, "server.key")); err != nil {
+		return err
+	}
+	status := global.CONF.Conn.SSL
+	if req.SSL != status {
+		go func() {
+			time.Sleep(1 * time.Second)
+			controller.RestartPanel(true, false, false)
+		}()
+	}
+	if err := settingRepo.Update("SSL", req.SSL); err != nil {
+		return err
+	}
+	global.CONF.Conn.SSL = req.SSL
+	return u.UpdateSystemSSL()
+}
+
+func (u *SettingService) LoadFromCert() (*dto.SSLInfo, error) {
+	ssl, err := settingRepo.Get(repo.WithByKey("SSL"))
+	if err != nil {
+		return nil, err
+	}
+	if ssl.Value == constant.StatusDisable {
+		return &dto.SSLInfo{}, nil
+	}
+	sslType, err := settingRepo.Get(repo.WithByKey("SSLType"))
+	if err != nil {
+		return nil, err
+	}
+	var data dto.SSLInfo
+	switch sslType.Value {
+	case "self":
+		data, err = loadInfoFromCert()
+		if err != nil {
+			return nil, err
+		}
+	case "import-paste", "import-local":
+		data, err = loadInfoFromCert()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(path.Join(global.CONF.Base.InstallDir, "1panel/secret/server.crt")); err != nil {
+			return nil, fmt.Errorf("load server.crt file failed, err: %v", err)
+		}
+		certFile, _ := os.ReadFile(path.Join(global.CONF.Base.InstallDir, "1panel/secret/server.crt"))
+		data.Cert = string(certFile)
+
+		if _, err := os.Stat(path.Join(global.CONF.Base.InstallDir, "1panel/secret/server.key")); err != nil {
+			return nil, fmt.Errorf("load server.key file failed, err: %v", err)
+		}
+		keyFile, _ := os.ReadFile(path.Join(global.CONF.Base.InstallDir, "1panel/secret/server.key"))
+		data.Key = string(keyFile)
+	case "select":
+		sslID, err := settingRepo.Get(repo.WithByKey("SSLID"))
+		if err != nil {
+			return nil, err
+		}
+		id, _ := strconv.Atoi(sslID.Value)
+		ssl, err := agentRepo.GetWebsiteSSL(repo.WithByID(uint(id)))
+		if err != nil {
+			return nil, err
+		}
+		data.Domain = ssl.PrimaryDomain
+		data.SSLID = uint(id)
+		data.Timeout = ssl.ExpireDate.Format(constant.DateTimeLayout)
+	}
+	return &data, nil
+}
+
+func (u *SettingService) GetTerminalInfo() (*dto.TerminalInfo, error) {
+	setting, err := settingRepo.List()
+	if err != nil {
+		return nil, buserr.New("ErrRecordNotFound")
+	}
+	settingMap := make(map[string]string)
+	for _, set := range setting {
+		settingMap[set.Key] = set.Value
+	}
+	info := dto.TerminalInfo{ShowTerminalButton: "Enable"}
+	arr, err := json.Marshal(settingMap)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(arr, &info); err != nil {
+		return nil, err
+	}
+	return &info, err
+}
+func (u *SettingService) UpdateTerminal(req dto.TerminalUpdate) error {
+	settings := []struct {
+		key   string
+		value *string
+	}{
+		{"ShowTerminalButton", req.ShowTerminalButton},
+		{"LineHeight", req.LineHeight},
+		{"LetterSpacing", req.LetterSpacing},
+		{"FontSize", req.FontSize},
+		{"FontFamily", req.FontFamily},
+		{"CursorBlink", req.CursorBlink},
+		{"BackgroundColor", req.BackgroundColor},
+		{"ForegroundColor", req.ForegroundColor},
+		{"CursorStyle", req.CursorStyle},
+		{"Scrollback", req.Scrollback},
+		{"ScrollSensitivity", req.ScrollSensitivity},
+	}
+	for _, setting := range settings {
+		if setting.value == nil {
+			continue
+		}
+		if err := settingRepo.UpdateOrCreate(setting.key, *setting.value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (u *SettingService) deleteCurrentSession(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	sessionUser, err := global.SESSION.Get(c)
+	if err != nil || sessionUser.ID == "" {
+		return
+	}
+	_ = global.SESSION.DeleteByID(sessionUser.ID)
+	CloseTerminalSessions("user", sessionUser.ID, "")
+}
+
+func (u *SettingService) clearPasskeySettings() error {
+	if err := settingRepo.Update(passkey.PasskeyUserIDSettingKey, ""); err != nil {
+		return err
+	}
+	if err := settingRepo.Update(passkey.PasskeyCredentialSettingKey, ""); err != nil {
+		return err
+	}
+	return xpack.AuthProvider.ClearPasskeys()
+}
+
+func (u *SettingService) UpdateSystemSSL() error {
+	certPath := path.Join(global.CONF.Base.InstallDir, "1panel/secret/server.crt")
+	keyPath := path.Join(global.CONF.Base.InstallDir, "1panel/secret/server.key")
+	certificate, err := os.ReadFile(certPath)
+	if err != nil {
+		return err
+	}
+	key, err := os.ReadFile(keyPath)
+	if err != nil {
+		return err
+	}
+	cert, err := tls.X509KeyPair(certificate, key)
+	if err != nil {
+		return err
+	}
+	constant.CertStore.Store(&cert)
+	return nil
+}
+
+func loadInfoFromCert() (dto.SSLInfo, error) {
+	var info dto.SSLInfo
+	certFile := path.Join(global.CONF.Base.InstallDir, "1panel/secret/server.crt")
+	if _, err := os.Stat(certFile); err != nil {
+		return info, err
+	}
+	certData, err := os.ReadFile(certFile)
+	if err != nil {
+		return info, err
+	}
+	certBlock, _ := pem.Decode(certData)
+	if certBlock == nil {
+		return info, err
+	}
+	certObj, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		return info, err
+	}
+	var domains []string
+	if len(certObj.IPAddresses) != 0 {
+		for _, ip := range certObj.IPAddresses {
+			domains = append(domains, ip.String())
+		}
+	}
+	if len(certObj.DNSNames) != 0 {
+		domains = append(domains, certObj.DNSNames...)
+	}
+	return dto.SSLInfo{
+		Domain:   strings.Join(domains, ","),
+		Timeout:  certObj.NotAfter.Format(constant.DateTimeLayout),
+		RootPath: path.Join(global.CONF.Base.InstallDir, "1panel/secret/server.crt"),
+	}, nil
+}
+
+func checkCertValid() error {
+	certificate, err := os.ReadFile(path.Join(global.CONF.Base.InstallDir, "1panel/secret/server.crt.tmp"))
+	if err != nil {
+		return err
+	}
+	key, err := os.ReadFile(path.Join(global.CONF.Base.InstallDir, "1panel/secret/server.key.tmp"))
+	if err != nil {
+		return err
+	}
+	if _, err = tls.X509KeyPair(certificate, key); err != nil {
+		return err
+	}
+	certBlock, _ := pem.Decode(certificate)
+	if certBlock == nil {
+		return err
+	}
+	if _, err := x509.ParseCertificate(certBlock.Bytes); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (u *SettingService) GenerateRSAKey() error {
+	priKey, _ := settingRepo.Get(repo.WithByKey("PASSWORD_PRIVATE_KEY"))
+	pubKey, _ := settingRepo.Get(repo.WithByKey("PASSWORD_PUBLIC_KEY"))
+	if priKey.Value != "" && pubKey.Value != "" {
+		return nil
+	}
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+	privateKeyPEM := encrypt.ExportPrivateKeyToPEM(privateKey)
+	publicKeyPEM, err := encrypt.ExportPublicKeyToPEM(&privateKey.PublicKey)
+	if err != nil {
+		return err
+	}
+	err = settingRepo.UpdateOrCreate("PASSWORD_PRIVATE_KEY", privateKeyPEM)
+	if err != nil {
+		return err
+	}
+	err = settingRepo.UpdateOrCreate("PASSWORD_PUBLIC_KEY", publicKeyPEM)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (u *SettingService) UpdateAppstoreConfig(req dto.AppstoreUpdate) error {
+	return settingRepo.UpdateOrCreate(req.Scope, req.Status)
+}
+
+func (u *SettingService) GetAppstoreConfig() (*dto.AppstoreConfig, error) {
+	res := &dto.AppstoreConfig{}
+	res.UninstallDeleteImage, _ = settingRepo.GetValueByKey("UninstallDeleteImage")
+	if res.UninstallDeleteImage == "" {
+		res.UninstallDeleteImage = constant.StatusDisable
+	}
+	res.UpgradeBackup, _ = settingRepo.GetValueByKey("UpgradeBackup")
+	if res.UpgradeBackup == "" {
+		res.UpgradeBackup = constant.StatusDisable
+	}
+	res.UpgradeDeleteImage, _ = settingRepo.GetValueByKey("UpgradeDeleteImage")
+	if res.UpgradeDeleteImage == "" {
+		res.UpgradeDeleteImage = constant.StatusDisable
+	}
+	res.UninstallDeleteBackup, _ = settingRepo.GetValueByKey("UninstallDeleteBackup")
+	if res.UninstallDeleteBackup == "" {
+		res.UninstallDeleteBackup = constant.StatusDisable
+	}
+	res.InstallAllowPort, _ = settingRepo.GetValueByKey("InstallAllowPort")
+	if res.InstallAllowPort == "" {
+		res.InstallAllowPort = constant.StatusDisable
+	}
+	return res, nil
+}
+
+func loadDockerProxy(req dto.ProxyUpdate) string {
+	if req.ProxyType == "" || req.ProxyType == "close" || !req.ProxyDocker {
+		return ""
+	}
+	var account string
+	if req.ProxyUser != "" {
+		account = req.ProxyUser
+		if req.ProxyPasswd != "" {
+			account += ":" + req.ProxyPasswd
+		}
+		account += "@"
+	}
+
+	return fmt.Sprintf("%s://%s%s:%s", req.ProxyType, account, strings.ReplaceAll(req.ProxyUrl, req.ProxyType+"://", ""), req.ProxyPort)
+}
+
+func checkProxy(req dto.ProxyUpdate) error {
+	var transport http.Transport
+	proxyItem := fmt.Sprintf("%s:%s", req.ProxyUrl, req.ProxyPort)
+	switch req.ProxyType {
+	case "http", "https":
+		proxyURL, err := url.Parse(proxyItem)
+		if err != nil {
+			return buserr.WithErr("ErrProxySetting", fmt.Errorf("parse url %s failed, err: %v", proxyItem, err))
+		}
+		if len(req.ProxyUser) != 0 {
+			proxyURL.User = url.UserPassword(req.ProxyUser, req.ProxyPasswd)
+		}
+		transport = http.Transport{Proxy: http.ProxyURL(proxyURL), TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	case "socks5":
+		var auth *proxy.Auth
+		if len(req.ProxyUser) == 0 {
+			auth = nil
+		} else {
+			auth = &proxy.Auth{User: req.ProxyUser, Password: req.ProxyPasswd}
+		}
+		dialer, err := proxy.SOCKS5("tcp", proxyItem, auth, proxy.Direct)
+		if err != nil {
+			return buserr.WithErr("ErrProxySetting", fmt.Errorf("new socks5 proxy failed, err: %v", err))
+		}
+		dialContext := func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.Dial(network, addr)
+		}
+		transport = http.Transport{DialContext: dialContext}
+	case "", "close":
+		return nil
+	default:
+		return buserr.WithName("ErrNotSupportType", req.ProxyType)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			global.LOG.Errorf("handle request failed, error message: %v", r)
+			return
+		}
+	}()
+
+	client := http.Client{Timeout: 3 * time.Second, Transport: &transport}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://1panel.cn/", nil)
+	if err != nil {
+		return buserr.WithErr("ErrProxySetting", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(request)
+	if err != nil {
+		return buserr.WithErr("ErrProxySetting", err)
+	}
+	defer resp.Body.Close()
+	if _, err := io.ReadAll(resp.Body); err != nil {
+		return buserr.WithErr("ErrProxySetting", err)
+	}
+	return nil
+}
+
+func (u *SettingService) DefaultMenu() error {
+	return settingRepo.DefaultMenu()
+}
+
+func (u *SettingService) GetMemo() (string, error) {
+	memo, err := settingRepo.GetValueByKey("DashboardMemo")
+	if err != nil {
+		return "", nil
+	}
+	return memo, nil
+}
+
+func (u *SettingService) UpdateMemo(content string) error {
+	return settingRepo.UpdateOrCreate("DashboardMemo", content)
+}

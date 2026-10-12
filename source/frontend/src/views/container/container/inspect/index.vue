@@ -1,0 +1,369 @@
+<template>
+    <DrawerPro v-model="visible" :header="$t('commons.button.view')" size="large" @close="handleClose">
+        <el-tabs v-model="activeTab" type="border-card">
+            <el-tab-pane :label="$t('menu.container')" name="overview">
+                <el-descriptions :column="1" border :title="$t('home.baseInfo')">
+                    <el-descriptions-item :label="$t('commons.table.name')">
+                        <el-text>{{ inspectData?.Name?.substring(1) || '-' }}</el-text>
+                        <CopyButton :content="inspectData?.Name || ''" />
+                    </el-descriptions-item>
+                    <el-descriptions-item label="ID">
+                        <el-text class="text-xs">{{ inspectData?.Id?.substring(0, 12) }}</el-text>
+                        <CopyButton :content="inspectData?.Id || ''" />
+                    </el-descriptions-item>
+                    <el-descriptions-item label="PID">
+                        {{ inspectData?.State?.Pid }}
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="$t('container.image')">
+                        {{ inspectData?.Config?.Image }}
+                        <CopyButton :content="inspectData?.Config?.Image || ''" />
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="$t('commons.table.createdAt')">
+                        {{ formatDate(inspectData?.Created) }}
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="$t('process.startTime')">
+                        {{ formatDate(inspectData?.State?.StartedAt) }}
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="$t('container.finishTime')">
+                        {{ formatDate(inspectData?.State?.FinishedAt) }}
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="$t('container.restartPolicy')">
+                        {{ getRestartPolicy() }}
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="$t('commons.table.status')">
+                        <el-tag :type="getStatusType(inspectData?.State?.Status)">
+                            {{ inspectData?.State?.Status }}
+                            {{
+                                inspectData?.State?.Health?.Status ? '(' + inspectData?.State?.Health?.Status + ')' : ''
+                            }}
+                        </el-tag>
+                    </el-descriptions-item>
+                </el-descriptions>
+
+                <el-descriptions class="mt-4" :column="1" border :title="$t('container.command')">
+                    <el-descriptions-item :label="$t('container.command')">
+                        <div v-if="inspectData?.Config?.Cmd?.length" class="tag-list">
+                            <el-tag type="info" v-for="(entry, index) in inspectData?.Config?.Cmd" :key="index">
+                                {{ entry }}
+                            </el-tag>
+                        </div>
+                        <span v-else>-</span>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="ENTRYPONT">
+                        <div v-if="inspectData?.Config?.Entrypoint?.length" class="tag-list">
+                            <el-tag type="info" v-for="(entry, index) in inspectData?.Config?.Entrypoint" :key="index">
+                                {{ entry }}
+                            </el-tag>
+                        </div>
+                        <span v-else>-</span>
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="$t('container.workingDir')">
+                        {{ inspectData?.Config?.WorkingDir || '-' }}
+                    </el-descriptions-item>
+                </el-descriptions>
+
+                <span class="envTitle">{{ $t('container.env') }}</span>
+                <el-collapse v-if="inspectData?.Config?.Env?.length" class="env-list" accordion>
+                    <el-collapse-item v-for="(env, index) in inspectData?.Config?.Env" :key="index" :name="index">
+                        <template #title>
+                            <el-text class="env-key text-sm">{{ getEnvKey(env) }}</el-text>
+                        </template>
+                        <div class="env-value">
+                            <el-text class="text-xs">{{ getEnvValue(env) }}</el-text>
+                            <CopyButton :content="getEnvValue(env)" />
+                        </div>
+                    </el-collapse-item>
+                </el-collapse>
+                <el-empty v-else :description="$t('commons.msg.noneData')" />
+            </el-tab-pane>
+
+            <el-tab-pane :label="$t('container.network')" name="network">
+                <el-descriptions :column="1" border :title="$t('home.baseInfo')">
+                    <el-descriptions-item :label="$t('container.networkName')">
+                        {{ inspectData?.HostConfig?.NetworkMode }}
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="$t('home.hostname')">
+                        {{ inspectData?.Config?.Hostname }}
+                    </el-descriptions-item>
+                    <el-descriptions-item label="Domain">
+                        {{ inspectData?.Config?.Domainname || '-' }}
+                    </el-descriptions-item>
+                    <el-descriptions-item :label="$t('commons.table.port')">
+                        <div v-for="item of ports" :key="item">
+                            <span>{{ item }}</span>
+                        </div>
+                    </el-descriptions-item>
+                </el-descriptions>
+
+                <div v-for="(network, name) in inspectData?.NetworkSettings?.Networks" :key="name" class="mb-4 mt-4">
+                    <el-descriptions :column="2" border :title="name">
+                        <el-descriptions-item label="Network ID">
+                            <el-text class="text-xs">{{ network?.NetworkID?.substring(0, 12) }}</el-text>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="Endpoint ID">
+                            <el-text class="text-xs">{{ network?.EndpointID?.substring(0, 12) }}</el-text>
+                        </el-descriptions-item>
+                        <el-descriptions-item label="IPv4">
+                            {{ network?.IPAddress || '-' }}
+                        </el-descriptions-item>
+                        <el-descriptions-item label="IPv4 Gateway">
+                            {{ network?.Gateway || '-' }}
+                        </el-descriptions-item>
+                        <el-descriptions-item label="MAC">
+                            {{ network?.MacAddress || '-' }}
+                        </el-descriptions-item>
+                        <el-descriptions-item label="IPv6 Gateway">
+                            {{ network?.IPv6Gateway || '-' }}
+                        </el-descriptions-item>
+                    </el-descriptions>
+                </div>
+            </el-tab-pane>
+
+            <el-tab-pane :label="$t('container.volume')" name="storage">
+                <el-table :data="inspectData?.Mounts" border>
+                    <el-table-column :label="$t('commons.table.type')" width="100">
+                        <template #default="{ row }">
+                            <el-tag size="small">
+                                {{ row.Type === 'bind' ? $t('container.volumeOption') : $t('container.hostOption') }}
+                            </el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column :label="$t('container.hostOption')" show-overflow-tooltip>
+                        <template #default="{ row }">
+                            <el-text
+                                v-if="row.Source"
+                                type="primary"
+                                class="cursor-pointer"
+                                @click="handleJumpToFile(row.Source)"
+                            >
+                                {{ row.Source }}
+                            </el-text>
+                            <span v-else>-</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column :label="$t('container.volumeOption')" prop="Destination" show-overflow-tooltip />
+                    <el-table-column :label="$t('container.tag')" width="80" align="center">
+                        <template #default="{ row }">
+                            {{ row.RW ? $t('container.modeRW') : $t('container.modeR') }}
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </el-tab-pane>
+
+            <el-tab-pane :label="$t('commons.button.view')" name="view">
+                <div class="mb-2 flex justify-start">
+                    <el-button type="primary" @click="handleCopyRawJson" icon="DocumentCopy" size="default">
+                        {{ $t('commons.button.copy') }}
+                    </el-button>
+                </div>
+                <CodemirrorPro v-model="rawJson" :height-diff="270" :readonly="true" mode="json" />
+            </el-tab-pane>
+        </el-tabs>
+
+        <template #footer>
+            <span class="dialog-footer">
+                <el-button @click="visible = false">{{ $t('commons.button.cancel') }}</el-button>
+            </span>
+        </template>
+    </DrawerPro>
+</template>
+
+<script lang="ts" setup>
+import { ref } from 'vue';
+import CodemirrorPro from '@/components/codemirror-pro/index.vue';
+import { routerToFileWithPath } from '@/utils/router';
+import { copyText } from '@/utils/clipboard';
+import i18n from '@/lang';
+
+const visible = ref(false);
+const activeTab = ref('overview');
+const inspectData = ref<any>(null);
+const rawJson = ref('');
+const showRawJson = ref(false);
+
+const ports = ref([]);
+interface DialogProps {
+    data: any;
+    ports: string[];
+}
+
+const acceptParams = (props: DialogProps): void => {
+    visible.value = true;
+    activeTab.value = 'overview';
+    showRawJson.value = false;
+    ports.value = props.ports || [];
+
+    try {
+        if (typeof props.data === 'string') {
+            inspectData.value = JSON.parse(props.data);
+        } else {
+            inspectData.value = props.data;
+        }
+        rawJson.value = JSON.stringify(inspectData.value, null, 2);
+    } catch (e) {
+        console.error('Failed to parse inspect data:', e);
+    }
+};
+
+const handleClose = () => {
+    visible.value = false;
+    inspectData.value = null;
+    rawJson.value = '';
+};
+
+const getStatusType = (status: string): string => {
+    const statusMap: Record<string, string> = {
+        running: 'success',
+        paused: 'warning',
+        restarting: 'warning',
+        exited: 'info',
+        dead: 'danger',
+    };
+    return statusMap[status?.toLowerCase()] || 'info';
+};
+
+const formatDate = (dateStr: string): string => {
+    if (!dateStr || dateStr === '0001-01-01T00:00:00Z') {
+        return '-';
+    }
+    try {
+        const date = new Date(dateStr);
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        const h = String(date.getHours()).padStart(2, '0');
+        const minute = String(date.getMinutes()).padStart(2, '0');
+        const second = String(date.getSeconds()).padStart(2, '0');
+        return `${y}-${m}-${d} ${h}:${minute}:${second}`;
+    } catch {
+        return dateStr;
+    }
+};
+
+const getEnvKey = (env: string): string => {
+    const index = env.indexOf('=');
+    return index > 0 ? env.substring(0, index) : env;
+};
+
+const getEnvValue = (env: string): string => {
+    const index = env.indexOf('=');
+    return index > 0 ? env.substring(index + 1) : '';
+};
+
+const getRestartPolicy = () => {
+    switch (inspectData.value?.HostConfig?.RestartPolicy?.Name) {
+        case 'no':
+            return i18n.global.t('container.no');
+        case 'always':
+            return i18n.global.t('container.always');
+        case 'on-failure':
+            return i18n.global.t('container.onFailure');
+        case 'unless-stopped':
+            return i18n.global.t('container.unlessStopped');
+        default:
+            return '-';
+    }
+};
+
+const handleJumpToFile = (path: string) => {
+    if (path) {
+        routerToFileWithPath(path);
+    }
+};
+
+const handleCopyRawJson = () => {
+    copyText(rawJson.value);
+};
+
+defineExpose({
+    acceptParams,
+});
+</script>
+
+<style scoped lang="scss">
+:deep(.el-descriptions__label) {
+    width: 180px;
+    background-color: var(--el-fill-color-lighter);
+}
+
+:deep(.el-descriptions__content) {
+    overflow-wrap: anywhere;
+}
+
+.envTitle {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--el-text-color-primary);
+    margin-top: 20px;
+    margin-bottom: 16px;
+    display: block;
+}
+
+.env-list {
+    border: 1px solid var(--el-border-color-light);
+    border-radius: var(--el-border-radius-base);
+    overflow: hidden;
+
+    :deep(.el-collapse-item + .el-collapse-item) {
+        border-top: 1px solid var(--el-border-color-light);
+    }
+
+    :deep(.el-collapse-item__header) {
+        height: auto;
+        min-height: 48px;
+        padding: 8px 12px;
+        border: none;
+        line-height: 1.5;
+    }
+
+    :deep(.el-collapse-item__wrap) {
+        border-bottom: none;
+    }
+
+    :deep(.el-collapse-item__content) {
+        padding: 0 12px 12px;
+    }
+}
+
+.env-key {
+    overflow-wrap: anywhere;
+    text-align: left;
+}
+
+.env-value {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+    background-color: var(--el-fill-color-lighter);
+    border-radius: var(--el-border-radius-base);
+
+    .el-text {
+        flex: 1;
+        min-width: 0;
+        align-self: flex-start;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+    }
+
+    .el-button {
+        flex-shrink: 0;
+        margin-left: 0;
+    }
+}
+
+.tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+
+    .el-tag {
+        max-width: 100%;
+        height: auto;
+        padding: 4px 8px;
+        line-height: 20px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+}
+</style>

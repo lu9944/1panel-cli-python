@@ -1,0 +1,158 @@
+<template>
+    <DrawerPro v-model="drawerVisible" :header="$t('setting.watermark')" @close="handleClose" size="large">
+        <el-watermark
+            class="watermark"
+            :content="loadContent()"
+            :font="{
+                fontSize: form.fontSize,
+                color: isDarkTheme ? form.darkColor : form.lightColor,
+                textBaseline: 'top',
+            }"
+            :rotate="form.rotate"
+            :gap="[form.gap, form.gap]"
+        >
+            <el-form
+                ref="formRef"
+                label-position="top"
+                :model="form"
+                @submit.prevent
+                v-loading="loading"
+                :rules="rules"
+            >
+                <el-form-item :label="$t('setting.watermarkContent')" prop="content">
+                    <el-input clearable v-model.trim="form.content" />
+                    <span class="input-help">{{ $t('setting.contentHelper', ['${nodeName}', '${nodeAddr}']) }}</span>
+                </el-form-item>
+                <el-form-item :label="$t('setting.light')" prop="lightColor">
+                    <el-color-picker v-model="form.lightColor" show-alpha />
+                </el-form-item>
+                <el-form-item :label="$t('setting.dark')" prop="darkColor">
+                    <el-color-picker v-model="form.darkColor" show-alpha />
+                </el-form-item>
+                <el-form-item :label="$t('setting.watermarkFont')" prop="fontSize">
+                    <el-slider v-model="form.fontSize" :min="12" :max="100" />
+                </el-form-item>
+                <el-form-item :label="$t('setting.watermarkRotate')" prop="rotate">
+                    <el-slider v-model="form.rotate" :min="-180" :max="180" />
+                </el-form-item>
+                <el-form-item :label="$t('setting.watermarkGap')" prop="gap">
+                    <el-input-number class="number-input" v-model.number="form.gap" />
+                </el-form-item>
+            </el-form>
+        </el-watermark>
+        <template #footer>
+            <el-button @click="setDefault">{{ $t('commons.button.setDefault') }}</el-button>
+            <el-button @click="drawerVisible = false">{{ $t('commons.button.cancel') }}</el-button>
+            <el-button :disabled="loading" type="primary" @click="onSave(formRef)">
+                {{ $t('commons.button.confirm') }}
+            </el-button>
+        </template>
+    </DrawerPro>
+</template>
+<script lang="ts" setup>
+import { reactive, ref } from 'vue';
+import i18n from '@/lang';
+import { MsgSuccess } from '@/utils/message';
+import { ElMessageBox, FormInstance } from 'element-plus';
+import { Rules } from '@/global/form-rules';
+import { useGlobalStore } from '@/composables/useGlobalStore';
+import { updateXpackSettingByKey } from '@/utils/xpack';
+const { globalStore, currentNode, currentNodeAddr, isDarkTheme, watermark, watermarkShow } = useGlobalStore();
+
+const emit = defineEmits<{ (e: 'search'): void }>();
+
+const drawerVisible = ref();
+const loading = ref();
+
+let form = reactive({
+    lightColor: 'rgba(0, 0, 0, 0.15)',
+    darkColor: 'rgba(255, 255, 255, 0.15)',
+    fontSize: 16,
+    content: '${nodeName} - ${nodeAddr}',
+    rotate: -22,
+    gap: 100,
+});
+
+const rules = reactive({
+    content: [Rules.requiredInput],
+});
+const formRef = ref<FormInstance>();
+
+const acceptParams = (watermark: string): void => {
+    if (watermark) {
+        const parsedData = JSON.parse(watermark);
+        form = reactive(parsedData);
+    }
+    drawerVisible.value = true;
+};
+
+const loadContent = () => {
+    let itemName = form.content.replaceAll(
+        '${nodeName}',
+        currentNode.value === 'local' ? globalStore.getMasterAlias() : currentNode.value,
+    );
+    itemName = itemName.replaceAll('${nodeAddr}', currentNodeAddr.value);
+    return itemName;
+};
+
+const setDefault = () => {
+    form.lightColor = 'rgba(0, 0, 0, 0.15)';
+    form.darkColor = 'rgba(255, 255, 255, 0.15)';
+    form.fontSize = 16;
+    form.content = '${nodeName} - ${nodeAddr}';
+    form.rotate = -22;
+    form.gap = 100;
+};
+
+const onSave = async (formEl: FormInstance | undefined) => {
+    if (!formEl) return;
+    formEl.validate(async (valid) => {
+        if (!valid) return;
+        ElMessageBox.confirm(i18n.global.t('setting.watermarkOpenHelper'), i18n.global.t('setting.watermark'), {
+            confirmButtonText: i18n.global.t('commons.button.confirm'),
+            cancelButtonText: i18n.global.t('commons.button.cancel'),
+            type: 'info',
+        }).then(async () => {
+            loading.value = true;
+            let itemVal = JSON.stringify(form);
+            await updateXpackSettingByKey('Watermark', itemVal)
+                .then(() => {
+                    loading.value = false;
+                    MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+                    watermark.value = {
+                        lightColor: form.lightColor,
+                        darkColor: form.darkColor,
+                        fontSize: form.fontSize,
+                        content: form.content,
+                        rotate: form.rotate,
+                        gap: form.gap,
+                    };
+                    watermarkShow.value = true;
+                    handleClose();
+                    return;
+                })
+                .catch(() => {
+                    loading.value = false;
+                });
+        });
+    });
+};
+
+const handleClose = () => {
+    emit('search');
+    drawerVisible.value = false;
+};
+
+defineExpose({
+    acceptParams,
+});
+</script>
+
+<style lang="scss" scoped>
+.number-input {
+    width: 100%;
+}
+.watermark {
+    height: calc(100vh - 160px);
+}
+</style>

@@ -1,0 +1,312 @@
+package filter
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/1Panel-dev/1Panel/agent/constant"
+)
+
+var ErrProviderUnavailable = errors.New("firewall provider is unavailable")
+
+type Provider string
+
+const (
+	ProviderIptables  Provider = constant.FirewallProviderIptables
+	ProviderNftables  Provider = constant.FirewallProviderNftables
+	ProviderFirewalld Provider = constant.FirewallProviderFirewalld
+	ProviderUFW       Provider = constant.FirewallProviderUFW
+)
+
+type Family string
+
+const (
+	FamilyIPv4 Family = constant.FirewallFamilyIPv4
+	FamilyIPv6 Family = constant.FirewallFamilyIPv6
+	FamilyInet Family = constant.FirewallFamilyInet
+)
+
+type PortWhitelist struct {
+	Family   string   `json:"-"`
+	Port     string   `json:"port,omitempty"`
+	Protocol string   `json:"protocol,omitempty"`
+	Type     string   `json:"type,omitempty"`
+	Sources  []string `json:"sources"`
+}
+
+type Direction string
+
+const (
+	DirectionInput Direction = "input"
+)
+
+type Action string
+
+const (
+	ActionAccept Action = "accept"
+	ActionDrop   Action = "drop"
+	ActionReject Action = "reject"
+)
+
+type NativeKind string
+
+const (
+	NativeKindRule           NativeKind = "rule"
+	NativeKindZonePort       NativeKind = "zone_port"
+	NativeKindRichRule       NativeKind = "rich_rule"
+	NativeKindUFWRule        NativeKind = "ufw_rule"
+	NativeKindUFWApplication NativeKind = "ufw_application"
+	NativeKindOpaque         NativeKind = "opaque"
+	NativeKindZoneService    NativeKind = "zone_service"
+)
+
+const (
+	OrderBucketRichPre            = "rich_pre"
+	OrderBucketRichZeroDeny       = "rich_zero_deny"
+	OrderBucketZonePrimitiveAllow = "zone_primitive_allow"
+	OrderBucketRichZeroAllow      = "rich_zero_allow"
+	OrderBucketRichPost           = "rich_post"
+)
+
+type ParseStatus string
+
+const (
+	ParseStatusSupported ParseStatus = "supported"
+	ParseStatusPartial   ParseStatus = "partial"
+	ParseStatusOpaque    ParseStatus = "opaque"
+)
+
+type PersistenceStatus string
+
+const (
+	PersistenceStatusConverged     PersistenceStatus = "converged"
+	PersistenceStatusRuntimeOnly   PersistenceStatus = "runtime_only"
+	PersistenceStatusPermanentOnly PersistenceStatus = "permanent_only"
+)
+
+type ScopeNoticeCode string
+
+const (
+	ScopeNoticeDefaultScopeMismatch     ScopeNoticeCode = "default_scope_mismatch"
+	ScopeNoticeManagedScopeInactive     ScopeNoticeCode = "managed_scope_inactive"
+	ScopeNoticeUnmanagedActiveScopes    ScopeNoticeCode = "unmanaged_active_scopes"
+	ScopeNoticeRuntimePermanentMismatch ScopeNoticeCode = "runtime_permanent_mismatch"
+	ScopeNoticeManagedScopeMissing      ScopeNoticeCode = "managed_scope_missing"
+	ScopeNoticeFamilyUnavailable        ScopeNoticeCode = "family_unavailable"
+)
+
+const (
+	BasicBeforeChain   = constant.FirewallBasicBeforeChain
+	IptablesInputChain = constant.FirewallBasicChain
+	BasicAfterChain    = constant.FirewallBasicAfterChain
+	FirewalldInputZone = "public"
+	UFWInputChain      = "incoming"
+)
+
+type ScopeNotice struct {
+	Code   ScopeNoticeCode `json:"code"`
+	Values []string        `json:"values,omitempty"`
+}
+
+var (
+	ErrInvalidScope     = errors.New("invalid firewall scope")
+	ErrUnsupportedScope = errors.New("unsupported firewall scope")
+	ErrInvalidRule      = errors.New("invalid firewall rule")
+	ErrProtectedRule    = errors.New("protected firewall rule cannot be modified")
+	ErrCompositeRule    = errors.New("firewall rule must be atomic")
+	ErrExpansionLimit   = errors.New("firewall rule expansion limit exceeded")
+)
+
+type Scope struct {
+	Provider  Provider  `json:"provider"`
+	Family    Family    `json:"family"`
+	Table     string    `json:"table,omitempty"`
+	Zone      string    `json:"zone,omitempty"`
+	Chain     string    `json:"chain,omitempty"`
+	Direction Direction `json:"direction"`
+}
+
+func ManagedInputScopes(provider Provider) []Scope {
+	base := Scope{Provider: provider, Direction: DirectionInput}
+	switch provider {
+	case ProviderIptables, ProviderNftables:
+		result := make([]Scope, 0, 6)
+		for _, family := range []Family{FamilyIPv4, FamilyIPv6} {
+			for _, chain := range []string{BasicBeforeChain, IptablesInputChain, BasicAfterChain} {
+				scope := base
+				scope.Family, scope.Table, scope.Chain = family, "filter", chain
+				result = append(result, scope)
+			}
+		}
+		return result
+	case ProviderFirewalld:
+		base.Family, base.Zone = FamilyInet, FirewalldInputZone
+		return []Scope{base}
+	case ProviderUFW:
+		result := make([]Scope, 0, 2)
+		for _, family := range []Family{FamilyIPv4, FamilyIPv6} {
+			scope := base
+			scope.Family, scope.Chain = family, UFWInputChain
+			result = append(result, scope)
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func (s Scope) Normalize() Scope {
+	s.Provider = Provider(strings.ToLower(strings.TrimSpace(string(s.Provider))))
+	s.Family = Family(strings.ToLower(strings.TrimSpace(string(s.Family))))
+	s.Table = strings.ToLower(strings.TrimSpace(s.Table))
+	s.Zone = strings.ToLower(strings.TrimSpace(s.Zone))
+	s.Chain = strings.TrimSpace(s.Chain)
+	s.Direction = Direction(strings.ToLower(strings.TrimSpace(string(s.Direction))))
+
+	if s.Provider == ProviderIptables || s.Provider == ProviderNftables {
+		s.Chain = strings.ToUpper(s.Chain)
+		if s.Chain == "" {
+			s.Chain = IptablesInputChain
+		}
+	}
+	if s.Provider == ProviderUFW && s.Chain == "" {
+		s.Chain = UFWInputChain
+	}
+	return s
+}
+
+func (s Scope) Key() string {
+	s = s.Normalize()
+	switch s.Provider {
+	case ProviderIptables:
+		fallthrough
+	case ProviderNftables:
+		return strings.Join([]string{string(s.Provider), string(s.Family), s.Table, s.Chain, string(s.Direction)}, ":")
+	case ProviderFirewalld:
+		return strings.Join([]string{string(s.Provider), s.Zone, string(s.Direction)}, ":")
+	case ProviderUFW:
+		return strings.Join([]string{string(s.Provider), s.Chain, string(s.Family)}, ":")
+	default:
+		return strings.Join([]string{string(s.Provider), string(s.Family), s.Table, s.Zone, s.Chain, string(s.Direction)}, ":")
+	}
+}
+
+func (s Scope) ValidateMVP() error {
+	s = s.Normalize()
+	if !s.Provider.valid() || !s.Family.valid() || !s.Direction.valid() {
+		return fmt.Errorf("%w: provider=%q family=%q direction=%q", ErrInvalidScope, s.Provider, s.Family, s.Direction)
+	}
+
+	switch s.Provider {
+	case ProviderIptables:
+		if s.Family != FamilyIPv4 && s.Family != FamilyIPv6 {
+			return fmt.Errorf("%w: iptables family %q", ErrUnsupportedScope, s.Family)
+		}
+		if s.Table != "filter" || s.Zone != "" || s.Direction != DirectionInput || !isBasicChain(s.Chain) {
+			return fmt.Errorf("%w: %s", ErrUnsupportedScope, s.Key())
+		}
+	case ProviderNftables:
+		if s.Family != FamilyIPv4 && s.Family != FamilyIPv6 {
+			return fmt.Errorf("%w: nftables family %q", ErrUnsupportedScope, s.Family)
+		}
+		if s.Table != "filter" || s.Zone != "" || s.Direction != DirectionInput || !isBasicChain(s.Chain) {
+			return fmt.Errorf("%w: %s", ErrUnsupportedScope, s.Key())
+		}
+	case ProviderFirewalld:
+		if s.Table != "" || s.Chain != "" || s.Direction != DirectionInput || s.Zone != FirewalldInputZone {
+			return fmt.Errorf("%w: %s", ErrUnsupportedScope, s.Key())
+		}
+	case ProviderUFW:
+		if (s.Family != FamilyIPv4 && s.Family != FamilyIPv6) || s.Table != "" || s.Zone != "" ||
+			s.Direction != DirectionInput || s.Chain != UFWInputChain {
+			return fmt.Errorf("%w: %s", ErrUnsupportedScope, s.Key())
+		}
+	default:
+		return fmt.Errorf("%w: provider %q", ErrUnsupportedScope, s.Provider)
+	}
+	return nil
+}
+
+func (p Provider) valid() bool {
+	switch p {
+	case ProviderIptables, ProviderNftables, ProviderFirewalld, ProviderUFW:
+		return true
+	default:
+		return false
+	}
+}
+
+func (f Family) valid() bool {
+	switch f {
+	case FamilyIPv4, FamilyIPv6, FamilyInet:
+		return true
+	default:
+		return false
+	}
+}
+
+func (d Direction) valid() bool {
+	return d == DirectionInput
+}
+
+func isBasicChain(chain string) bool {
+	switch chain {
+	case BasicBeforeChain, IptablesInputChain, BasicAfterChain:
+		return true
+	default:
+		return false
+	}
+}
+
+type FirewallRule struct {
+	UUID               string     `json:"uuid,omitempty"`
+	Scope              Scope      `json:"scope"`
+	NativeKind         NativeKind `json:"nativeKind"`
+	Protocol           string     `json:"protocol"`
+	SourceAddress      string     `json:"sourceAddress,omitempty"`
+	SourcePort         string     `json:"sourcePort,omitempty"`
+	DestinationAddress string     `json:"destinationAddress,omitempty"`
+	DestinationPort    string     `json:"destinationPort,omitempty"`
+	Interface          string     `json:"interface,omitempty"`
+	ConnectionStates   []string   `json:"connectionStates,omitempty"`
+	Action             Action     `json:"action"`
+	Priority           *int       `json:"priority,omitempty"`
+	OrderIndex         *int64     `json:"orderIndex,omitempty"`
+	OrderBucket        string     `json:"orderBucket,omitempty"`
+	Description        string     `json:"description,omitempty"`
+}
+
+type Locator struct {
+	Provider  Provider `json:"provider"`
+	ScopeKey  string   `json:"scopeKey"`
+	NativeID  string   `json:"nativeId,omitempty"`
+	Canonical string   `json:"canonical,omitempty"`
+	Position  *int     `json:"position,omitempty"`
+}
+
+type ObservedRule struct {
+	Rule            FirewallRule      `json:"rule"`
+	Locator         Locator           `json:"locator"`
+	InstanceKey     string            `json:"instanceKey,omitempty"`
+	Marker          string            `json:"marker,omitempty"`
+	ParseStatus     ParseStatus       `json:"parseStatus"`
+	UncertainFields []string          `json:"uncertainFields,omitempty"`
+	Raw             string            `json:"raw,omitempty"`
+	Protected       bool              `json:"protected"`
+	Persistence     PersistenceStatus `json:"persistence,omitempty"`
+}
+
+type RuleSet struct {
+	LastPosition int            `json:"-"`
+	Scope        Scope          `json:"scope"`
+	Rules        []ObservedRule `json:"rules"`
+	Notices      []ScopeNotice  `json:"notices,omitempty"`
+}
+
+type Capabilities struct {
+	Marker           bool
+	OwnedChains      bool
+	ExplicitPosition bool
+	ExplicitPriority bool
+}

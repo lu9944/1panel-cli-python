@@ -1,0 +1,253 @@
+package repo
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/1Panel-dev/1Panel/agent/constant"
+	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/utils/re"
+	"gorm.io/gorm"
+)
+
+type DBOption func(*gorm.DB) *gorm.DB
+
+func WithByID(id uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("id = ?", id)
+	}
+}
+
+func WithByGroupID(id uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("group_id = ?", id)
+	}
+}
+
+func WithByNOTID(id uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("id != ?", id)
+	}
+}
+
+func WithByIDs(ids []uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("id in (?)", ids)
+	}
+}
+
+func WithByIDNotIn(ids []uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("id not in (?)", ids)
+	}
+}
+
+func WithByName(name string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("name = ?", name)
+	}
+}
+
+func WithByPath(path string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("path = ?", path)
+	}
+}
+
+func WithByAddr(addr string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("addr = ?", addr)
+	}
+}
+
+func WithByKey(key string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("key = ?", key)
+	}
+}
+
+func WithByLowerName(name string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("LOWER(name) = LOWER(?)", name)
+	}
+}
+
+func WithByLikeName(name string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		if len(name) == 0 {
+			return g
+		}
+		return g.Where("name like ?", "%"+name+"%")
+	}
+}
+
+func WithByDetailName(detailName string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		if len(detailName) == 0 {
+			return g
+		}
+		return g.Where("detail_name = ?", detailName)
+	}
+}
+
+func WithByProvider(provider string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		if len(provider) == 0 {
+			return g
+		}
+		return g.Where("provider = ?", provider)
+	}
+}
+
+func WithByAPIType(apiType string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("api_type = ?", apiType)
+	}
+}
+
+func WithTextAPIType() DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("api_type NOT LIKE ? AND api_type <> ?", "%-images", "openai-embeddings")
+	}
+}
+
+func WithByModel(model string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		if len(model) == 0 {
+			return g
+		}
+		return g.Where("model = ?", model)
+	}
+}
+
+func WithByAccountID(accountID uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		if accountID == 0 {
+			return g
+		}
+		return g.Where("account_id = ?", accountID)
+	}
+}
+
+func WithByWebsiteID(websiteID uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		if websiteID == 0 {
+			return g
+		}
+		return g.Where("website_id = ?", websiteID)
+	}
+}
+
+func WithByAppInstallID(appInstallID uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		if appInstallID == 0 {
+			return g
+		}
+		return g.Where("app_install_id = ?", appInstallID)
+	}
+}
+
+func WithByType(tp string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("`type` = ?", tp)
+	}
+}
+func WithByDetailType(tp string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("`detail_type` = ?", tp)
+	}
+}
+
+func WithTypes(types []string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("`type` in (?)", types)
+	}
+}
+
+func WithByStatus(status string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		if len(status) == 0 {
+			return g
+		}
+		return g.Where("status = ?", status)
+	}
+}
+func WithByFrom(from string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("`from` = ?", from)
+	}
+}
+
+func WithByDate(startTime, endTime time.Time) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("start_time > ? AND start_time < ?", startTime, endTime)
+	}
+}
+
+func WithByGroups(groupIDs []uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		if len(groupIDs) == 0 {
+			return g
+		}
+		return g.Where("group_id in (?)", groupIDs)
+	}
+}
+
+func WithByCreatedAt(startTime, endTime time.Time) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("created_at > ? AND created_at < ?", startTime, endTime)
+	}
+}
+
+func WithOrderDesc(orderBy string) DBOption {
+	return WithOrderRuleBy(orderBy, constant.Desc)
+}
+
+func WithOrderAsc(orderBy string) DBOption {
+	return WithOrderRuleBy(orderBy, constant.Asc)
+}
+
+func WithOrderRuleBy(orderBy, order string) DBOption {
+	if orderBy == "createdAt" {
+		orderBy = "created_at"
+	}
+	if !re.GetRegex(re.OrderByValidationPattern).MatchString(orderBy) {
+		orderBy = "created_at"
+	}
+	switch order {
+	case constant.OrderDesc:
+		order = "desc"
+	case constant.OrderAsc:
+		order = "asc"
+	case constant.Desc:
+		order = "desc"
+	case constant.Asc:
+		order = "asc"
+	default:
+		orderBy = "created_at"
+		order = "desc"
+	}
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Order(fmt.Sprintf("%s %s", orderBy, order))
+	}
+}
+
+func getTx(ctx context.Context, opts ...DBOption) *gorm.DB {
+	tx, ok := ctx.Value(constant.DB).(*gorm.DB)
+	if ok {
+		for _, opt := range opts {
+			tx = opt(tx)
+		}
+		return tx
+	}
+	return getDb(opts...)
+}
+
+func getDb(opts ...DBOption) *gorm.DB {
+	db := global.DB
+	for _, opt := range opts {
+		db = opt(db)
+	}
+	return db
+}

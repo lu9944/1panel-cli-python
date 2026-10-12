@@ -1,0 +1,183 @@
+package cmd
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/1Panel-dev/1Panel/core/constant"
+	"github.com/1Panel-dev/1Panel/core/i18n"
+	"github.com/1Panel-dev/1Panel/core/utils/passkey"
+	"github.com/spf13/cobra"
+)
+
+func init() {
+	resetCmd.SetHelpFunc(func(c *cobra.Command, s []string) {
+		i18n.UseI18nForCmd(language)
+		loadResetHelper()
+	})
+
+	RootCmd.AddCommand(resetCmd)
+	resetCmd.AddCommand(resetMFACmd)
+	resetMFACmd.Flags().StringVar(&resetMFAUserNameFlag, "username", "", "username")
+	resetCmd.AddCommand(resetSSLCmd)
+	resetCmd.AddCommand(resetEntranceCmd)
+	resetCmd.AddCommand(resetBindIpsCmd)
+	resetCmd.AddCommand(resetDomainCmd)
+	resetCmd.AddCommand(resetPasskeyCmd)
+}
+
+var resetMFAUserNameFlag string
+
+var resetCmd = &cobra.Command{
+	Use: "reset",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		i18n.UseI18nForCmd(language)
+		loadResetHelper()
+		return nil
+	},
+}
+
+var resetMFACmd = &cobra.Command{
+	Use: "mfa",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		i18n.UseI18nForCmd(language)
+		if !isRoot() {
+			fmt.Println(i18n.GetMsgWithMapForCmd("SudoHelper", map[string]interface{}{"cmd": "sudo 1pctl reset mfa"}))
+			return nil
+		}
+		if isEnterprise() && len(strings.TrimSpace(resetMFAUserNameFlag)) == 0 {
+			fmt.Println(i18n.GetMsgByKeyForCmd("UsernameNeed"))
+			return nil
+		}
+		if isEnterprise() {
+			db, err := loadDBConn("enterprise.db")
+			if err != nil {
+				return err
+			}
+			username := strings.TrimSpace(resetMFAUserNameFlag)
+			var count int64
+			if err := db.Table("users").Where("name = ?", username).Count(&count).Error; err != nil {
+				return err
+			}
+			if count == 0 {
+				return fmt.Errorf("%s: %s", i18n.GetMsgByKeyForCmd("ErrRecordNotFound"), strings.TrimSpace(resetMFAUserNameFlag))
+			}
+			result := db.Exec("UPDATE users SET mfa_status = ? WHERE name = ?", constant.StatusDisable, username)
+			if result.Error != nil {
+				return result.Error
+			}
+			return nil
+		}
+		db, err := loadDBConn("core.db")
+		if err != nil {
+			return err
+		}
+
+		return setSettingByKey(db, "MFAStatus", constant.StatusDisable)
+	},
+}
+var resetSSLCmd = &cobra.Command{
+	Use: "https",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		i18n.UseI18nForCmd(language)
+		if !isRoot() {
+			fmt.Println(i18n.GetMsgWithMapForCmd("SudoHelper", map[string]interface{}{"cmd": "sudo 1pctl reset https"}))
+			return nil
+		}
+		db, err := loadDBConn("core.db")
+		if err != nil {
+			return err
+		}
+
+		if err := setSettingByKey(db, "SSL", constant.StatusDisable); err != nil {
+			return err
+		}
+		return nil
+	},
+}
+var resetEntranceCmd = &cobra.Command{
+	Use: "entrance",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		i18n.UseI18nForCmd(language)
+		if !isRoot() {
+			fmt.Println(i18n.GetMsgWithMapForCmd("SudoHelper", map[string]interface{}{"cmd": "sudo 1pctl reset entrance"}))
+			return nil
+		}
+		db, err := loadDBConn("core.db")
+		if err != nil {
+			return err
+		}
+
+		return setSettingByKey(db, "SecurityEntrance", "")
+	},
+}
+var resetBindIpsCmd = &cobra.Command{
+	Use: "ips",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		i18n.UseI18nForCmd(language)
+		if !isRoot() {
+			fmt.Println(i18n.GetMsgWithMapForCmd("SudoHelper", map[string]interface{}{"cmd": "sudo 1pctl reset ips"}))
+			return nil
+		}
+		db, err := loadDBConn("core.db")
+		if err != nil {
+			return err
+		}
+
+		if err := setSettingByKey(db, "AllowIPs", ""); err != nil {
+			return err
+		}
+		return nil
+	},
+}
+var resetDomainCmd = &cobra.Command{
+	Use: "domain",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		i18n.UseI18nForCmd(language)
+		if !isRoot() {
+			fmt.Println(i18n.GetMsgWithMapForCmd("SudoHelper", map[string]interface{}{"cmd": "sudo 1pctl reset domain"}))
+			return nil
+		}
+		db, err := loadDBConn("core.db")
+		if err != nil {
+			return err
+		}
+
+		if err := setSettingByKey(db, "BindDomain", ""); err != nil {
+			return err
+		}
+		return nil
+	},
+}
+
+var resetPasskeyCmd = &cobra.Command{
+	Use: "passkey",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		i18n.UseI18nForCmd(language)
+		if !isRoot() {
+			fmt.Println(i18n.GetMsgWithMapForCmd("SudoHelper", map[string]interface{}{"cmd": "sudo 1pctl reset passkey"}))
+			return nil
+		}
+		db, err := loadDBConn("core.db")
+		if err != nil {
+			return err
+		}
+		if err := setSettingByKey(db, passkey.PasskeyUserIDSettingKey, ""); err != nil {
+			return err
+		}
+		return setSettingByKey(db, passkey.PasskeyCredentialSettingKey, "")
+	},
+}
+
+func loadResetHelper() {
+	fmt.Println(i18n.GetMsgByKeyForCmd("ResetCommands"))
+	fmt.Println("\nUsage:\n  1panel reset [command]\n\nAvailable Commands:")
+	fmt.Println("\n  domain      " + i18n.GetMsgByKeyForCmd("ResetDomain"))
+	fmt.Println("  entrance    " + i18n.GetMsgByKeyForCmd("ResetEntrance"))
+	fmt.Println("  https       " + i18n.GetMsgByKeyForCmd("ResetHttps"))
+	fmt.Println("  ips         " + i18n.GetMsgByKeyForCmd("ResetIPs"))
+	fmt.Println("  mfa         " + i18n.GetMsgByKeyForCmd("ResetMFA"))
+	fmt.Println("  passkey     " + i18n.GetMsgByKeyForCmd("ResetPasskey"))
+	fmt.Println("\nFlags:\n  -h, --help   help for reset")
+	fmt.Println("\nUse \"1panel reset [command] --help\" for more information about a command.")
+}

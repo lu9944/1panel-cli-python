@@ -1,0 +1,453 @@
+package common
+
+import (
+	"crypto/rand"
+	"fmt"
+	"io"
+	"math/big"
+	"net"
+	"os/exec"
+	"reflect"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+	"unicode"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
+	"github.com/1Panel-dev/1Panel/agent/utils/ctl_conf"
+	"github.com/1Panel-dev/1Panel/agent/utils/re"
+	"golang.org/x/net/idna"
+)
+
+func CompareVersion(version1, version2 string) bool {
+	v1s := extractNumbers(version1)
+	v2s := extractNumbers(version2)
+
+	maxLen := max(len(v1s), len(v2s))
+	v1s = append(v1s, make([]string, maxLen-len(v1s))...)
+	v2s = append(v2s, make([]string, maxLen-len(v2s))...)
+
+	for i := 0; i < maxLen; i++ {
+		v1, err1 := strconv.Atoi(v1s[i])
+		v2, err2 := strconv.Atoi(v2s[i])
+		if err1 != nil {
+			v1 = 0
+		}
+		if err2 != nil {
+			v2 = 0
+		}
+		if v1 != v2 {
+			return v1 > v2
+		}
+	}
+	return false
+}
+
+func CompareAppVersion(version1, version2 string) bool {
+	v1s := extractNumbers(version1)
+	v2s := extractNumbers(version2)
+
+	maxLen := max(len(v1s), len(v2s))
+	v1s = append(v1s, make([]string, maxLen-len(v1s))...)
+	v2s = append(v2s, make([]string, maxLen-len(v2s))...)
+
+	for i := 0; i < maxLen; i++ {
+		v1, err1 := strconv.Atoi(v1s[i])
+		v2, err2 := strconv.Atoi(v2s[i])
+		if err1 != nil {
+			v1 = 0
+		}
+		if err2 != nil {
+			v2 = 0
+		}
+		if v1 > v2 {
+			return true
+		}
+		if v1 < v2 {
+			return false
+		}
+	}
+	return true
+}
+
+func ComparePanelVersion(version1, version2 string) bool {
+	if version1 == version2 {
+		return false
+	}
+	version1s := SplitStr(version1, ".", "-")
+	version2s := SplitStr(version2, ".", "-")
+
+	if len(version2s) > len(version1s) {
+		for i := 0; i < len(version2s)-len(version1s); i++ {
+			version1s = append(version1s, "0")
+		}
+	}
+	if len(version1s) > len(version2s) {
+		for i := 0; i < len(version1s)-len(version2s); i++ {
+			version2s = append(version2s, "0")
+		}
+	}
+
+	n := min(len(version1s), len(version2s))
+	for i := 0; i < n; i++ {
+		if version1s[i] == version2s[i] {
+			continue
+		} else {
+			v1, err1 := strconv.Atoi(version1s[i])
+			if err1 != nil {
+				return version1s[i] > version2s[i]
+			}
+			v2, err2 := strconv.Atoi(version2s[i])
+			if err2 != nil {
+				return version1s[i] > version2s[i]
+			}
+			return v1 > v2
+		}
+	}
+	return true
+}
+
+func extractNumbers(version string) []string {
+	var numbers []string
+	start := -1
+	for i, r := range version {
+		if isDigit(r) {
+			if start == -1 {
+				start = i
+			}
+		} else {
+			if start != -1 {
+				numbers = append(numbers, version[start:i])
+				start = -1
+			}
+		}
+	}
+	if start != -1 {
+		numbers = append(numbers, version[start:])
+	}
+	return numbers
+}
+
+func isDigit(r rune) bool {
+	return r >= '0' && r <= '9'
+}
+
+func GetSortedVersions(versions []string) []string {
+	sort.Slice(versions, func(i, j int) bool {
+		return CompareVersion(versions[i], versions[j])
+	})
+	return versions
+}
+
+func IsCrossVersion(version1, version2 string) bool {
+	version1s := strings.Split(version1, ".")
+	version2s := strings.Split(version2, ".")
+	v1num, _ := strconv.Atoi(version1s[0])
+	v2num, _ := strconv.Atoi(version2s[0])
+	return v2num > v1num
+}
+
+func GetUuid() string {
+	b := make([]byte, 16)
+	_, _ = io.ReadFull(rand.Reader, b)
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")
+
+func RandStr(n int) string {
+	b := make([]rune, n)
+	max := big.NewInt(int64(len(letters)))
+	for i := range b {
+		num, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return ""
+		}
+		b[i] = letters[num.Int64()]
+	}
+	return string(b)
+}
+
+func RandStrAndNum(n int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, n)
+	max := big.NewInt(int64(len(charset)))
+	for i := range b {
+		num, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return ""
+		}
+		b[i] = charset[num.Int64()]
+	}
+	return string(b)
+}
+
+func ScanPort(port int) bool {
+	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	if err != nil {
+		return true
+	}
+	defer func() { _ = ln.Close() }()
+	return false
+}
+
+func ScanUDPPort(port int) bool {
+	ln, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
+	if err != nil {
+		return true
+	}
+	defer func() { _ = ln.Close() }()
+	return false
+}
+
+func ScanPortWithProto(port int, proto string) bool {
+	if proto == "udp" {
+		return ScanUDPPort(port)
+	}
+	return ScanPort(port)
+}
+
+func ScanPortWithIP(ip string, port int) bool {
+	if len(ip) == 0 || ip == "0.0.0.0" || ip == "::" {
+		return ScanPort(port)
+	}
+	address := net.JoinHostPort(ip, fmt.Sprintf("%d", port))
+	timeout := time.Second * 2
+	conn, err := net.DialTimeout("tcp", address, timeout)
+
+	if err != nil {
+		if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
+			return true
+		}
+		return false
+	}
+	defer func() { _ = conn.Close() }()
+	return true
+}
+
+func IsNum(s string) bool {
+	_, err := strconv.ParseFloat(s, 64)
+	return err == nil
+}
+
+func RemoveRepeatElement(a interface{}) (ret []interface{}) {
+	va := reflect.ValueOf(a)
+	for i := 0; i < va.Len(); i++ {
+		if i > 0 && reflect.DeepEqual(va.Index(i-1).Interface(), va.Index(i).Interface()) {
+			continue
+		}
+		ret = append(ret, va.Index(i).Interface())
+	}
+	return ret
+}
+
+func RemoveRepeatStr(list []string) (ret []string) {
+	mapItem := make(map[string]struct{})
+	for _, item := range list {
+		mapItem[item] = struct{}{}
+	}
+	for key := range mapItem {
+		ret = append(ret, key)
+	}
+	return ret
+}
+
+func LoadSizeUnit(value float64) string {
+	val := int64(value)
+	if val%1024 != 0 {
+		return fmt.Sprintf("%v", val)
+	}
+	if val > 1048576 {
+		return fmt.Sprintf("%vM", val/1048576)
+	}
+	if val > 1024 {
+		return fmt.Sprintf("%vK", val/1024)
+	}
+	return fmt.Sprintf("%v", val)
+}
+
+func LoadSizeUnit2F(value float64) string {
+	if value > 1073741824 {
+		return fmt.Sprintf("%.2fG", value/1073741824)
+	}
+	if value > 1048576 {
+		return fmt.Sprintf("%.2fM", value/1048576)
+	}
+	if value > 1024 {
+		return fmt.Sprintf("%.2fK", value/1024)
+	}
+	return fmt.Sprintf("%.2f", value)
+}
+
+func LoadTimeZoneByCmd() string {
+	loc := time.Now().Location().String()
+	if _, err := time.LoadLocation(loc); err != nil {
+		loc = "Asia/Shanghai"
+	}
+	std, err := cmd.NewCommandMgr(cmd.WithTimeout(20 * time.Second)).RunWithStdout("timedatectl")
+	if err != nil {
+		return loc
+	}
+	for _, line := range strings.Split(std, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 5 || fields[0] != "Time" || fields[1] != "zone:" {
+			continue
+		}
+		if _, err := time.LoadLocation(fields[2]); err != nil {
+			return loc
+		}
+		return fields[2]
+	}
+	return loc
+}
+
+func IsValidDomain(domain string) bool {
+	return re.GetRegex(re.DomainPattern).MatchString(domain)
+}
+
+func IsValidNginxServerName(serverName string) bool {
+	return re.GetRegex(re.NginxServerNamePattern).MatchString(serverName)
+}
+
+func ContainsChinese(text string) bool {
+	for _, char := range text {
+		if unicode.Is(unicode.Han, char) {
+			return true
+		}
+	}
+	return false
+}
+
+func PunycodeEncode(text string) (string, error) {
+	encoder := idna.New()
+	ascii, err := encoder.ToASCII(text)
+	if err != nil {
+		return "", err
+	}
+	return ascii, nil
+}
+
+func SplitStr(str string, spi ...string) []string {
+	lists := []string{str}
+	var results []string
+	for _, s := range spi {
+		results = []string{}
+		for _, list := range lists {
+			results = append(results, strings.Split(list, s)...)
+		}
+		lists = results
+	}
+	return results
+}
+
+func IsValidIP(ip string) bool {
+	return net.ParseIP(ip) != nil
+}
+
+// ParseIPLoose parses an IP address, accepting bracketed IPv6 forms
+// such as "[::1]" or "[fe80::1%eth0]" in addition to the bare forms
+// that net.ParseIP supports natively. It also trims surrounding
+// whitespace. Returns nil for non-IP input, matching net.ParseIP.
+//
+// This is required because some flows pass the host portion of a URL
+// (e.g. "[::1]") rather than a bare IP address. Rejecting that form
+// caused 1Panel-dev/1Panel#12646 — the panel SSL self-sign workflow
+// reported “domain format invalid” for IPv6 hosts.
+func ParseIPLoose(s string) net.IP {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return nil
+	}
+	if len(trimmed) >= 2 && trimmed[0] == '[' && trimmed[len(trimmed)-1] == ']' {
+		trimmed = trimmed[1 : len(trimmed)-1]
+	}
+	return net.ParseIP(trimmed)
+}
+
+const (
+	b  = uint64(1)
+	kb = 1024 * b
+	mb = 1024 * kb
+	gb = 1024 * mb
+)
+
+func FormatBytes(bytes uint64) string {
+	switch {
+	case bytes < kb:
+		return fmt.Sprintf("%dB", bytes)
+	case bytes < mb:
+		return fmt.Sprintf("%.2fKB", float64(bytes)/float64(kb))
+	case bytes < gb:
+		return fmt.Sprintf("%.2fMB", float64(bytes)/float64(mb))
+	default:
+		return fmt.Sprintf("%.2fGB", float64(bytes)/float64(gb))
+	}
+}
+
+func FormatPercent(percent float64) string {
+	return fmt.Sprintf("%.2f%%", percent)
+}
+
+func GetLang(c *gin.Context) string {
+	lang := c.GetHeader("Accept-Language")
+	if lang == "" {
+		lang = "en"
+	}
+	return lang
+}
+
+func HandleIPList(content string) ([]string, error) {
+	ipList := strings.Split(content, "\n")
+	var res []string
+	for _, ip := range ipList {
+		if ip == "" {
+			continue
+		}
+		if net.ParseIP(ip) != nil {
+			res = append(res, ip)
+			continue
+		}
+		if _, _, err := net.ParseCIDR(ip); err != nil {
+			return nil, buserr.New("ErrParseIP")
+		}
+		res = append(res, ip)
+	}
+	return res, nil
+}
+
+func GetSystemVersion(versionString string) string {
+	match := re.GetRegex(re.VersionPattern).FindStringSubmatch(versionString)
+	if len(match) > 1 {
+		return match[1]
+	}
+	return ""
+}
+
+func isCommandAvailable(name string, args ...string) bool {
+	execCmd := exec.Command(name, args...)
+	err := execCmd.Run()
+	return err == nil
+}
+
+func GetDockerComposeCommand() string {
+	if isCommandAvailable("docker", "compose", "version") {
+		return "docker compose"
+	}
+	if isCommandAvailable("docker-compose", "version") {
+		return "docker-compose"
+	}
+	return ""
+}
+
+func LoadParams(param string) string {
+	return ctl_conf.Load(param)
+}
+func LoadParamsWithoutPanic(param string) string {
+	return ctl_conf.LoadWithoutPanic(param)
+}

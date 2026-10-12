@@ -1,0 +1,616 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io/fs"
+	"os"
+	"path"
+	"strings"
+	"time"
+
+	"github.com/1Panel-dev/1Panel/agent/app/repo"
+	"github.com/subosito/gotenv"
+
+	"github.com/1Panel-dev/1Panel/agent/app/task"
+	"github.com/1Panel-dev/1Panel/agent/i18n"
+
+	"github.com/1Panel-dev/1Panel/agent/buserr"
+
+	"github.com/1Panel-dev/1Panel/agent/app/dto"
+	"github.com/1Panel-dev/1Panel/agent/app/model"
+	"github.com/1Panel-dev/1Panel/agent/constant"
+	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/utils/common"
+	"github.com/1Panel-dev/1Panel/agent/utils/compose"
+	"github.com/1Panel-dev/1Panel/agent/utils/files"
+	"github.com/pkg/errors"
+)
+
+func (u *BackupService) AppBackup(req dto.CommonBackup) (*model.BackupRecord, error) {
+	app, err := appRepo.GetFirst(appRepo.WithKey(req.Name))
+	if err != nil {
+		return nil, err
+	}
+	install, err := appInstallRepo.GetFirst(repo.WithByName(req.DetailName), appInstallRepo.WithAppId(app.ID))
+	if err != nil {
+		return nil, err
+	}
+	timeNow := time.Now().Format(constant.DateTimeSlimLayout)
+	itemDir := fmt.Sprintf("app/%s/%s", req.Name, req.DetailName)
+	backupDir := path.Join(global.Dir.LocalBackupDir, itemDir)
+
+	fileName := req.FileName
+	if req.FileName == "" {
+		fileName = fmt.Sprintf("%s_%s.tar.gz", req.DetailName, timeNow+common.RandStrAndNum(5))
+	}
+
+	record := &model.BackupRecord{
+		Type:              "app",
+		Name:              req.Name,
+		DetailName:        req.DetailName,
+		SourceAccountIDs:  "1",
+		DownloadAccountID: 1,
+		FileDir:           itemDir,
+		FileName:          fileName,
+		TaskID:            req.TaskID,
+		Status:            constant.StatusWaiting,
+		Description:       req.Description,
+	}
+	if err := backupRepo.CreateRecord(record); err != nil {
+		global.LOG.Errorf("save backup record failed, err: %v", err)
+		return nil, err
+	}
+
+	if !req.IsImmediate {
+		if err = handleAppBackup(&install, nil, record.ID, backupDir, fileName, "", req.Secret, req.TaskID); err != nil {
+			markBackupFailed(record.ID, err)
+			global.LOG.Errorf("backup app %s failed, err: %v", req.DetailName, err)
+			return nil, err
+		}
+		return record, nil
+	}
+
+	backupTask, err := task.NewTaskWithOps(install.Name, task.TaskBackup, task.TaskScopeBackup, req.TaskID, install.ID)
+	if err != nil {
+		markBackupFailed(record.ID, err)
+		record.Status = constant.StatusFailed
+		record.Message = err.Error()
+		return nil, err
+	}
+	if err = doAppBackup(&install, backupTask, backupDir, fileName, "", req.Secret); err != nil {
+		markBackupFailed(record.ID, err)
+		record.Status = constant.StatusFailed
+		record.Message = err.Error()
+		return nil, err
+	}
+	backupRepo.UpdateRecordByMap(record.ID, map[string]interface{}{"status": constant.StatusSuccess})
+	record.Status = constant.StatusSuccess
+	return record, nil
+}
+
+func backupAppWithParentTask(install *model.AppInstall, parentTask *task.Task, fileName string) (*model.BackupRecord, error) {
+	itemDir := fmt.Sprintf("app/%s/%s", install.App.Key, install.Name)
+	backupDir := path.Join(global.Dir.LocalBackupDir, itemDir)
+	record := &model.BackupRecord{
+		Type:              "app",
+		Name:              install.App.Key,
+		DetailName:        install.Name,
+		SourceAccountIDs:  "1",
+		DownloadAccountID: 1,
+		FileDir:           itemDir,
+		FileName:          fileName,
+		TaskID:            parentTask.TaskID,
+		Status:            constant.StatusWaiting,
+	}
+	if err := backupRepo.CreateRecord(record); err != nil {
+		return nil, err
+	}
+	if err := handleAppBackup(install, parentTask, record.ID, backupDir, fileName, "", "", parentTask.TaskID); err != nil {
+		markBackupFailed(record.ID, err)
+		record.Status = constant.StatusFailed
+		record.Message = err.Error()
+		return record, err
+	}
+	backupRepo.UpdateRecordByMap(record.ID, map[string]interface{}{"status": constant.StatusSuccess})
+	record.Status = constant.StatusSuccess
+	return record, nil
+}
+
+func (u *BackupService) AppRecover(req dto.CommonRecover) error {
+	app, err := appRepo.GetFirst(appRepo.WithKey(req.Name))
+	if err != nil {
+		return err
+	}
+	install, err := appInstallRepo.GetFirst(repo.WithByName(req.DetailName), appInstallRepo.WithAppId(app.ID))
+	if err != nil {
+		return err
+	}
+
+	fileOp := files.NewFileOp()
+	if !fileOp.Stat(req.File) {
+		return buserr.WithName("ErrFileNotFound", req.File)
+	}
+	if _, err := compose.Down(install.GetComposePath()); err != nil {
+		return err
+	}
+	if err := handleAppRecover(&install, nil, req.File, false, req.Secret, req.TaskID); err != nil {
+		global.LOG.Errorf("recover app %s failed, err: %v", req.DetailName, err)
+	}
+	return nil
+}
+
+func backupDatabaseWithTask(parentTask *task.Task, resourceKey, tmpDir, name string, databaseID uint) error {
+	switch resourceKey {
+	case constant.AppMysql, constant.AppMariaDB:
+		db, err := mysqlRepo.Get(repo.WithByID(databaseID))
+		if err != nil {
+			return err
+		}
+		parentTask.LogStart(task.GetTaskName(db.Name, task.TaskBackup, task.TaskScopeDatabase))
+		databaseHelper := DatabaseHelper{Database: db.MysqlName, DBType: resourceKey, Name: db.Name}
+		if err := handleMysqlBackup(databaseHelper, parentTask, 0, tmpDir, fmt.Sprintf("%s.sql.gz", name), "", ""); err != nil {
+			return err
+		}
+		parentTask.LogSuccess(task.GetTaskName(db.Name, task.TaskBackup, task.TaskScopeDatabase))
+	case constant.AppPostgresql:
+		db, err := postgresqlRepo.Get(repo.WithByID(databaseID))
+		if err != nil {
+			return err
+		}
+		parentTask.LogStart(task.GetTaskName(db.Name, task.TaskBackup, task.TaskScopeDatabase))
+		databaseHelper := DatabaseHelper{Database: db.PostgresqlName, DBType: resourceKey, Name: db.Name}
+		if err := handlePostgresqlBackup(databaseHelper, parentTask, 0, tmpDir, fmt.Sprintf("%s.sql.gz", name), "", ""); err != nil {
+			return err
+		}
+		parentTask.LogSuccess(task.GetTaskName(db.Name, task.TaskBackup, task.TaskScopeDatabase))
+	}
+	return nil
+}
+
+func handleAppBackup(install *model.AppInstall, parentTask *task.Task, recordID uint, backupDir, fileName, excludes, secret, taskID string) error {
+	var (
+		err        error
+		backupTask *task.Task
+	)
+	backupTask = parentTask
+	if parentTask == nil {
+		backupTask, err = task.NewTaskWithOps(install.Name, task.TaskBackup, task.TaskScopeBackup, taskID, install.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	itemHandler := func() error { return doAppBackup(install, backupTask, backupDir, fileName, excludes, secret) }
+	if parentTask != nil {
+		return itemHandler()
+	}
+
+	backupTask.AddSubTaskWithOps(task.GetTaskName(install.Name, task.TaskBackup, task.TaskScopeBackup), func(t *task.Task) error { return itemHandler() }, nil, 3, time.Hour)
+	go func() {
+		if err := backupTask.Execute(); err != nil {
+			markBackupFailed(recordID, err)
+			return
+		}
+		backupRepo.UpdateRecordByMap(recordID, map[string]interface{}{"status": constant.StatusSuccess})
+	}()
+
+	return nil
+}
+
+func handleAppRecover(install *model.AppInstall, parentTask *task.Task, recoverFile string, isRollback bool, secret, taskID string) error {
+	var (
+		err          error
+		recoverTask  *task.Task
+		isOk         = false
+		rollbackFile string
+	)
+	recoverTask = parentTask
+	if parentTask == nil {
+		recoverTask, err = task.NewTaskWithOps(install.Name, task.TaskRecover, task.TaskScopeBackup, taskID, install.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	recoverApp := func(t *task.Task) error {
+		fileOp := files.NewFileOp()
+		if !isRollback {
+			rollbackFile = path.Join(global.Dir.TmpDir, fmt.Sprintf("app/%s_%s.tar.gz", install.Name, time.Now().Format(constant.DateTimeSlimLayout)))
+			if err := handleAppBackup(install, recoverTask, 0, path.Dir(rollbackFile), path.Base(rollbackFile), "", "", taskID); err != nil {
+				t.Log(fmt.Sprintf("backup app %s for rollback before recover failed, err: %v", install.Name, err))
+			}
+		}
+
+		if err := fileOp.TarGzExtractPro(recoverFile, path.Dir(recoverFile), secret); err != nil {
+			return err
+		}
+		tmpPath := strings.ReplaceAll(recoverFile, ".tar.gz", "")
+		if err := fileOp.TarGzExtractPro(tmpPath+"/app.tar.gz", tmpPath, ""); err != nil {
+			return err
+		}
+		defer func() {
+			if isRollback {
+				_, _ = compose.UpWithoutBuild(install.GetComposePath())
+			} else {
+				_, _ = compose.Up(install.GetComposePath())
+			}
+			_ = os.RemoveAll(strings.ReplaceAll(recoverFile, ".tar.gz", ""))
+		}()
+
+		if !fileOp.Stat(tmpPath+"/app.json") || !fileOp.Stat(tmpPath+"/app.tar.gz") {
+			return errors.New(i18n.GetMsgByKey("AppBackupFileIncomplete"))
+		}
+		var backupInstall model.AppInstall
+		appJson, err := os.ReadFile(tmpPath + "/app.json")
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(appJson, &backupInstall); err != nil {
+			return fmt.Errorf("unmarshal app.json failed, err: %v", err)
+		}
+		if backupInstall.App.Key != install.App.Key || backupInstall.Name != install.Name {
+			return errors.New(i18n.GetMsgByKey("AppAttributesNotMatch"))
+		}
+		backupEnvMap, err := getEnvMapByPath(path.Join(tmpPath, install.Name, ".env"))
+		if err != nil {
+			return err
+		}
+		installedEnvMap, err := getEnvMapByPath(install.GetEnvPath())
+		if err != nil {
+			return err
+		}
+		var mergedEnvContent string
+		resources, _ := appInstallResourceRepo.GetBy(appInstallResourceRepo.WithAppInstallId(install.ID))
+		for _, resource := range resources {
+			var database model.Database
+			switch resource.From {
+			case constant.AppResourceRemote:
+				database, err = databaseRepo.Get(repo.WithByID(resource.LinkId))
+				if err != nil {
+					return err
+				}
+			case constant.AppResourceLocal:
+				resourceApp, err := appInstallRepo.GetFirst(repo.WithByID(resource.LinkId))
+				if err != nil {
+					return err
+				}
+				database, err = databaseRepo.Get(databaseRepo.WithAppInstallID(resourceApp.ID), repo.WithByType(resource.Key), repo.WithByFrom(constant.AppResourceLocal), repo.WithByName(resourceApp.Name))
+				if err != nil {
+					return err
+				}
+			}
+			switch database.Type {
+			case constant.AppPostgresql:
+				db, err := postgresqlRepo.Get(repo.WithByID(resource.ResourceId))
+				if err != nil {
+					return err
+				}
+				newDB, err := reCreatePostgresqlDB(db.ID, database, backupEnvMap)
+				if err != nil {
+					return err
+				}
+				backupInstall.Env, mergedEnvContent, err = buildRecoverEnv(backupInstall.Env, backupEnvMap, installedEnvMap)
+				if err != nil {
+					return err
+				}
+				_ = appInstallResourceRepo.BatchUpdateBy(map[string]interface{}{"resource_id": newDB.ID}, repo.WithByID(resource.ID))
+				taskName := task.GetTaskName(db.Name, task.TaskRecover, task.TaskScopeDatabase)
+				t.LogStart(taskName)
+				if err := handlePostgresqlRecover(dto.CommonRecover{
+					Name:       newDB.PostgresqlName,
+					DetailName: newDB.Name,
+					File:       fmt.Sprintf("%s/%s.sql.gz", tmpPath, install.Name),
+				}, parentTask, true); err != nil {
+					t.LogFailedWithErr(taskName, err)
+					return err
+				}
+				t.LogSuccess(taskName)
+			case constant.AppMysql, constant.AppMariaDB:
+				db, err := mysqlRepo.Get(repo.WithByID(resource.ResourceId))
+				if err != nil {
+					return err
+				}
+				newDB, err := reCreateDB(db.ID, database, backupEnvMap, install.Name)
+				if err != nil {
+					return err
+				}
+				backupInstall.Env, mergedEnvContent, err = buildRecoverEnv(backupInstall.Env, backupEnvMap, installedEnvMap)
+				if err != nil {
+					return err
+				}
+				_ = appInstallResourceRepo.BatchUpdateBy(map[string]interface{}{"resource_id": newDB.ID}, repo.WithByID(resource.ID))
+				taskName := task.GetTaskName(db.Name, task.TaskRecover, task.TaskScopeDatabase)
+				t.LogStart(taskName)
+				if err := handleMysqlRecover(dto.CommonRecover{
+					Name:       newDB.MysqlName,
+					DetailName: newDB.Name,
+					File:       fmt.Sprintf("%s/%s.sql.gz", tmpPath, install.Name),
+				}, parentTask, true); err != nil {
+					t.LogFailedWithErr(taskName, err)
+					return err
+				}
+				t.LogSuccess(taskName)
+			}
+		}
+
+		appDir := install.GetPath()
+		backPath := fmt.Sprintf("%s_bak", appDir)
+		_ = fileOp.Rename(appDir, backPath)
+		_ = fileOp.CreateDir(appDir, constant.DirPerm)
+
+		deCompressName := i18n.GetWithName("DeCompressFile", "app.tar.gz")
+		t.LogStart(deCompressName)
+		if err := fileOp.TarGzExtractPro(tmpPath+"/app.tar.gz", install.GetAppPath(), ""); err != nil {
+			t.LogFailedWithErr(deCompressName, err)
+			_ = fileOp.DeleteDir(appDir)
+			_ = fileOp.Rename(backPath, appDir)
+			return err
+		}
+		t.LogSuccess(deCompressName)
+		_ = fileOp.DeleteDir(backPath)
+
+		if len(mergedEnvContent) != 0 {
+			envPath := fmt.Sprintf("%s/%s/.env", install.GetAppPath(), install.Name)
+			file, err := os.OpenFile(envPath, os.O_WRONLY|os.O_TRUNC, 0640)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+			_, _ = file.WriteString(mergedEnvContent)
+		}
+
+		backupInstall.ID = install.ID
+		backupInstall.Status = constant.StatusRunning
+		backupInstall.AppId = install.AppId
+		backupInstall.AppDetailId = install.AppDetailId
+		backupInstall.App.ID = install.AppId
+		if err := appInstallRepo.Save(context.Background(), &backupInstall); err != nil {
+			global.LOG.Errorf("save db app install failed, err: %v", err)
+			return err
+		}
+		isOk = true
+
+		return nil
+	}
+
+	if parentTask != nil {
+		return recoverApp(parentTask)
+	}
+
+	rollBackApp := func(t *task.Task) {
+		if isRollback {
+			return
+		}
+		if !isOk {
+			t.Log(i18n.GetMsgByKey("RecoverFailedStartRollBack"))
+			if err := handleAppRecover(install, t, rollbackFile, true, "", ""); err != nil {
+				t.LogFailedWithErr(i18n.GetMsgByKey("Rollback"), err)
+				return
+			}
+			t.LogSuccess(i18n.GetMsgByKey("Rollback"))
+			_ = os.RemoveAll(rollbackFile)
+		} else {
+			_ = os.RemoveAll(rollbackFile)
+		}
+	}
+	recoverTask.AddSubTask(task.GetTaskName(install.Name, task.TaskRecover, task.TaskScopeBackup), recoverApp, rollBackApp)
+	go func() {
+		_ = recoverTask.Execute()
+	}()
+	return nil
+}
+
+func doAppBackup(install *model.AppInstall, parentTask *task.Task, backupDir, fileName, excludes, secret string) error {
+	fileOp := files.NewFileOp()
+	tmpDir := fmt.Sprintf("%s/%s", backupDir, strings.ReplaceAll(fileName, ".tar.gz", ""))
+	if !fileOp.Stat(tmpDir) {
+		if err := os.MkdirAll(tmpDir, os.ModePerm); err != nil {
+			return fmt.Errorf("mkdir %s failed, err: %v", backupDir, err)
+		}
+	}
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	remarkInfo, _ := json.Marshal(install)
+	remarkInfoPath := fmt.Sprintf("%s/app.json", tmpDir)
+	if err := fileOp.SaveFile(remarkInfoPath, string(remarkInfo), fs.ModePerm); err != nil {
+		return err
+	}
+
+	appPath := install.GetPath()
+	parentTask.LogStart(i18n.GetMsgByKey("TaskBackup"))
+	if err := fileOp.TarGzCompressPro(true, appPath, path.Join(tmpDir, "app.tar.gz"), "", excludes); err != nil {
+		return err
+	}
+
+	resources, _ := appInstallResourceRepo.GetBy(appInstallResourceRepo.WithAppInstallId(install.ID))
+	for _, resource := range resources {
+		if err := backupDatabaseWithTask(parentTask, resource.Key, tmpDir, install.Name, resource.ResourceId); err != nil {
+			return err
+		}
+	}
+	parentTask.LogStart(i18n.GetMsgByKey("CompressDir"))
+	if err := fileOp.TarGzCompressPro(true, tmpDir, path.Join(backupDir, fileName), secret, ""); err != nil {
+		return err
+	}
+	parentTask.Log(i18n.GetWithName("CompressFileSuccess", fileName))
+	return nil
+}
+
+func reCreateDB(dbID uint, database model.Database, envMap map[string]interface{}, appInstallName string) (*model.DatabaseMysql, error) {
+	mysqlService := NewIMysqlService()
+	ctx := context.Background()
+	if err := deleteMysqlDatabaseForResourceOwner(
+		ctx,
+		dto.MysqlDBDelete{ID: dbID, Database: database.Name, Type: database.Type, DeleteBackup: false, ForceDelete: true},
+		dto.DBResource{Type: constant.TypeApp, Name: appInstallName},
+	); err != nil {
+		return nil, err
+	}
+
+	dbInfo := getDBCreateInfoFromEnv(envMap, "utf8mb4")
+	createDB, err := mysqlService.Create(context.Background(), dto.MysqlDBCreate{
+		Name:       dbInfo.Name,
+		From:       database.From,
+		Database:   database.Name,
+		Format:     dbInfo.Format,
+		Permission: "%",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(dbInfo.User) != 0 {
+		if err := ensureMysqlDBUser(mysqlService, database, dbInfo); err != nil {
+			return nil, err
+		}
+	}
+	updateCronjobsDBRef(dbID, createDB.ID)
+	return createDB, nil
+}
+
+func ensureMysqlDBUser(mysqlService IMysqlService, database model.Database, dbInfo dbRecreateInfo) error {
+	const host = "%"
+	users, err := mysqlService.ListUsers(dto.MysqlUserSearch{Database: database.Name})
+	if err != nil {
+		return err
+	}
+	var oldUser dto.MysqlUser
+	exists := false
+	for _, user := range users {
+		if user.Username == dbInfo.User && user.Host == host && !user.IsDelete {
+			oldUser = user
+			exists = true
+			break
+		}
+	}
+	if exists {
+		if len(oldUser.Password) != 0 && oldUser.Password != dbInfo.Password {
+			return buserr.New("ErrDbUserNotValid")
+		}
+	} else {
+		if err := mysqlService.CreateUser(dto.MysqlUserCreate{
+			Database: database.Name,
+			Username: dbInfo.User,
+			Host:     host,
+			Password: dbInfo.Password,
+		}); err != nil {
+			return err
+		}
+	}
+	return mysqlService.GrantUser(dto.MysqlGrantCreate{
+		Database: database.Name,
+		DB:       dbInfo.Name,
+		Username: dbInfo.User,
+		Host:     host,
+	})
+}
+
+func reCreatePostgresqlDB(dbID uint, database model.Database, envMap map[string]interface{}) (*model.DatabasePostgresql, error) {
+	postgresqlService := NewIPostgresqlService()
+	_ = postgresqlService.Delete(context.Background(), dto.PostgresqlDBDelete{
+		ID:           dbID,
+		Type:         database.Type,
+		Database:     database.Name,
+		DeleteBackup: false,
+		ForceDelete:  true,
+	})
+
+	dbInfo := getDBCreateInfoFromEnv(envMap, "UTF8")
+	createDB, err := postgresqlService.Create(context.Background(), dto.PostgresqlDBCreate{
+		Name:      dbInfo.Name,
+		From:      database.From,
+		Database:  database.Name,
+		Format:    dbInfo.Format,
+		Username:  dbInfo.User,
+		Password:  dbInfo.Password,
+		SuperUser: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	updateCronjobsDBRef(dbID, createDB.ID)
+	return createDB, nil
+}
+
+type dbRecreateInfo struct {
+	Name     string
+	User     string
+	Password string
+	Format   string
+}
+
+func getDBCreateInfoFromEnv(envMap map[string]interface{}, defaultFormat string) dbRecreateInfo {
+	name, _ := envMap["PANEL_DB_NAME"].(string)
+	user, _ := envMap["PANEL_DB_USER"].(string)
+	password, _ := envMap["PANEL_DB_USER_PASSWORD"].(string)
+	format, _ := envMap["format"].(string)
+	if len(format) == 0 {
+		format = defaultFormat
+	}
+	return dbRecreateInfo{
+		Name:     name,
+		User:     user,
+		Password: password,
+		Format:   format,
+	}
+}
+
+func updateCronjobsDBRef(oldDBID, newDBID uint) {
+	cronjobs, _ := cronjobRepo.List(cronjobRepo.WithByDbName(fmt.Sprintf("%v", oldDBID)))
+	for _, job := range cronjobs {
+		_ = cronjobRepo.Update(job.ID, map[string]interface{}{"db_name": fmt.Sprintf("%v", newDBID)})
+	}
+}
+
+func buildRecoverEnv(appEnv string, backupEnvMap, installedEnvMap map[string]interface{}) (string, string, error) {
+	currentHostVal, hasCurrentHost := installedEnvMap["PANEL_DB_HOST"]
+	if hasCurrentHost && fmt.Sprintf("%v", currentHostVal) != "" {
+		backupHost := fmt.Sprintf("\"PANEL_DB_HOST\":\"%v\"", backupEnvMap["PANEL_DB_HOST"])
+		currentHost := fmt.Sprintf("\"PANEL_DB_HOST\":\"%v\"", currentHostVal)
+		appEnv = strings.ReplaceAll(appEnv, backupHost, currentHost)
+		if _, ok := backupEnvMap["CASDOOR_DATASOURCE_NAME"]; ok {
+			backupEnvMap["CASDOOR_DATASOURCE_NAME"] = strings.ReplaceAll(
+				fmt.Sprintf("%v", backupEnvMap["CASDOOR_DATASOURCE_NAME"]),
+				fmt.Sprintf("%v", backupEnvMap["PANEL_DB_HOST"]),
+				fmt.Sprintf("%v", currentHostVal),
+			)
+		}
+		backupEnvMap["PANEL_DB_HOST"] = currentHostVal
+	}
+	newEnvMap := make(map[string]string, len(backupEnvMap))
+	handleMap(backupEnvMap, newEnvMap)
+	mergedEnvContent, err := gotenv.Marshal(newEnvMap)
+	if err != nil {
+		return appEnv, "", err
+	}
+	return appEnv, mergedEnvContent, nil
+}
+
+func getEnvMapByPath(envPath string) (map[string]interface{}, error) {
+	envMap := make(map[string]interface{})
+	envFile, err := os.ReadFile(envPath)
+	if err != nil {
+		return envMap, err
+	}
+	lines := strings.Split(string(envFile), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			value := strings.TrimSpace(parts[1])
+			if len(value) >= 2 {
+				if (value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'') {
+					value = value[1 : len(value)-1]
+				}
+			}
+			envMap[parts[0]] = value
+		}
+	}
+	return envMap, nil
+}

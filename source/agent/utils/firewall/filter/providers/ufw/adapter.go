@@ -1,0 +1,1235 @@
+package ufw
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/netip"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
+	"github.com/1Panel-dev/1Panel/agent/utils/firewall/filter"
+	"github.com/1Panel-dev/1Panel/agent/utils/re"
+)
+
+type CommandReader interface {
+	filter.CommentRuleReader
+	Read(context.Context, ...string) (string, error)
+}
+
+type CommandWriter interface {
+	Run(context.Context, filter.NativeCommand) error
+}
+
+type Adapter struct {
+	reader CommandReader
+	writer CommandWriter
+}
+
+func NewAdapter() *Adapter {
+	backend := systemBackend{}
+	return &Adapter{reader: backend, writer: backend}
+}
+
+func NewAdapterWithReader(reader CommandReader) *Adapter {
+	return &Adapter{reader: reader}
+}
+
+func NewAdapterWithBackend(reader CommandReader, writer CommandWriter) *Adapter {
+	return &Adapter{reader: reader, writer: writer}
+}
+
+func (a *Adapter) Provider() filter.Provider { return filter.ProviderUFW }
+
+func (a *Adapter) PrepareRule(rule filter.FirewallRule) (filter.FirewallRule, error) {
+	normalized, err := filter.NormalizeRule(rule)
+	if err != nil {
+		return filter.FirewallRule{}, err
+	}
+	if err := validateWritableRule(normalized); err != nil {
+		return filter.FirewallRule{}, err
+	}
+	return normalized, nil
+}
+
+func (a *Adapter) AppendUnverified(ctx context.Context, rule filter.FirewallRule, comment string) error {
+	normalized, err := a.PrepareRule(rule)
+	if err != nil {
+		return err
+	}
+	if normalized.Action != filter.ActionAccept || normalized.DestinationPort == "" ||
+		normalized.SourceAddress != "" || normalized.SourcePort != "" ||
+		normalized.DestinationAddress != "" || normalized.Interface != "" {
+		return fmt.Errorf("%w: unverified UFW appends only support accepted ports", filter.ErrInvalidRule)
+	}
+	if a.writer == nil {
+		return errors.New("ufw writer is required")
+	}
+	comment = strings.TrimSpace(comment)
+	if comment == "" || strings.ContainsAny(comment, "\r\n\x00") {
+		return fmt.Errorf("%w: invalid UFW external rule comment", filter.ErrInvalidRule)
+	}
+	command := commentCommand(normalized, comment)
+	if err := validateCommand(command); err != nil {
+		return err
+	}
+	return a.writer.Run(ctx, command)
+}
+
+func (a *Adapter) Capabilities(context.Context) (filter.Capabilities, error) {
+	return filter.Capabilities{
+
+		Marker: true, ExplicitPosition: true,
+	}, nil
+}
+
+func (a *Adapter) ListRulesByComment(ctx context.Context, scopes []filter.Scope, comment string) ([]filter.ObservedRule, error) {
+	var rules []filter.ObservedRule
+	var output string
+	for index, scope := range scopes {
+		scope = scope.Normalize()
+		if err := validateScope(scope); err != nil {
+			return nil, err
+		}
+		if index == 0 {
+			var err error
+			output, err = a.reader.ReadRulesByComment(ctx, scope, comment)
+			if err != nil {
+				return nil, err
+			}
+		}
+		rules = append(rules, parseNumberedRules(scope, output)...)
+	}
+	return rules, nil
+}
+
+func (a *Adapter) ListRules(ctx context.Context, scope filter.Scope) (filter.RuleSet, error) {
+	snapshots, err := a.ListRuleScopes(ctx, []filter.Scope{scope})
+	if err != nil {
+		return filter.RuleSet{}, err
+	}
+	return snapshots[0], nil
+}
+
+func (a *Adapter) ListRuleScopes(ctx context.Context, scopes []filter.Scope) ([]filter.RuleSet, error) {
+	if len(scopes) == 0 {
+		return nil, fmt.Errorf("%w: UFW observation requires at least one scope", filter.ErrInvalidScope)
+	}
+	normalizedScopes := make([]filter.Scope, len(scopes))
+	for index, scope := range scopes {
+		scope = scope.Normalize()
+		if err := validateScope(scope); err != nil {
+			return nil, err
+		}
+		normalizedScopes[index] = scope
+	}
+	if a.reader == nil {
+		return nil, errors.New("ufw reader is required")
+	}
+	numbered, err := a.reader.Read(ctx, "status", "numbered")
+	if err != nil {
+		return nil, fmt.Errorf("%w: read UFW numbered status: %w", filter.ErrInventoryUnavailable, err)
+	}
+
+	lastPositions := make(map[filter.Family]int)
+	for _, line := range strings.Split(numbered, "\n") {
+		matches := re.UFWNumberedRuleRegex.FindStringSubmatch(strings.TrimSpace(line))
+		if len(matches) != 0 {
+			position, err := strconv.Atoi(matches[1])
+			if err == nil {
+				family := familyForNumberedRule(matches[2], matches[5])
+				lastPositions[family] = max(lastPositions[family], position)
+			}
+		} else if observed, family, _, ok := parseUnrecognizedNumberedRule(normalizedScopes[0], strings.TrimSpace(line)); ok && observed.Locator.Position != nil {
+			lastPositions[family] = max(lastPositions[family], *observed.Locator.Position)
+		}
+	}
+	notices := statusNotices(numbered)
+	snapshots := make([]filter.RuleSet, 0, len(normalizedScopes))
+	for _, scope := range normalizedScopes {
+		snapshot, err := filter.NewRuleSet(scope, parseNumberedRules(scope, numbered))
+		if err != nil {
+			return nil, err
+		}
+		snapshot.Notices = append([]filter.ScopeNotice(nil), notices...)
+		snapshot.LastPosition = lastPositions[scope.Family]
+		snapshots = append(snapshots, snapshot)
+	}
+	return snapshots, nil
+}
+
+func (a *Adapter) NativeDetail(ctx context.Context, profile string, _ bool) (string, error) {
+	profile = strings.TrimSpace(profile)
+	if !validApplicationProfileName(profile) {
+		return "", fmt.Errorf("%w: invalid UFW application profile name", filter.ErrInvalidRule)
+	}
+	if a.reader == nil {
+		return "", errors.New("ufw reader is required")
+	}
+	info, err := a.reader.Read(ctx, "app", "info", profile)
+	if err != nil {
+		return "", fmt.Errorf("read UFW application profile %q: %w", profile, err)
+	}
+	info = strings.TrimSpace(info)
+	if info == "" {
+		return "", fmt.Errorf("read UFW application profile %q: empty output", profile)
+	}
+	return info, nil
+}
+
+func (a *Adapter) BuildCommands(snapshot filter.RuleSet, changes []filter.RuleChange) (filter.CommandBatch, error) {
+	if err := validateScope(snapshot.Scope); err != nil {
+		return filter.CommandBatch{}, err
+	}
+	if hasScopeNotice(snapshot.Notices, filter.ScopeNoticeManagedScopeInactive) {
+		return filter.CommandBatch{}, fmt.Errorf("%w: ufw is inactive", filter.ErrProviderUnavailable)
+	}
+	if len(changes) != 1 {
+		return filter.CommandBatch{}, fmt.Errorf("%w: ufw plans currently require exactly one change", filter.ErrInvalidRule)
+	}
+	rulePlan, err := compileChange(snapshot, changes[0])
+	if err != nil {
+		return filter.CommandBatch{}, err
+	}
+	return filter.CommandBatch{
+		Provider: filter.ProviderUFW, Scope: snapshot.Scope,
+		Rules: []filter.RuleCommands{rulePlan},
+	}, nil
+}
+
+func (a *Adapter) RunCommands(ctx context.Context, plan filter.CommandBatch) error {
+	if err := validateBackendPlan(plan); err != nil {
+		return err
+	}
+	if a.writer == nil {
+		return errors.New("ufw writer is required")
+	}
+	for _, command := range append(append([]filter.NativeCommand(nil), plan.Rules[0].Commands...), plan.Rules[0].RollbackCommands...) {
+		if err := validateCommand(command); err != nil {
+			return err
+		}
+	}
+	executed := 0
+	for index, command := range plan.Rules[0].Commands {
+		err := a.writer.Run(ctx, command)
+		if err != nil && plan.CommandOnly && plan.CreatesOnly() && command.Args[0] == "insert" &&
+			(strings.Contains(err.Error(), "Invalid position") || strings.Contains(err.Error(), "Cannot insert rule at position")) {
+			ipv4, ipv6 := plan.Scope, plan.Scope
+			ipv4.Family, ipv6.Family = filter.FamilyIPv4, filter.FamilyIPv6
+			snapshots, readErr := a.ListRuleScopes(ctx, []filter.Scope{ipv4, ipv6})
+			if readErr != nil {
+				return errors.Join(err, readErr)
+			}
+			lastPosition := maximumObservedPosition(snapshots[0])
+			if plan.Scope.Family == filter.FamilyIPv6 {
+				lastPosition = max(lastPosition, maximumObservedPosition(snapshots[1]))
+			}
+			position, _ := strconv.Atoi(command.Args[1])
+			if position == lastPosition+1 && !hasScopeNotice(snapshots[0].Notices, filter.ScopeNoticeManagedScopeInactive) {
+				err = a.writer.Run(ctx, commentCommand(plan.Rules[0].Expected.Rule, plan.Rules[0].Expected.Marker))
+			}
+		}
+		if err != nil {
+			if plan.CommandOnly {
+				return fmt.Errorf("execute UFW rule: %w", err)
+			}
+			if !plan.CreatesOnly() {
+				probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+				if a.failedCommandApplied(probeCtx, plan.Rules[0], index) {
+					executed = index + 1
+				}
+				cancel()
+			}
+			cause := ufwApplyError(plan.Rules[0], fmt.Errorf("execute UFW rule: %w", err))
+			return a.compensate(ctx, plan.Rules[0], executed, cause)
+		}
+		executed = index + 1
+	}
+	return nil
+}
+
+func ufwApplyError(plan filter.RuleCommands, cause error) error {
+	if plan.Operation == filter.ChangeAdopt {
+		return buserr.WithDetail("ErrUFWRuleAdopt", cause.Error(), cause)
+	}
+	return cause
+}
+
+func (a *Adapter) failedCommandApplied(ctx context.Context, plan filter.RuleCommands, commandIndex int) bool {
+	snapshot, err := a.ListRules(ctx, plan.Expected.Rule.Scope)
+	if err != nil {
+		return true
+	}
+	markerCount := countMarker(snapshot, plan.Expected.Marker)
+	switch plan.Operation {
+	case filter.ChangeCreate:
+		return markerCount > 0
+	case filter.ChangeAdopt:
+		if commandIndex == 0 {
+			return plan.Previous == nil || !containsObservedRule(snapshot, *plan.Previous)
+		}
+		return markerCount > 0
+	case filter.ChangeUpdate, filter.ChangeReorder:
+		if commandIndex == 0 {
+			return markerCount == 0
+		}
+		return markerCount > 0
+	case filter.ChangeDelete:
+		return markerCount == 0
+	default:
+		return true
+	}
+}
+
+func (a *Adapter) Rollback(ctx context.Context, plan filter.CommandBatch) error {
+	if err := validateBackendPlan(plan); err != nil {
+		return err
+	}
+	if a.writer == nil {
+		return errors.New("ufw writer is required")
+	}
+	for ruleIndex := len(plan.Rules) - 1; ruleIndex >= 0; ruleIndex-- {
+		rulePlan := plan.Rules[ruleIndex]
+		if err := a.rollback(ctx, rulePlan, len(rulePlan.RollbackCommands)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateScope(scope filter.Scope) error {
+	if err := scope.ValidateMVP(); err != nil {
+		return err
+	}
+	if scope.Provider != filter.ProviderUFW || scope.Chain != filter.UFWInputChain || scope.Direction != filter.DirectionInput {
+		return fmt.Errorf("%w: %s", filter.ErrUnsupportedScope, scope.Key())
+	}
+	return nil
+}
+
+func validateBackendPlan(plan filter.CommandBatch) error {
+	if plan.Provider != filter.ProviderUFW || len(plan.Rules) != 1 {
+		return fmt.Errorf("%w: invalid ufw backend plan", filter.ErrInvalidRule)
+	}
+	if err := validateScope(plan.Scope); err != nil {
+		return err
+	}
+	if len(plan.Rules[0].Commands) != len(plan.Rules[0].RollbackCommands) {
+		return fmt.Errorf("%w: incomplete ufw rollback plan", filter.ErrInvalidRule)
+	}
+	return nil
+}
+
+func compileChange(snapshot filter.RuleSet, change filter.RuleChange) (filter.RuleCommands, error) {
+	rule := change.After
+	if change.Operation == filter.ChangeDelete {
+		rule = change.Before
+	}
+	if rule == nil {
+		return filter.RuleCommands{}, fmt.Errorf("%w: %s rule is required", filter.ErrInvalidRule, change.Operation)
+	}
+	normalized, err := filter.NormalizeRule(*rule)
+	if err != nil {
+		return filter.RuleCommands{}, err
+	}
+	if normalized.Scope.Key() != snapshot.Scope.Key() {
+		return filter.RuleCommands{}, fmt.Errorf("%w: change scope %s", filter.ErrUnsupportedScope, normalized.Scope.Key())
+	}
+	if err := validateWritableRule(normalized); err != nil {
+		return filter.RuleCommands{}, err
+	}
+	if normalized.UUID == "" {
+		return filter.RuleCommands{}, fmt.Errorf("%w: rule UUID is required", filter.ErrInvalidRule)
+	}
+	marker := "1panel-rule:" + normalized.UUID
+	if change.Operation == filter.ChangeDelete && change.CommandOnly && change.Locator == nil {
+		if change.UnmarkedAdopted || change.PreviousMarker != "" {
+			marker = observedComment(filter.ObservedRule{Rule: normalized, Marker: change.PreviousMarker})
+		}
+		return filter.RuleCommands{
+			RuleUUID: normalized.UUID, Operation: change.Operation,
+			Expected:         filter.ObservedRule{Rule: normalized, Marker: marker, ParseStatus: filter.ParseStatusSupported},
+			Commands:         []filter.NativeCommand{deleteRuleCommand(normalized, marker)},
+			RollbackCommands: []filter.NativeCommand{commentCommand(normalized, marker)},
+		}, nil
+	}
+	position := insertionPosition(snapshot, normalized)
+	expected := observedForRule(normalized, marker, position)
+	plan := filter.RuleCommands{RuleUUID: normalized.UUID, Operation: change.Operation, Expected: expected}
+
+	switch change.Operation {
+	case filter.ChangeCreate:
+		if normalized.OrderIndex != nil && *normalized.OrderIndex < 1 {
+			return filter.RuleCommands{}, fmt.Errorf("%w: create target is out of range", filter.ErrInvalidRule)
+		}
+		command := insertCommand(position, normalized, marker)
+		hasSnapshot := !change.CommandOnly || snapshot.Rules != nil
+		if !change.Append && normalized.OrderIndex != nil && position == 1 && hasSnapshot {
+			command = filter.NativeCommand{Executable: "ufw", Args: append([]string{"prepend"}, compileRuleArgs(normalized, marker)...)}
+		} else if change.Append || normalized.OrderIndex == nil || hasSnapshot && position == maximumObservedPosition(snapshot)+1 {
+			command = commentCommand(normalized, marker)
+		}
+		if command.Args[0] != "insert" {
+			plan.Expected.Locator.NativeID = ""
+			plan.Expected.Locator.Position = nil
+		}
+		plan.Commands = []filter.NativeCommand{command}
+		plan.RollbackCommands = []filter.NativeCommand{deleteRuleCommand(normalized, marker)}
+	case filter.ChangeAdopt:
+		target, targetErr := validateMutationTarget(snapshot, change, normalized, marker, false)
+		if targetErr != nil {
+			return filter.RuleCommands{}, targetErr
+		}
+		position = *target.Locator.Position
+		appendAtEnd := position == maximumObservedPosition(snapshot)
+		restoreAtEnd := change.RestoreAtEnd || appendAtEnd
+		plan.Previous = &target
+		plan.Expected = observedForRule(normalized, marker, position)
+		if appendAtEnd {
+			plan.Expected.Locator.NativeID = ""
+			plan.Expected.Locator.Position = nil
+		}
+		plan.Commands = []filter.NativeCommand{
+			deletePositionCommand(position),
+			positionedCommand(position, normalized, marker, appendAtEnd),
+		}
+		plan.RollbackCommands = []filter.NativeCommand{
+			positionedCommand(position, target.Rule, observedComment(target), restoreAtEnd),
+			deleteRuleCommand(normalized, marker),
+		}
+	case filter.ChangeUpdate, filter.ChangeReorder:
+		if change.Before == nil {
+			return filter.RuleCommands{}, fmt.Errorf("%w: previous ufw rule is required", filter.ErrInvalidRule)
+		}
+		before, err := filter.NormalizeRule(*change.Before)
+		if err != nil {
+			return filter.RuleCommands{}, err
+		}
+		target, targetErr := validateMutationTarget(snapshot, change, before, marker, true)
+		if targetErr != nil {
+			return filter.RuleCommands{}, targetErr
+		}
+		position = *target.Locator.Position
+		targetPosition := position
+		if normalized.OrderIndex != nil {
+			if *normalized.OrderIndex < 1 {
+				return filter.RuleCommands{}, fmt.Errorf("%w: update target is out of range", filter.ErrInvalidRule)
+			}
+			targetPosition = int(*normalized.OrderIndex)
+		}
+		maximumPosition := maximumObservedPosition(snapshot)
+		if targetPosition > maximumPosition {
+			return filter.RuleCommands{}, fmt.Errorf(
+				"%w: update target position %d is out of range 1-%d",
+				filter.ErrInvalidRule, targetPosition, maximumPosition,
+			)
+		}
+		appendAtEnd := change.Append || targetPosition == maximumPosition
+		restoreAtEnd := change.RestoreAtEnd || position == maximumPosition
+		plan.Previous = &target
+		plan.Expected = observedForRule(normalized, marker, targetPosition)
+		if appendAtEnd {
+			plan.Expected.Locator.NativeID = ""
+			plan.Expected.Locator.Position = nil
+		}
+		plan.Commands = []filter.NativeCommand{
+			deletePositionCommand(position),
+			positionedCommand(targetPosition, normalized, marker, appendAtEnd),
+		}
+		plan.RollbackCommands = []filter.NativeCommand{
+			positionedCommand(position, target.Rule, observedComment(target), restoreAtEnd),
+			deleteRuleCommand(normalized, marker),
+		}
+	case filter.ChangeDelete:
+		target, targetErr := validateMutationTarget(snapshot, change, normalized, marker, !change.UnmarkedAdopted)
+		if targetErr != nil {
+			return filter.RuleCommands{}, targetErr
+		}
+		position = *target.Locator.Position
+		plan.Previous = &target
+		plan.Expected = target
+		plan.Commands = []filter.NativeCommand{deleteRuleCommand(target.Rule, observedComment(target))}
+		restoreAtEnd := change.RestoreAtEnd || position == maximumObservedPosition(snapshot)
+		plan.RollbackCommands = []filter.NativeCommand{
+			positionedCommand(position, target.Rule, observedComment(target), restoreAtEnd),
+		}
+	default:
+		return filter.RuleCommands{}, fmt.Errorf("%w: unsupported operation %s", filter.ErrInvalidRule, change.Operation)
+	}
+	return plan, nil
+}
+
+func validateWritableRule(rule filter.FirewallRule) error {
+	if rule.Scope.Provider != filter.ProviderUFW || (rule.Scope.Family != filter.FamilyIPv4 && rule.Scope.Family != filter.FamilyIPv6) ||
+		rule.NativeKind != filter.NativeKindUFWRule {
+		return fmt.Errorf("%w: unsupported ufw rule representation", filter.ErrInvalidRule)
+	}
+	if rule.SourcePort != "" || len(rule.ConnectionStates) != 0 || rule.Priority != nil || rule.OrderBucket != "" {
+		return fmt.Errorf("%w: ufw source ports, states, priorities and backend options are not supported", filter.ErrInvalidRule)
+	}
+	if rule.Protocol != "all" && rule.Protocol != "tcp" && rule.Protocol != "udp" {
+		return fmt.Errorf("%w: ufw protocol %q is not supported", filter.ErrInvalidRule, rule.Protocol)
+	}
+	return nil
+}
+
+func validateMutationTarget(snapshot filter.RuleSet, change filter.RuleChange, desired filter.FirewallRule, marker string, requireOwned bool) (filter.ObservedRule, error) {
+	if change.Locator == nil || change.Locator.Position == nil {
+		return filter.ObservedRule{}, fmt.Errorf("%w: ufw mutation requires a numbered locator", filter.ErrInvalidRule)
+	}
+	if change.Locator.Provider != "" && change.Locator.Provider != filter.ProviderUFW {
+		return filter.ObservedRule{}, fmt.Errorf("%w: ufw locator provider mismatch", filter.ErrInvalidRule)
+	}
+	if change.Locator.ScopeKey != "" && change.Locator.ScopeKey != snapshot.Scope.Key() {
+		return filter.ObservedRule{}, fmt.Errorf("%w: ufw locator scope mismatch", filter.ErrInvalidRule)
+	}
+	var matches []filter.ObservedRule
+	for _, observed := range snapshot.Rules {
+		if observed.Locator.Position == nil || *observed.Locator.Position != *change.Locator.Position {
+			continue
+		}
+		if change.Locator.NativeID != "" && observed.Locator.NativeID != change.Locator.NativeID {
+			continue
+		}
+		if change.Locator.Canonical != "" && observed.Locator.Canonical != change.Locator.Canonical {
+			continue
+		}
+		matches = append(matches, observed)
+	}
+	if len(matches) != 1 {
+		return filter.ObservedRule{}, filter.ErrRuleStale
+	}
+	target := matches[0]
+	if target.Protected {
+		return filter.ObservedRule{}, filter.ErrProtectedRule
+	}
+	previousMarker := strings.TrimSpace(change.PreviousMarker)
+	if requireOwned {
+		if target.Marker != marker {
+			return filter.ObservedRule{}, fmt.Errorf("%w: ufw rule is not owned by this rule UUID", filter.ErrInvalidRule)
+		}
+	} else if target.Marker != previousMarker {
+		if target.Marker != "" {
+			return filter.ObservedRule{}, fmt.Errorf("%w: ufw adoption target marker changed", filter.ErrRuleStale)
+		}
+		return filter.ObservedRule{}, filter.ErrRuleStale
+	}
+	semanticMatch := filter.ObservedRuleMatchesExpected(target, desired)
+	canHydrateOwned := target.Marker == marker &&
+		(target.ParseStatus == filter.ParseStatusOpaque || semanticMatch)
+	canHydrateAdopted := !requireOwned && target.Marker == previousMarker &&
+		target.ParseStatus != filter.ParseStatusOpaque && semanticMatch
+	if target.ParseStatus != filter.ParseStatusSupported && (canHydrateOwned || canHydrateAdopted) {
+		orderIndex := target.Rule.OrderIndex
+		target.Rule = desired
+		target.Rule.OrderIndex = orderIndex
+		target.ParseStatus = filter.ParseStatusSupported
+		target.UncertainFields = nil
+	}
+	if target.ParseStatus != filter.ParseStatusSupported {
+		return filter.ObservedRule{}, fmt.Errorf("%w: opaque ufw rules cannot be modified", filter.ErrInvalidRule)
+	}
+	wantKey, err := filter.RuleKey(desired)
+	if err != nil {
+		return filter.ObservedRule{}, err
+	}
+	gotKey, err := filter.RuleKey(target.Rule)
+	if err != nil {
+		return filter.ObservedRule{}, err
+	}
+	if change.Operation == filter.ChangeAdopt && wantKey != gotKey {
+		return filter.ObservedRule{}, filter.ErrRuleStale
+	}
+	return target, nil
+}
+
+func insertionPosition(snapshot filter.RuleSet, rule filter.FirewallRule) int {
+	if rule.OrderIndex != nil && *rule.OrderIndex > 0 {
+		return int(*rule.OrderIndex)
+	}
+	position := maximumObservedPosition(snapshot) + 1
+	return position
+}
+
+func maximumObservedPosition(snapshot filter.RuleSet) int {
+	maximum := snapshot.LastPosition
+	for _, observed := range snapshot.Rules {
+		if observed.Locator.Position != nil && *observed.Locator.Position > maximum {
+			maximum = *observed.Locator.Position
+		}
+	}
+	return maximum
+}
+
+func observedForRule(rule filter.FirewallRule, marker string, position int) filter.ObservedRule {
+	positionCopy := position
+	order := int64(position)
+	rule.OrderIndex = &order
+	return filter.ObservedRule{
+		Rule: rule, Marker: marker, ParseStatus: filter.ParseStatusSupported, Persistence: filter.PersistenceStatusConverged,
+		Locator: filter.Locator{
+			Provider: filter.ProviderUFW, ScopeKey: rule.Scope.Key(), NativeID: strconv.Itoa(position),
+			Canonical: canonicalRule(rule), Position: &positionCopy,
+		},
+	}
+}
+
+func insertCommand(position int, rule filter.FirewallRule, comment string) filter.NativeCommand {
+	args := []string{"insert", strconv.Itoa(position)}
+	args = append(args, compileRuleArgs(rule, comment)...)
+	return filter.NativeCommand{Executable: "ufw", Args: args}
+}
+
+func positionedCommand(position int, rule filter.FirewallRule, comment string, appendAtEnd bool) filter.NativeCommand {
+	if appendAtEnd {
+		return commentCommand(rule, comment)
+	}
+	return insertCommand(position, rule, comment)
+}
+
+func commentCommand(rule filter.FirewallRule, comment string) filter.NativeCommand {
+	return filter.NativeCommand{Executable: "ufw", Args: compileRuleArgs(rule, comment)}
+}
+
+func deletePositionCommand(position int) filter.NativeCommand {
+	return filter.NativeCommand{Executable: "ufw", Args: []string{"--force", "delete", strconv.Itoa(position)}}
+}
+
+func deleteRuleCommand(rule filter.FirewallRule, comment string) filter.NativeCommand {
+	args := []string{"--force", "delete"}
+	args = append(args, compileRuleArgs(rule, comment)...)
+	return filter.NativeCommand{Executable: "ufw", Args: args}
+}
+
+func compileRuleArgs(rule filter.FirewallRule, comment string) []string {
+	args := []string{nativeAction(rule.Action), "in"}
+	if rule.Interface != "" {
+		args = append(args, "on", rule.Interface)
+	}
+	if rule.Protocol != "all" {
+		args = append(args, "proto", rule.Protocol)
+	}
+	args = append(args, "from", nativeAddress(rule.SourceAddress, rule.Scope.Family))
+	args = append(args, "to", nativeAddress(rule.DestinationAddress, rule.Scope.Family))
+	if rule.DestinationPort != "" {
+		args = append(args, "port", strings.ReplaceAll(rule.DestinationPort, "-", ":"))
+	}
+	args = append(args, "comment", comment)
+	return args
+}
+
+func nativeAction(action filter.Action) string {
+	switch action {
+	case filter.ActionAccept:
+		return "allow"
+	case filter.ActionDrop:
+		return "deny"
+	case filter.ActionReject:
+		return "reject"
+	default:
+		return ""
+	}
+}
+
+func nativeAddress(address string, family filter.Family) string {
+	if address != "" {
+		return address
+	}
+	if family == filter.FamilyIPv6 {
+		return "::/0"
+	}
+	return "0.0.0.0/0"
+}
+
+func observedComment(observed filter.ObservedRule) string {
+	if observed.Marker != "" {
+		return observed.Marker
+	}
+	return observed.Rule.Description
+}
+
+func (a *Adapter) compensate(ctx context.Context, plan filter.RuleCommands, executed int, cause error) error {
+	if plan.Operation == filter.ChangeCreate {
+		return cause
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	rollbackErr := a.rollback(ctx, plan, executed)
+	if rollbackErr != nil {
+		return fmt.Errorf("ufw apply failed: %w; compensation failed: %v", cause, rollbackErr)
+	}
+	return cause
+}
+
+func (a *Adapter) rollback(ctx context.Context, plan filter.RuleCommands, executed int) error {
+	var rollbackErr error
+	for index := executed - 1; index >= 0; index-- {
+		if index >= len(plan.RollbackCommands) {
+			if rollbackErr == nil {
+				rollbackErr = errors.New("missing ufw rollback command")
+			}
+			continue
+		}
+		if err := a.writer.Run(ctx, plan.RollbackCommands[index]); err != nil && rollbackErr == nil {
+			rollbackErr = err
+		}
+	}
+	return rollbackErr
+}
+
+func countMarker(snapshot filter.RuleSet, marker string) int {
+	count := 0
+	for _, observed := range snapshot.Rules {
+		if observed.Marker == marker {
+			count++
+		}
+	}
+	return count
+}
+
+func containsObservedRule(snapshot filter.RuleSet, expected filter.ObservedRule) bool {
+	for _, observed := range snapshot.Rules {
+		if expected.Locator.Position != nil &&
+			(observed.Locator.Position == nil || *observed.Locator.Position != *expected.Locator.Position) {
+			continue
+		}
+		if observed.Marker == expected.Marker && filter.ObservedRuleMatchesExpected(observed, expected.Rule) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasScopeNotice(notices []filter.ScopeNotice, code filter.ScopeNoticeCode) bool {
+	for _, notice := range notices {
+		if notice.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+func validateCommand(command filter.NativeCommand) error {
+	if command.Executable != "ufw" || len(command.Args) == 0 {
+		return fmt.Errorf("%w: invalid ufw command", filter.ErrInvalidRule)
+	}
+	first := command.Args[0]
+	if first == "--force" {
+		if len(command.Args) < 3 || command.Args[1] != "delete" {
+			return fmt.Errorf("%w: invalid forced ufw command", filter.ErrInvalidRule)
+		}
+		return nil
+	}
+	switch first {
+	case "insert", "prepend", "allow", "deny", "reject":
+		return nil
+	default:
+		return fmt.Errorf("%w: unsupported ufw command %q", filter.ErrInvalidRule, first)
+	}
+}
+
+func parseNumberedRules(scope filter.Scope, output string) []filter.ObservedRule {
+	rules := make([]filter.ObservedRule, 0)
+	for _, rawLine := range strings.Split(output, "\n") {
+		raw := strings.TrimSpace(rawLine)
+		matches := re.UFWNumberedRuleRegex.FindStringSubmatch(raw)
+		if len(matches) == 0 {
+			if opaque, family, inbound, ok := parseUnrecognizedNumberedRule(scope, raw); ok &&
+				family == scope.Family && inbound {
+				rules = append(rules, opaque)
+			}
+			continue
+		}
+		position, err := strconv.Atoi(matches[1])
+		if err != nil || position < 1 {
+			continue
+		}
+		if matches[4] == "OUT" || matches[4] == "FWD" || strings.Contains(matches[5], "(out)") {
+			continue
+		}
+		family := familyForNumberedRule(matches[2], matches[5])
+		if family != scope.Family {
+			continue
+		}
+		rules = append(rules, parseNumberedRule(scope, position, matches[2], matches[3], matches[4], matches[5], raw))
+	}
+	return rules
+}
+
+func parseNumberedRule(scope filter.Scope, position int, destination, action, direction, source, raw string) filter.ObservedRule {
+	comment, source := splitComment(source)
+	marker := ownedMarker(comment)
+	positionCopy := position
+	locator := filter.Locator{
+		Provider: filter.ProviderUFW, ScopeKey: scope.Key(), NativeID: strconv.Itoa(position),
+		Canonical: strings.Join(strings.Fields(raw), " "), Position: &positionCopy,
+	}
+	ruleAction := map[string]filter.Action{
+		"ALLOW":  filter.ActionAccept,
+		"DENY":   filter.ActionDrop,
+		"REJECT": filter.ActionReject,
+		"LIMIT":  filter.ActionAccept,
+	}[action]
+	partialRule := filter.FirewallRule{
+		Scope: scope, NativeKind: filter.NativeKindUFWRule, Action: ruleAction,
+	}
+	opaque := func() filter.ObservedRule {
+		return filter.ObservedRule{
+			Rule:    partialRule,
+			Marker:  marker,
+			Locator: locator, ParseStatus: filter.ParseStatusOpaque, Raw: raw, Persistence: filter.PersistenceStatusConverged,
+		}
+	}
+	partial := func() filter.ObservedRule {
+		return filter.ObservedRule{
+			Rule: partialRule, Locator: locator, Marker: marker, ParseStatus: filter.ParseStatusPartial, Raw: raw,
+			Persistence: filter.PersistenceStatusConverged,
+		}
+	}
+
+	if direction == "FWD" || direction == "OUT" || strings.Contains(source, "(out)") {
+		return opaque()
+	}
+	source = strings.ReplaceAll(source, "(out)", "")
+	destination, destinationV6 := stripV6Marker(destination)
+	source, sourceV6 := stripV6Marker(source)
+	source, hasUnsupportedAnnotation := stripRuleAnnotations(source)
+	observedV6 := destinationV6 || sourceV6 || containsIPv6Address(destination) || containsIPv6Address(source)
+	if (scope.Family == filter.FamilyIPv6) != observedV6 {
+		return opaque()
+	}
+
+	sourceAddress, ok := parseSource(source)
+	if !ok {
+		return opaque()
+	}
+	partialRule.SourceAddress = sourceAddress
+	if ruleAction == "" {
+		return opaque()
+	}
+	order := int64(position)
+	destinationAddress, destinationPort, protocol, iface, destinationAnnotation, ok := parseDestination(destination)
+	if !ok {
+		profile, profileInterface, profileOK := applicationProfile(destination)
+		if !profileOK {
+			return opaque()
+		}
+		return filter.ObservedRule{
+			Rule: filter.FirewallRule{
+				Scope: scope, NativeKind: filter.NativeKindUFWApplication, Protocol: "",
+				SourceAddress: sourceAddress, Interface: profileInterface, Action: ruleAction,
+				OrderIndex: &order, Description: profile,
+			},
+			Locator: locator, Marker: marker, ParseStatus: filter.ParseStatusOpaque, Raw: raw,
+			Persistence: filter.PersistenceStatusConverged,
+		}
+	}
+	partialRule.Protocol = protocol
+	partialRule.DestinationAddress = destinationAddress
+	partialRule.DestinationPort = destinationPort
+	partialRule.Interface = iface
+	if marker == "" {
+		partialRule.Description = comment
+	}
+	if partialRule.Description == "" && marker == "" {
+		partialRule.Description = destinationAnnotation
+	}
+	if destinationAnnotation != "" && validApplicationProfileName(destinationAnnotation) {
+		partialRule.NativeKind = filter.NativeKindUFWApplication
+		partialRule.Description = destinationAnnotation
+		return partial()
+	}
+	if action == "LIMIT" || hasUnsupportedAnnotation {
+		return partial()
+	}
+	rule := filter.FirewallRule{
+		Scope: scope, NativeKind: filter.NativeKindUFWRule, Protocol: protocol,
+		SourceAddress: sourceAddress, DestinationAddress: destinationAddress, DestinationPort: destinationPort,
+		Interface: iface, Action: ruleAction, OrderIndex: &order,
+	}
+	if marker == "" {
+		rule.Description = comment
+		if rule.Description == "" {
+			rule.Description = destinationAnnotation
+		}
+	}
+	normalized, err := filter.NormalizeRule(rule)
+	if err != nil {
+		return opaque()
+	}
+	locator.Canonical = canonicalRule(normalized)
+	parseStatus := filter.ParseStatusSupported
+	var uncertainFields []string
+	if normalized.Protocol == "all" && normalized.DestinationPort == "" {
+		parseStatus = filter.ParseStatusPartial
+		uncertainFields = []string{filter.ObservedFieldProtocol}
+	}
+	return filter.ObservedRule{
+		Rule: normalized, Locator: locator, Marker: marker, ParseStatus: parseStatus,
+		UncertainFields: uncertainFields, Raw: raw, Persistence: filter.PersistenceStatusConverged,
+	}
+}
+
+func stripRuleAnnotations(value string) (string, bool) {
+	tokens := strings.Fields(value)
+	filtered := tokens[:0]
+	found := false
+	for _, token := range tokens {
+		switch strings.ToLower(token) {
+		case "(log)", "(log-all)":
+			found = true
+		default:
+			filtered = append(filtered, token)
+		}
+	}
+	return strings.Join(filtered, " "), found
+}
+
+func applicationProfile(value string) (string, string, bool) {
+	profile, iface, ok := splitInterface(value)
+	profile = strings.TrimSpace(profile)
+	if !ok || looksLikeAddressedService(profile) || !validApplicationProfileName(profile) {
+		return "", "", false
+	}
+	return profile, iface, true
+}
+
+func looksLikeAddressedService(value string) bool {
+	tokens := strings.Fields(value)
+	if len(tokens) < 2 {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(tokens[0]), "Anywhere") {
+		return true
+	}
+	_, ok := parseAddress(tokens[0])
+	return ok
+}
+
+func validApplicationProfileName(profile string) bool {
+	profile = strings.TrimSpace(profile)
+	if profile == "" || len(profile) > 255 || strings.ContainsAny(profile, "/\\\r\n\x00") {
+		return false
+	}
+	hasLetter := false
+	for _, char := range profile {
+		if char < 0x20 || char == 0x7f {
+			return false
+		}
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') {
+			hasLetter = true
+		}
+	}
+	return hasLetter
+}
+
+func familyForNumberedRule(destination, source string) filter.Family {
+	_, source = splitComment(source)
+	if strings.Contains(destination, "(v6)") || strings.Contains(source, "(v6)") || containsIPv6Address(destination) || containsIPv6Address(source) {
+		return filter.FamilyIPv6
+	}
+	return filter.FamilyIPv4
+}
+
+func containsIPv6Address(value string) bool {
+	for _, token := range strings.Fields(value) {
+		token = strings.Trim(token, "(),")
+		if prefix, err := netip.ParsePrefix(token); err == nil && prefix.Addr().Is6() {
+			return true
+		}
+		if address, err := netip.ParseAddr(token); err == nil && address.Is6() {
+			return true
+		}
+	}
+	return false
+}
+
+func parseUnrecognizedNumberedRule(scope filter.Scope, raw string) (filter.ObservedRule, filter.Family, bool, bool) {
+	matches := re.UFWNumberedRulePrefixRegex.FindStringSubmatch(raw)
+	if len(matches) == 0 {
+		return filter.ObservedRule{}, "", false, false
+	}
+	position, err := strconv.Atoi(matches[1])
+	if err != nil || position < 1 {
+		return filter.ObservedRule{}, "", false, false
+	}
+	positionCopy := position
+	comment, familyInput := splitComment(matches[2])
+	marker := ownedMarker(comment)
+	family := filter.FamilyIPv4
+	if strings.Contains(familyInput, "(v6)") || containsIPv6Address(familyInput) {
+		family = filter.FamilyIPv6
+	}
+	upper := " " + strings.ToUpper(strings.Join(strings.Fields(familyInput), " ")) + " "
+	inbound := !strings.Contains(upper, " FWD ") && !strings.Contains(upper, " OUT ") &&
+		!strings.Contains(strings.ToLower(familyInput), "(out)")
+	return filter.ObservedRule{
+		Rule: filter.FirewallRule{
+			Scope: scope, NativeKind: filter.NativeKindUFWRule, Action: filter.ActionAccept,
+		},
+		Locator: filter.Locator{
+			Provider: filter.ProviderUFW, ScopeKey: scope.Key(), NativeID: strconv.Itoa(position),
+			Canonical: strings.Join(strings.Fields(raw), " "), Position: &positionCopy,
+		},
+		Marker: marker, ParseStatus: filter.ParseStatusOpaque, Raw: raw, Persistence: filter.PersistenceStatusConverged,
+	}, family, inbound, true
+}
+
+func ownedMarker(comment string) string {
+	comment = strings.TrimSpace(comment)
+	if strings.HasPrefix(comment, "1panel-rule:") && strings.TrimSpace(strings.TrimPrefix(comment, "1panel-rule:")) != "" {
+		return comment
+	}
+	return ""
+}
+
+func splitComment(source string) (string, string) {
+	index := strings.Index(source, "#")
+	if index < 0 {
+		return "", strings.TrimSpace(source)
+	}
+	return strings.TrimSpace(source[index+1:]), strings.TrimSpace(source[:index])
+}
+
+func stripV6Marker(value string) (string, bool) {
+	found := false
+	for {
+		index := strings.Index(strings.ToLower(value), "(v6)")
+		if index < 0 {
+			break
+		}
+		value = value[:index] + value[index+len("(v6)"):]
+		found = true
+	}
+	return strings.Join(strings.Fields(value), " "), found
+}
+
+func parseDestination(value string) (address, port, protocol, iface, annotation string, ok bool) {
+	value, iface, ok = splitInterface(value)
+	if !ok {
+		return "", "", "", "", "", false
+	}
+	value, annotation = splitDestinationAnnotation(value)
+	tokens := strings.Fields(value)
+	switch len(tokens) {
+	case 1:
+		if strings.EqualFold(strings.TrimSpace(tokens[0]), "Anywhere") {
+			return "", "", "all", iface, annotation, true
+		}
+		if parsedAddress, parsedProtocol, endpointOK := parseAddressProtocol(tokens[0]); endpointOK {
+			return parsedAddress, "", parsedProtocol, iface, annotation, true
+		}
+		if parsedPort, parsedProtocol, portOK := parsePortProtocol(tokens[0]); portOK {
+			return "", parsedPort, parsedProtocol, iface, annotation, true
+		}
+		if parsedAddress, addressOK := parseAddress(tokens[0]); addressOK {
+			return parsedAddress, "", "all", iface, annotation, true
+		}
+	case 2:
+		parsedAddress, addressOK := parseAddress(tokens[0])
+		parsedPort, parsedProtocol, portOK := parsePortProtocol(tokens[1])
+		if addressOK && portOK {
+			return parsedAddress, parsedPort, parsedProtocol, iface, annotation, true
+		}
+	}
+	return "", "", "", "", "", false
+}
+
+func parseAddressProtocol(value string) (string, string, bool) {
+	separator := strings.LastIndex(value, "/")
+	if separator <= 0 || separator == len(value)-1 {
+		return "", "", false
+	}
+	protocol := strings.ToLower(strings.TrimSpace(value[separator+1:]))
+	if protocol != "tcp" && protocol != "udp" {
+		return "", "", false
+	}
+	endpoint := strings.TrimSpace(value[:separator])
+	if strings.EqualFold(strings.TrimSpace(endpoint), "Anywhere") {
+		return "", protocol, true
+	}
+	address, ok := parseAddress(endpoint)
+	return address, protocol, ok
+}
+
+func splitDestinationAnnotation(value string) (string, string) {
+	value = strings.TrimSpace(value)
+	if !strings.HasSuffix(value, ")") {
+		return value, ""
+	}
+	depth := 0
+	for index := len(value) - 1; index >= 0; index-- {
+		switch value[index] {
+		case ')':
+			depth++
+		case '(':
+			depth--
+			if depth == 0 {
+				endpoint := strings.TrimSpace(value[:index])
+				annotation := strings.TrimSpace(value[index+1 : len(value)-1])
+				if endpoint != "" && annotation != "" {
+					return endpoint, annotation
+				}
+				return value, ""
+			}
+		}
+	}
+	return value, ""
+}
+
+func parseSource(value string) (string, bool) {
+	if strings.EqualFold(strings.TrimSpace(value), "Anywhere") {
+		return "", true
+	}
+	if strings.Contains(value, " on ") || len(strings.Fields(value)) != 1 {
+		return "", false
+	}
+	return parseAddress(value)
+}
+
+func splitInterface(value string) (endpoint, iface string, ok bool) {
+	const delimiter = " on "
+	index := strings.LastIndex(value, delimiter)
+	if index < 0 {
+		return strings.TrimSpace(value), "", true
+	}
+	endpoint = strings.TrimSpace(value[:index])
+	iface = strings.TrimSpace(value[index+len(delimiter):])
+	if endpoint == "" || iface == "" || strings.ContainsAny(iface, " \t") {
+		return "", "", false
+	}
+	return endpoint, iface, true
+}
+
+func parsePortProtocol(value string) (string, string, bool) {
+	parts := strings.Split(value, "/")
+	protocol := "all"
+	portValue := parts[0]
+	if len(parts) == 2 {
+		protocol = strings.ToLower(parts[1])
+		if protocol != "tcp" && protocol != "udp" {
+			return "", "", false
+		}
+	} else if len(parts) != 1 {
+		return "", "", false
+	}
+	ports := strings.Split(portValue, ",")
+	normalized := make([]string, 0, len(ports))
+	for _, port := range ports {
+		port = strings.TrimSpace(port)
+		bounds := strings.Split(port, ":")
+		if len(bounds) > 2 {
+			return "", "", false
+		}
+		for _, bound := range bounds {
+			value, err := strconv.Atoi(bound)
+			if err != nil || value < 1 || value > 65535 {
+				return "", "", false
+			}
+		}
+		if len(bounds) == 2 {
+			start, _ := strconv.Atoi(bounds[0])
+			end, _ := strconv.Atoi(bounds[1])
+			if start > end {
+				return "", "", false
+			}
+			port = bounds[0] + "-" + bounds[1]
+		}
+		normalized = append(normalized, port)
+	}
+	return strings.Join(normalized, ","), protocol, len(normalized) > 0
+}
+
+func parseAddress(value string) (string, bool) {
+	if strings.EqualFold(strings.TrimSpace(value), "Anywhere") {
+		return "", true
+	}
+	if prefix, err := netip.ParsePrefix(value); err == nil {
+		return prefix.String(), true
+	}
+	if address, err := netip.ParseAddr(value); err == nil {
+		return address.String(), true
+	}
+	return "", false
+}
+
+func canonicalRule(rule filter.FirewallRule) string {
+	return strings.Join([]string{
+		string(rule.Action), rule.Protocol, rule.SourceAddress, rule.DestinationAddress,
+		rule.DestinationPort, rule.Interface,
+	}, "|")
+}
+
+func statusNotices(numbered string) []filter.ScopeNotice {
+	notices := make([]filter.ScopeNotice, 0, 1)
+	if !statusActive(numbered) {
+		notices = append(notices, filter.ScopeNotice{Code: filter.ScopeNoticeManagedScopeInactive})
+	}
+	return notices
+}
+
+func statusActive(output string) bool {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.EqualFold(strings.TrimSpace(line), "Status: active") {
+			return true
+		}
+	}
+	return false
+}
+
+func IsIPv6Unavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := joined.Unwrap()
+		for _, cause := range causes {
+			if !IsIPv6Unavailable(cause) {
+				return false
+			}
+		}
+		return len(causes) > 0
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return IsIPv6Unavailable(wrapped.Unwrap())
+	}
+	message := err.Error()
+	if strings.Contains(message, "Permission denied") || strings.Contains(message, "Operation not permitted") {
+		return false
+	}
+	return strings.Contains(message, "ERROR: IPv6 support not enabled") ||
+		strings.Contains(message, "ERROR: Adding IPv6 rule failed: IPv6 not enabled") ||
+		(strings.Contains(message, "ip6tables") &&
+			(strings.Contains(message, ": Address family not supported by protocol") || strings.Contains(message, ": Protocol not supported")))
+}
+
+type systemBackend struct{}
+
+func (systemBackend) ReadRulesByComment(ctx context.Context, _ filter.Scope, comment string) (string, error) {
+	return filter.ReadRulesByComment(ctx, "ufw", []string{"status", "numbered"}, comment)
+}
+
+func (systemBackend) Read(ctx context.Context, args ...string) (string, error) {
+	return cmd.NewCommandMgr(
+		cmd.WithContext(ctx), cmd.WithTimeout(60*time.Second), cmd.WithEnv("LANGUAGE=en_US:en"),
+	).RunWithOptionalSudoAndStdout("ufw", args...)
+}
+
+func (systemBackend) Run(ctx context.Context, command filter.NativeCommand) error {
+	if err := validateCommand(command); err != nil {
+		return err
+	}
+	output, err := cmd.NewCommandMgr(
+		cmd.WithContext(ctx), cmd.WithTimeout(60*time.Second), cmd.WithEnv("LANGUAGE=en_US:en"),
+	).RunWithOptionalSudoAndStdout(command.Executable, command.Args...)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(output, "Could not delete non-existent rule") {
+		return fmt.Errorf("%w: %s", filter.ErrRuleStale, strings.TrimSpace(output))
+	}
+	return nil
+}

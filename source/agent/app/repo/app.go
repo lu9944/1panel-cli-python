@@ -1,0 +1,171 @@
+package repo
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/1Panel-dev/1Panel/agent/app/model"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+type AppRepo struct {
+}
+
+type IAppRepo interface {
+	WithKey(key string) DBOption
+	WithType(typeStr string) DBOption
+	OrderByRecommend() DBOption
+	GetRecommend() DBOption
+	WithResource(resource string) DBOption
+	WithNotLocal() DBOption
+	WithByLikeName(name string) DBOption
+	WithKeyIn(keys []string) DBOption
+	WithArch(arch string) DBOption
+	WithPanelVersion(panelVersion string) DBOption
+
+	Page(page, size int, opts ...DBOption) (int64, []model.App, error)
+	GetFirst(opts ...DBOption) (model.App, error)
+	GetBy(opts ...DBOption) ([]model.App, error)
+	BatchCreate(ctx context.Context, apps []model.App) error
+	Create(ctx context.Context, app *model.App) error
+	Save(ctx context.Context, app *model.App) error
+	BatchDelete(ctx context.Context, apps []model.App) error
+	DeleteByIDs(ctx context.Context, ids []uint) error
+	DeleteBy(opts ...DBOption) error
+
+	GetTopRecommend() ([]string, error)
+}
+
+func NewIAppRepo() IAppRepo {
+	return &AppRepo{}
+}
+
+func (a AppRepo) WithByLikeName(name string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		if len(name) == 0 {
+			return g
+		}
+		return g.Where("name like ? or  description like ? or short_desc_zh like ? or short_desc_en like ?", "%"+name+"%", "%"+name+"%", "%"+name+"%", "%"+name+"%")
+	}
+}
+
+func (a AppRepo) WithKey(key string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("key = ?", key)
+	}
+}
+
+func (a AppRepo) WithKeyIn(keys []string) DBOption {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("`key` in (?)", keys)
+	}
+}
+
+func (a AppRepo) WithType(typeStr string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("type = ?", typeStr)
+	}
+}
+
+func (a AppRepo) OrderByRecommend() DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Order("recommend asc")
+	}
+}
+
+func (a AppRepo) GetRecommend() DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("recommend < 9999")
+	}
+}
+
+func (a AppRepo) WithResource(resource string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("resource = ?", resource)
+	}
+}
+
+func (a AppRepo) WithNotLocal() DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("resource != 'local'")
+	}
+}
+
+func (a AppRepo) WithArch(arch string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("architectures like ?", fmt.Sprintf("%%%s%%", arch))
+	}
+}
+
+func (a AppRepo) WithPanelVersion(panelVersion string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("required_panel_version >= ?", panelVersion)
+	}
+}
+
+func (a AppRepo) Page(page, size int, opts ...DBOption) (int64, []model.App, error) {
+	var apps []model.App
+	db := getDb(opts...).Model(&model.App{})
+	count := int64(0)
+	db = db.Count(&count)
+	err := db.Limit(size).Offset(size * (page - 1)).Preload("AppTags").Find(&apps).Error
+	return count, apps, err
+}
+
+func (a AppRepo) GetFirst(opts ...DBOption) (model.App, error) {
+	var app model.App
+	db := getDb(opts...).Model(&model.App{})
+	if err := db.Preload("AppTags").First(&app).Error; err != nil {
+		return app, err
+	}
+	return app, nil
+}
+
+func (a AppRepo) GetBy(opts ...DBOption) ([]model.App, error) {
+	var apps []model.App
+	db := getDb(opts...).Model(&model.App{})
+	if err := db.Preload("Details").Preload("AppTags").Find(&apps).Error; err != nil {
+		return apps, err
+	}
+	return apps, nil
+}
+
+func (a AppRepo) GetTopRecommend() ([]string, error) {
+	var (
+		apps  []model.App
+		names []string
+	)
+	db := getDb().Model(&model.App{})
+	if err := db.Order("recommend asc").Limit(6).Find(&apps).Error; err != nil {
+		return names, err
+	}
+	for _, item := range apps {
+		names = append(names, item.Key)
+	}
+	return names, nil
+}
+
+func (a AppRepo) BatchCreate(ctx context.Context, apps []model.App) error {
+	return getTx(ctx).Omit(clause.Associations).Create(&apps).Error
+}
+
+func (a AppRepo) Create(ctx context.Context, app *model.App) error {
+	return getTx(ctx).Omit(clause.Associations).Create(app).Error
+}
+
+func (a AppRepo) Save(ctx context.Context, app *model.App) error {
+	return getTx(ctx).Omit(clause.Associations).Save(app).Error
+}
+
+func (a AppRepo) BatchDelete(ctx context.Context, apps []model.App) error {
+	return getTx(ctx).Omit(clause.Associations).Delete(&apps).Error
+}
+
+func (a AppRepo) DeleteByIDs(ctx context.Context, ids []uint) error {
+	return getTx(ctx).Where("id in (?)", ids).Delete(&model.App{}).Error
+}
+
+func (a AppRepo) DeleteBy(opts ...DBOption) error {
+	return getDb().Delete(&model.App{}, opts).Error
+}

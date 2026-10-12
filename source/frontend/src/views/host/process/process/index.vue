@@ -1,0 +1,371 @@
+<template>
+    <div>
+        <FireRouter />
+        <LayoutContent :title="$t('menu.process', 2)" v-loading="processStore.psLoading">
+            <template #rightToolBar>
+                <div class="process-toolbar w-full flex justify-end items-center gap-5">
+                    <el-select
+                        v-model="filters"
+                        :placeholder="$t('commons.table.status')"
+                        clearable
+                        @change="search()"
+                        class="process-toolbar__filter"
+                        multiple
+                        collapse-tags
+                        collapse-tags-tooltip
+                        :max-collapse-tags="4"
+                    >
+                        <el-option
+                            v-for="item in statusOptions"
+                            :key="item.value"
+                            :label="item.text"
+                            :value="item.value"
+                        />
+                    </el-select>
+                    <TableSearch
+                        class="process-toolbar__field"
+                        @search="search()"
+                        :placeholder="$t('process.pid')"
+                        v-model:searchName="processStore.psSearch.pid"
+                    />
+                    <TableSearch
+                        class="process-toolbar__field"
+                        @search="search()"
+                        :placeholder="$t('commons.table.name')"
+                        v-model:searchName="processStore.psSearch.name"
+                    />
+                    <TableSearch
+                        class="process-toolbar__field"
+                        @search="search()"
+                        :placeholder="$t('commons.table.user')"
+                        v-model:searchName="processStore.psSearch.username"
+                    />
+                </div>
+            </template>
+            <template #main>
+                <div class="process-table">
+                    <el-auto-resizer>
+                        <template #default="{ height, width }">
+                            <el-table-v2
+                                :fixed="isCompactTable"
+                                @column-sort="changeSort"
+                                :columns="columns"
+                                :data="data"
+                                :width="width"
+                                :height="height"
+                                :scrollbar-always-on="isCompactTable"
+                                :sort-by="sortState"
+                            ></el-table-v2>
+                        </template>
+                    </el-auto-resizer>
+                </div>
+            </template>
+        </LayoutContent>
+
+        <OpDialog ref="opRef" @search="search" />
+        <ProcessDetail ref="detailRef" />
+        <RuntimeDiagnostics ref="runtimeDiagnosticsRef" />
+    </div>
+</template>
+
+<script setup lang="ts">
+import FireRouter from '@/views/host/process/index.vue';
+import { ref, onMounted, onUnmounted, computed, watch, h, resolveDirective, withDirectives } from 'vue';
+import ProcessDetail from './detail/index.vue';
+import i18n from '@/lang';
+import { stopProcess } from '@/api/modules/process';
+import { ProcessStore } from '@/store';
+import { SortBy, TableV2SortOrder, ElButton } from 'element-plus';
+import { useGlobalStore } from '@/composables/useGlobalStore';
+import RuntimeDiagnostics from './diagnostics/index.vue';
+import { useMediaQuery } from '@vueuse/core';
+
+const { currentNode } = useGlobalStore();
+const isCompactTable = useMediaQuery('(max-width: 1024px)');
+const processStore = ProcessStore();
+const permissionDirective = resolveDirective('permission');
+
+const statusOptions = computed(() => [
+    { text: i18n.global.t('process.running'), value: 'running' },
+    { text: i18n.global.t('process.sleep'), value: 'sleep' },
+    { text: i18n.global.t('process.stop'), value: 'stop' },
+    { text: i18n.global.t('process.idle'), value: 'idle' },
+    { text: i18n.global.t('process.wait'), value: 'wait' },
+    { text: i18n.global.t('process.lock'), value: 'lock' },
+    { text: i18n.global.t('process.zombie'), value: 'zombie' },
+]);
+
+const opRef = ref();
+const sortState = ref<SortBy>({
+    key: 'PID',
+    order: TableV2SortOrder.ASC,
+});
+
+const data = ref<any[]>([]);
+const detailRef = ref();
+const runtimeDiagnosticsRef = ref<InstanceType<typeof RuntimeDiagnostics>>();
+const filters = ref<string[]>([]);
+
+const sortByNum = (a: any, b: any, prop: string): number => {
+    const aVal = parseFloat(a[prop]) || 0;
+    const bVal = parseFloat(b[prop]) || 0;
+    return aVal - bVal;
+};
+
+const columns = ref([
+    {
+        key: 'PID',
+        title: 'PID',
+        dataKey: 'PID',
+        width: 120,
+        sortable: true,
+        sortMethod: sortByNum,
+    },
+    {
+        key: 'name',
+        title: i18n.global.t('commons.table.name'),
+        dataKey: 'name',
+        width: 400,
+    },
+    {
+        key: 'ppid',
+        title: i18n.global.t('process.ppid'),
+        dataKey: 'PPID',
+        width: 120,
+    },
+    {
+        key: 'numThreads',
+        title: i18n.global.t('process.numThreads'),
+        dataKey: 'numThreads',
+        width: 120,
+    },
+    {
+        key: 'username',
+        title: i18n.global.t('commons.table.user'),
+        dataKey: 'username',
+        width: 200,
+    },
+    {
+        key: 'cpuValue',
+        title: 'CPU',
+        dataKey: 'cpuValue',
+        width: 200,
+        sortable: true,
+        sortMethod: sortByNum,
+        cellRenderer: ({ rowData }) => {
+            return rowData.cpuPercent;
+        },
+    },
+    {
+        key: 'rssValue',
+        title: i18n.global.t('process.memory'),
+        dataKey: 'rssValue',
+        width: 200,
+        sortable: true,
+        sortMethod: sortByNum,
+        cellRenderer: ({ rowData }) => {
+            return rowData.rss;
+        },
+    },
+    {
+        key: 'numConnections',
+        title: i18n.global.t('process.numConnections'),
+        dataKey: 'numConnections',
+        width: 100,
+        sortable: true,
+    },
+    {
+        key: 'status',
+        title: i18n.global.t('commons.table.status'),
+        dataKey: 'status',
+        width: 100,
+        cellRenderer: ({ rowData }) => {
+            if (rowData.status) {
+                return i18n.global.t('process.' + rowData.status);
+            }
+            return '';
+        },
+    },
+    {
+        key: 'startTime',
+        title: i18n.global.t('process.startTime'),
+        dataKey: 'startTime',
+        width: 300,
+    },
+    {
+        key: 'actions',
+        title: i18n.global.t('commons.table.operate'),
+        dataKey: 'actions',
+        width: 420,
+        cellRenderer: ({ rowData }) => {
+            const stopButton = h(
+                ElButton,
+                {
+                    type: 'text',
+                    onClick: () => stop(rowData),
+                },
+                () => i18n.global.t('process.stopProcess'),
+            );
+
+            const buttons = [
+                h(
+                    ElButton,
+                    {
+                        type: 'text',
+                        onClick: () => openDetail(rowData),
+                    },
+                    () => i18n.global.t('process.viewDetails'),
+                ),
+            ];
+
+            if (
+                rowData.name === '1panel-agent' ||
+                (rowData.name === '1panel-core' && (!currentNode.value || currentNode.value === 'local'))
+            ) {
+                buttons.push(
+                    h(
+                        ElButton,
+                        {
+                            type: 'text',
+                            onClick: () => openRuntimeDiagnostics(rowData.name),
+                        },
+                        () => i18n.global.t('monitor.runtimeDiagnostics'),
+                    ),
+                );
+            }
+
+            buttons.push(permissionDirective ? withDirectives(stopButton, [[permissionDirective]]) : stopButton);
+            return h('div', { class: 'action-buttons' }, buttons);
+        },
+    },
+]);
+
+watch(
+    [sortState, () => processStore.psData, filters],
+    ([newState, newData, newFilters]) => {
+        if (!newData?.length) {
+            data.value = [];
+            return;
+        }
+
+        let filtered = newData;
+        if (newFilters.length > 0) {
+            filtered = filtered.filter((re: any) => newFilters.includes(re.status));
+        }
+
+        const { key, order } = newState ?? {};
+        if (!key || !order) {
+            data.value = filtered;
+            return;
+        }
+
+        const currCol = columns.value.find((c) => c.key === key);
+        if (!currCol) {
+            data.value = filtered;
+            return;
+        }
+
+        const currSortMethod = currCol.sortMethod ?? sortByNum;
+        data.value = filtered.slice(0).sort((a, b) => {
+            const res = (currSortMethod as any)(a, b, currCol.dataKey);
+            return order === TableV2SortOrder.ASC ? res : 0 - res;
+        });
+    },
+    { immediate: true },
+);
+
+const openDetail = (row: any) => {
+    detailRef.value.acceptParams(row.PID);
+};
+
+const openRuntimeDiagnostics = (name: string) => {
+    runtimeDiagnosticsRef.value?.acceptParams(name === '1panel-core' ? 'core' : 'agent');
+};
+
+const changeSort = ({ key, order }) => {
+    if (!order) order = TableV2SortOrder.ASC;
+    sortState.value = { key, order };
+};
+
+const search = () => {
+    processStore.sendPsMessage();
+};
+
+const stop = async (row: any) => {
+    opRef.value.acceptParams({
+        title: i18n.global.t('process.stopProcess'),
+        names: [row.name],
+        msg: i18n.global.t('commons.msg.operatorHelper', [
+            i18n.global.t('menu.process'),
+            i18n.global.t('process.stopProcess'),
+        ]),
+        api: stopProcess,
+        params: { PID: row.PID },
+        successMsg: i18n.global.t('commons.msg.operationSuccess'),
+    });
+};
+
+onMounted(() => {
+    processStore.connect(currentNode.value);
+    const initialDelay = processStore.psData.length > 0 ? 500 : 0;
+    processStore.startPolling('ps', 3000, initialDelay);
+});
+
+onUnmounted(() => {
+    processStore.stopPolling();
+    processStore.disconnect();
+});
+</script>
+
+<style scoped lang="scss">
+.process-toolbar {
+    min-width: 0;
+}
+
+.process-toolbar__filter {
+    width: 300px;
+}
+
+.process-table {
+    width: 100%;
+    min-width: 0;
+    height: 900px;
+    overflow: hidden;
+}
+
+@media only screen and (max-width: 1024px) {
+    .process-toolbar {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 12px;
+    }
+
+    .process-toolbar__filter,
+    .process-toolbar__field {
+        width: auto;
+        min-width: 0;
+        max-width: 300px;
+        flex: 1 1 220px;
+    }
+
+    .process-toolbar__field {
+        :deep(.search-button) {
+            width: 100%;
+        }
+    }
+
+    .process-table {
+        height: clamp(420px, calc(100vh - 260px), 900px);
+        height: clamp(420px, calc(100dvh - 260px), 900px);
+    }
+}
+
+@media only screen and (max-width: 767px) {
+    .process-toolbar__filter,
+    .process-toolbar__field {
+        width: 100%;
+        max-width: none;
+        flex-basis: 100%;
+    }
+}
+</style>

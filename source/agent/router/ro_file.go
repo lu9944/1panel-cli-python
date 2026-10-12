@@ -1,0 +1,85 @@
+package router
+
+import (
+	v2 "github.com/1Panel-dev/1Panel/agent/app/api/v2"
+	"github.com/1Panel-dev/1Panel/agent/middleware"
+	"github.com/gin-gonic/gin"
+)
+
+type FileRouter struct {
+}
+
+func (f *FileRouter) InitRouter(Router *gin.RouterGroup) {
+	fileRouter := Router.Group("files")
+	baseApi := v2.ApiGroupApp.BaseApi
+	{
+		fileRouter.POST("/search", baseApi.ListFiles)
+		fileRouter.POST("/ai-search", baseApi.FileAISearch)
+		fileRouter.POST("/upload/search", baseApi.SearchUploadWithPage)
+		fileRouter.POST("/tree", baseApi.GetFileTree)
+		fileRouter.POST("", baseApi.CreateFile)
+		fileRouter.POST("/del", baseApi.DeleteFile)
+		fileRouter.POST("/batch/del", baseApi.BatchDeleteFile)
+		fileRouter.POST("/mode", baseApi.ChangeFileMode)
+		fileRouter.POST("/owner", baseApi.ChangeFileOwner)
+		fileRouter.POST("/compress", baseApi.CompressFile)
+		fileRouter.POST("/compress/stop", baseApi.StopCompressFile)
+		fileRouter.POST("/decompress", baseApi.DeCompressFile)
+		fileRouter.POST("/decompress/stop", baseApi.StopDeCompressFile)
+		fileRouter.POST("/content", baseApi.GetContent)
+		fileRouter.POST("/preview", baseApi.PreviewContent)
+		fileRouter.POST("/save", baseApi.SaveContent)
+		fileRouter.POST("/history/search", baseApi.SearchFileHistory)
+		fileRouter.POST("/history/content", baseApi.GetFileHistoryContent)
+		fileRouter.POST("/history/del", baseApi.DeleteFileHistory)
+		fileRouter.POST("/history/restore", baseApi.RestoreFileHistory)
+		fileRouter.POST("/remarks", baseApi.BatchGetFileRemarks)
+		fileRouter.POST("/remark", baseApi.SetFileRemark)
+		fileRouter.POST("/check", baseApi.CheckFile)
+		fileRouter.POST("/batch/check", baseApi.BatchCheckFiles)
+		fileRouter.POST("/upload", baseApi.UploadFiles)
+		fileRouter.POST("/chunkupload", baseApi.UploadChunkFiles)
+		fileRouter.POST("/chunkupload/stop", baseApi.StopChunkUpload)
+		fileRouter.POST("/rename", baseApi.ChangeFileName)
+		fileRouter.POST("/wget", baseApi.WgetFile)
+		fileRouter.POST("/wget/stop", baseApi.StopWget)
+		fileRouter.POST("/wget/process/remove", baseApi.RemoveWgetRecords)
+		fileRouter.POST("/move", baseApi.MoveFile)
+		fileRouter.POST("/move/stop", baseApi.StopMoveFile)
+		fileRouter.GET("/download", baseApi.Download)
+		fileRouter.POST("/share/search", baseApi.SearchFileShare)
+		fileRouter.POST("/share/detail", baseApi.GetFileShareDetail)
+		fileRouter.POST("/share/create", baseApi.CreateFileShare)
+		fileRouter.POST("/share/del", baseApi.DeleteFileShare)
+		fileRouter.GET("/share/qrcode", baseApi.GetFileShareQRCode)
+		fileRouter.POST("/chunkdownload", baseApi.DownloadChunkFiles)
+		fileRouter.POST("/size", baseApi.Size)
+		fileRouter.POST("/depth/size", baseApi.DepthDirSize)
+		fileRouter.GET("/wget/process", baseApi.WgetProcess)
+		fileRouter.GET("/wget/process/keys", baseApi.ProcessKeys)
+		fileRouter.POST("/read/:type", baseApi.ReadFileByLine)
+		fileRouter.POST("/batch/role", baseApi.BatchChangeModeAndOwner)
+
+		fileRouter.POST("/recycle/search", baseApi.SearchRecycleBinFile)
+		fileRouter.POST("/recycle/reduce", baseApi.ReduceRecycleBinFile)
+		fileRouter.POST("/recycle/clear", baseApi.ClearRecycleBinFile)
+		fileRouter.GET("/recycle/status", baseApi.GetRecycleStatus)
+
+		fileRouter.POST("/favorite/search", baseApi.SearchFavorite)
+		fileRouter.POST("/favorite", baseApi.CreateFavorite)
+		fileRouter.POST("/favorite/del", baseApi.DeleteFavorite)
+
+		fileRouter.POST("/mount", baseApi.GetHostMount)
+		fileRouter.POST("/user/group", baseApi.GetUsersAndGroups)
+		fileRouter.POST("/convert", baseApi.ConvertFile)
+		fileRouter.POST("/convert/log", baseApi.ConvertLog)
+	}
+
+	publicShareRouter := fileRouter.Group("/share")
+	publicShareRouter.Use(middleware.FileSharePublicAccess())
+	{
+		publicShareRouter.GET("/info", baseApi.GetPublicFileShareInfo)
+		publicShareRouter.GET("/check", baseApi.CheckFileShare)
+		publicShareRouter.GET("/download", baseApi.DownloadFileShare)
+	}
+}

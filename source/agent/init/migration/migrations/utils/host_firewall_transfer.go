@@ -1,0 +1,420 @@
+package utils
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/netip"
+	"strings"
+
+	"github.com/1Panel-dev/1Panel/agent/app/model"
+	"github.com/1Panel-dev/1Panel/agent/constant"
+	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/utils/firewall/filter"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+const hostFirewallTransferMigrationID = "host-firewall-transfer"
+
+var errUnsupportedLegacyHostFirewallRule = errors.New("unsupported legacy host firewall rule")
+
+type legacyHostFirewallRecord struct {
+	ID          uint
+	Type        string
+	Port        string
+	Address     string
+	Chain       string
+	Protocol    string
+	SrcIP       string
+	SrcPort     string
+	DstIP       string
+	DstPort     string
+	Strategy    string
+	Description string
+}
+
+func TransferHostFirewall(ctx context.Context, provider string) error {
+	if global.DB == nil {
+		return errors.New("host firewall transfer database is required")
+	}
+	return transferHostFirewall(ctx, global.DB, filter.Provider(strings.ToLower(strings.TrimSpace(provider))))
+}
+
+func TransferLegacyHostFirewallRuleOwnership(ctx context.Context, provider string, transfer func(context.Context) error) error {
+	if global.DB == nil {
+		return errors.New("host firewall transfer database is required")
+	}
+	return transferLegacyHostFirewallRuleOwnership(
+		ctx,
+		global.DB,
+		filter.Provider(strings.ToLower(strings.TrimSpace(provider))),
+		transfer,
+	)
+}
+
+func transferLegacyHostFirewallRuleOwnership(
+	ctx context.Context,
+	db *gorm.DB,
+	provider filter.Provider,
+	transfer func(context.Context) error,
+) error {
+	if !legacyHostFirewallOwnershipProvider(provider) {
+		return nil
+	}
+	if db == nil {
+		return errors.New("host firewall transfer database is required")
+	}
+	completed, err := migrationRecordExists(db, hostFirewallTransferMigrationID)
+	if err != nil || completed {
+		return err
+	}
+	if transfer == nil {
+		return errors.New("legacy host firewall ownership transfer is required")
+	}
+	if err := transfer(ctx); err != nil {
+		return fmt.Errorf("transfer legacy host firewall rule ownership: %w", err)
+	}
+	return markMigrationRecord(db, hostFirewallTransferMigrationID)
+}
+
+func legacyHostFirewallOwnershipProvider(provider filter.Provider) bool {
+	return provider == filter.ProviderIptables || provider == filter.ProviderUFW
+}
+
+func transferHostFirewall(ctx context.Context, db *gorm.DB, provider filter.Provider) error {
+	if db == nil {
+		return errors.New("host firewall transfer database is required")
+	}
+	completed, err := migrationRecordExists(db, hostFirewallTransferMigrationID)
+	if err != nil || completed {
+		return err
+	}
+	if !isLegacyHostFirewallProvider(provider) {
+		return fmt.Errorf("unsupported legacy host firewall provider %q", provider)
+	}
+
+	models := make([]model.FirewallRule, 0)
+	if db.Migrator().HasTable("firewalls") {
+		var records []legacyHostFirewallRecord
+		if err := db.WithContext(ctx).Table("firewalls").Order("id ASC").Find(&records).Error; err != nil {
+			return fmt.Errorf("load legacy host firewall records: %w", err)
+		}
+		models = convertLegacyHostFirewallRecords(records, provider)
+	}
+
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := importLegacyHostFirewallRules(tx, models); err != nil {
+			return err
+		}
+		if legacyHostFirewallOwnershipProvider(provider) {
+			return nil
+		}
+		return markMigrationRecord(tx, hostFirewallTransferMigrationID)
+	})
+}
+
+func isLegacyHostFirewallProvider(provider filter.Provider) bool {
+	switch provider {
+	case filter.ProviderIptables, filter.ProviderNftables, filter.ProviderFirewalld, filter.ProviderUFW:
+		return true
+	default:
+		return false
+	}
+}
+
+func convertLegacyHostFirewallRecords(records []legacyHostFirewallRecord, provider filter.Provider) []model.FirewallRule {
+	converted := make([]model.FirewallRule, 0, len(records))
+	byIdentity := make(map[string]int)
+	for _, record := range records {
+		rules, err := legacyHostFirewallRules(record, provider)
+		if err != nil {
+			if global.LOG != nil {
+				global.LOG.Warnf("skip legacy host firewall record %d during transfer: %v", record.ID, err)
+			}
+			continue
+		}
+		for _, rule := range rules {
+			item, err := hostFirewallRuleModel(rule)
+			if err != nil {
+				if global.LOG != nil {
+					global.LOG.Warnf("skip legacy host firewall record %d during transfer: %v", record.ID, err)
+				}
+				continue
+			}
+			identity := hostFirewallPolicyKey(item)
+			if index, exists := byIdentity[identity]; exists {
+				if item.Description != "" {
+					converted[index].Description = item.Description
+				}
+				continue
+			}
+			byIdentity[identity] = len(converted)
+			converted = append(converted, item)
+		}
+	}
+	return converted
+}
+
+func legacyHostFirewallRules(record legacyHostFirewallRecord, provider filter.Provider) ([]filter.FirewallRule, error) {
+	sourceAddress := record.SrcIP
+	if sourceAddress == "" {
+		sourceAddress = record.Address
+	}
+	destinationPort := record.DstPort
+	if destinationPort == "" {
+		destinationPort = record.Port
+	}
+	rule := filter.FirewallRule{
+		Protocol:           record.Protocol,
+		SourceAddress:      sourceAddress,
+		SourcePort:         record.SrcPort,
+		DestinationAddress: record.DstIP,
+		DestinationPort:    destinationPort,
+		Action:             filter.Action(record.Strategy),
+		Description:        record.Description,
+	}
+
+	switch strings.ToLower(strings.TrimSpace(record.Type)) {
+	case "port":
+		rule.SourcePort = ""
+		rule.DestinationAddress = ""
+		rule.DestinationPort = destinationPort
+	case "address", "ip":
+		rule.Protocol = "all"
+		rule.SourcePort = ""
+		rule.DestinationPort = ""
+	default:
+		if provider != filter.ProviderIptables || legacyIptablesAdvancedChain(record.Chain) {
+			return nil, fmt.Errorf("%w: advanced rule for provider %q", errUnsupportedLegacyHostFirewallRule, provider)
+		}
+	}
+
+	switch provider {
+	case filter.ProviderIptables:
+		rule.Scope = filter.Scope{
+			Provider: provider, Family: filter.FamilyIPv4, Table: "filter",
+			Chain: legacyIptablesChain(record), Direction: filter.DirectionInput,
+		}
+		rule.NativeKind = filter.NativeKindRule
+	case filter.ProviderFirewalld:
+		return legacyFirewalldHostRules(record, rule)
+	case filter.ProviderUFW:
+		return legacyUFWHostRules(record, rule)
+	default:
+		return nil, fmt.Errorf("%w: provider %q", errUnsupportedLegacyHostFirewallRule, provider)
+	}
+	return filter.ExpandAtomicRules(rule)
+}
+
+func legacyIptablesAdvancedChain(chain string) bool {
+	switch strings.ToUpper(strings.TrimSpace(chain)) {
+	case "1PANEL_INPUT", "1PANEL_OUTPUT":
+		return true
+	default:
+		return false
+	}
+}
+
+func legacyIptablesChain(record legacyHostFirewallRecord) string {
+	typeName := strings.ToLower(strings.TrimSpace(record.Type))
+	if typeName == "port" || typeName == "address" || typeName == "ip" {
+		return filter.IptablesInputChain
+	}
+	return strings.TrimSpace(record.Chain)
+}
+
+func legacyFirewalldHostRules(record legacyHostFirewallRecord, rule filter.FirewallRule) ([]filter.FirewallRule, error) {
+	rule.Scope = filter.Scope{
+		Provider: filter.ProviderFirewalld, Zone: filter.FirewalldInputZone, Direction: filter.DirectionInput,
+	}
+	typeName := strings.ToLower(strings.TrimSpace(record.Type))
+	if typeName == "port" && legacyActionIsAccept(record.Strategy) && legacyAddressIsEmpty(record.SrcIP) {
+		rule.Scope.Family = filter.FamilyInet
+		rule.NativeKind = filter.NativeKindZonePort
+		return filter.ExpandAtomicRules(rule)
+	}
+
+	rule.NativeKind = filter.NativeKindRichRule
+	if legacyAddressIsEmpty(rule.SourceAddress) && legacyAddressIsEmpty(rule.DestinationAddress) {
+		return expandLegacyFamilies(rule, filter.FamilyIPv4, filter.FamilyIPv6)
+	}
+	rule.Scope.Family = legacyRuleFamily(rule.SourceAddress, rule.DestinationAddress)
+	return filter.ExpandAtomicRules(rule)
+}
+
+func legacyUFWHostRules(record legacyHostFirewallRecord, rule filter.FirewallRule) ([]filter.FirewallRule, error) {
+	rule.Scope = filter.Scope{
+		Provider: filter.ProviderUFW, Chain: filter.UFWInputChain, Direction: filter.DirectionInput,
+	}
+	rule.NativeKind = filter.NativeKindUFWRule
+	if strings.EqualFold(strings.TrimSpace(record.Type), "address") || strings.EqualFold(strings.TrimSpace(record.Type), "ip") {
+		rule.SourceAddress, rule.DestinationAddress = splitLegacyUFWAddress(rule.SourceAddress)
+	}
+	if legacyUFWSinglePortAllProtocols(record, rule.DestinationPort) {
+		rule.Protocol = "all"
+	}
+	if legacyAddressIsEmpty(rule.SourceAddress) && legacyAddressIsEmpty(rule.DestinationAddress) {
+		rule.Scope.Family = filter.FamilyInet
+	} else {
+		rule.Scope.Family = legacyRuleFamily(rule.SourceAddress, rule.DestinationAddress)
+	}
+	return filter.ExpandAtomicRules(rule)
+}
+
+func legacyUFWSinglePortAllProtocols(record legacyHostFirewallRecord, port string) bool {
+	if !strings.EqualFold(strings.TrimSpace(record.Type), "port") {
+		return false
+	}
+	protocol := strings.ToLower(strings.TrimSpace(record.Protocol))
+	if protocol != "tcp/udp" && protocol != "udp/tcp" {
+		return false
+	}
+	port = strings.TrimSpace(port)
+	return port != "" && !strings.Contains(port, ",") && !strings.Contains(port, "-")
+}
+
+func expandLegacyFamilies(rule filter.FirewallRule, families ...filter.Family) ([]filter.FirewallRule, error) {
+	result := make([]filter.FirewallRule, 0, len(families))
+	for _, family := range families {
+		item := rule
+		item.Scope.Family = family
+		expanded, err := filter.ExpandAtomicRules(item)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, expanded...)
+	}
+	return result, nil
+}
+
+func legacyActionIsAccept(action string) bool {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "accept", "allow":
+		return true
+	default:
+		return false
+	}
+}
+
+func legacyAddressIsEmpty(address string) bool {
+	address = strings.ToLower(strings.TrimSpace(address))
+	return address == "" || address == "any" || strings.HasPrefix(address, "anywhere")
+}
+
+func legacyRuleFamily(addresses ...string) filter.Family {
+	for _, value := range addresses {
+		value = strings.TrimSpace(value)
+		if prefix, err := netip.ParsePrefix(value); err == nil {
+			if prefix.Addr().Is6() && !prefix.Addr().Is4In6() {
+				return filter.FamilyIPv6
+			}
+			continue
+		}
+		if address, err := netip.ParseAddr(value); err == nil && address.Is6() && !address.Is4In6() {
+			return filter.FamilyIPv6
+		}
+	}
+	return filter.FamilyIPv4
+}
+
+func splitLegacyUFWAddress(value string) (string, string) {
+	value = strings.TrimSpace(value)
+	if source, destination, ok := strings.Cut(value, "-"); ok && legacyIPOrPrefix(source) && legacyIPOrPrefix(destination) {
+		return strings.TrimSpace(source), strings.TrimSpace(destination)
+	}
+	return value, ""
+}
+
+func legacyIPOrPrefix(value string) bool {
+	value = strings.TrimSpace(value)
+	if _, err := netip.ParseAddr(value); err == nil {
+		return true
+	}
+	_, err := netip.ParsePrefix(value)
+	return err == nil
+}
+
+func hostFirewallRuleModel(rule filter.FirewallRule) (model.FirewallRule, error) {
+	normalized, err := filter.NormalizeRule(rule)
+	if err != nil {
+		return model.FirewallRule{}, err
+	}
+	switch normalized.NativeKind {
+	case "", filter.NativeKindRule, filter.NativeKindZonePort, filter.NativeKindRichRule, filter.NativeKindUFWRule:
+	default:
+		return model.FirewallRule{}, fmt.Errorf("%w: native rule %q cannot be stored as a provider-neutral policy", filter.ErrUnsupportedScope, normalized.NativeKind)
+	}
+	record := model.FirewallRule{
+		Family:             string(normalized.Scope.Family),
+		Protocol:           normalized.Protocol,
+		SourceAddress:      normalized.SourceAddress,
+		SourcePort:         normalized.SourcePort,
+		DestinationAddress: normalized.DestinationAddress,
+		DestinationPort:    normalized.DestinationPort,
+		Interface:          normalized.Interface,
+		ConnectionStates:   strings.Join(normalized.ConnectionStates, ","),
+		Action:             string(normalized.Action),
+		Description:        normalized.Description,
+	}
+	if normalized.Scope.Provider == filter.ProviderFirewalld {
+		record.Priority = normalized.Priority
+	}
+	record.UUID = uuid.NewString()
+	record.Origin = constant.FirewallRuleOriginAdopted
+	record.Owner = constant.FirewallRuleSourceUser
+	record.Revision = 1
+	return record, nil
+}
+
+func hostFirewallPolicyKey(rule model.FirewallRule) string {
+	payload, _ := json.Marshal(struct {
+		Family             string `json:"family"`
+		Protocol           string `json:"protocol"`
+		SourceAddress      string `json:"sourceAddress,omitempty"`
+		SourcePort         string `json:"sourcePort,omitempty"`
+		DestinationAddress string `json:"destinationAddress,omitempty"`
+		DestinationPort    string `json:"destinationPort,omitempty"`
+		Interface          string `json:"interface,omitempty"`
+		ConnectionStates   string `json:"connectionStates,omitempty"`
+		Action             string `json:"action"`
+	}{
+		Family: rule.Family, Protocol: rule.Protocol,
+		SourceAddress: rule.SourceAddress, SourcePort: rule.SourcePort,
+		DestinationAddress: rule.DestinationAddress, DestinationPort: rule.DestinationPort,
+		Interface: rule.Interface, ConnectionStates: rule.ConnectionStates, Action: rule.Action,
+	})
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:])
+}
+
+func importLegacyHostFirewallRules(tx *gorm.DB, rules []model.FirewallRule) error {
+	var existing []model.FirewallRule
+	if err := tx.Find(&existing).Error; err != nil {
+		return fmt.Errorf("load current host firewall rules: %w", err)
+	}
+	byIdentity := make(map[string]model.FirewallRule, len(existing))
+	for _, item := range existing {
+		byIdentity[hostFirewallPolicyKey(item)] = item
+	}
+	for _, item := range rules {
+		identity := hostFirewallPolicyKey(item)
+		if current, exists := byIdentity[identity]; exists {
+			if current.Description == "" && item.Description != "" {
+				if err := tx.Model(&model.FirewallRule{}).Where("uuid = ?", current.UUID).
+					Update("description", item.Description).Error; err != nil {
+					return fmt.Errorf("restore legacy host firewall description: %w", err)
+				}
+			}
+			continue
+		}
+		if err := tx.Create(&item).Error; err != nil {
+			return fmt.Errorf("import legacy host firewall rule: %w", err)
+		}
+		byIdentity[identity] = item
+	}
+	return nil
+}

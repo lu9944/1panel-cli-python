@@ -1,0 +1,221 @@
+import { CommonModel, ReqPage } from '.';
+
+export namespace Host {
+    export interface HostTree {
+        id: number;
+        label: string;
+        children: Array<TreeNode>;
+    }
+    export interface TreeNode {
+        id: number;
+        label: string;
+    }
+    export interface Host extends CommonModel {
+        name: string;
+        groupID: number;
+        groupBelong: string;
+        addr: string;
+        port: number;
+        user: string;
+        authMode: string;
+        password: string;
+        privateKey: string;
+        passPhrase: string;
+        rememberPassword: boolean;
+        description: string;
+    }
+    export interface HostOperate {
+        isLocal: boolean;
+        id: number;
+        name: string;
+        groupID: number;
+        addr: string;
+        port: number;
+        user: string;
+        authMode: string;
+        password: string;
+        privateKey: string;
+        passPhrase: string;
+        rememberPassword: boolean;
+
+        description: string;
+    }
+    export interface HostConnTest {
+        isLocal: boolean;
+        addr: string;
+        port: number;
+        user: string;
+        authMode: string;
+        privateKey: string;
+        passPhrase: string;
+        password: string;
+
+        localSSHConnShow: string;
+    }
+    export interface GroupChange {
+        id: number;
+        groupID: number;
+    }
+    export interface ReqSearch {
+        info?: string;
+    }
+    export interface SearchWithPage extends ReqPage {
+        groupID: number;
+        info?: string;
+    }
+
+    export interface MonitorSetting {
+        defaultNetwork: string;
+        defaultIO: string;
+        monitorStatus: string;
+        monitorStoreDays: string;
+        monitorInterval: string;
+    }
+    export interface MonitorData {
+        param: string;
+        date: Array<Date>;
+        value: Array<any>;
+    }
+    export interface MonitorSearch {
+        param: string;
+        io: string;
+        network: string;
+        startTime: Date;
+        endTime: Date;
+    }
+
+    export interface RuntimeDiagnosticsSummary {
+        rss: number;
+        heapAlloc: number;
+        heapObjects: number;
+        goroutines: number;
+    }
+    export interface RuntimeGoroutineGroup {
+        state: string;
+        top: string;
+        count: number;
+        stack: string[];
+    }
+    export interface RuntimeGoroutineSnapshot {
+        total: number;
+        groupCount: number;
+        truncated: boolean;
+        capturedAt: string;
+        goroutines: RuntimeGoroutineGroup[];
+    }
+    export interface RuntimeProfileCreate {
+        type: 'cpu' | 'heap' | 'goroutine' | 'mutex' | 'block';
+        duration: number;
+    }
+    export interface SSHInfo {
+        autoStart: boolean;
+        isActive: boolean;
+        message: string;
+        port: string;
+        listenAddress: string;
+        passwordAuthentication: string;
+        pubkeyAuthentication: string;
+        encryptionMode: string;
+        primaryKey: string;
+        permitRootLogin: string;
+        useDNS: string;
+        currentUser: string;
+    }
+    export interface SSHUpdate {
+        key: string;
+        newValue: string;
+    }
+    export interface RootCert {
+        name: string;
+        mode: string;
+        encryptionMode: string;
+        passPhrase: string;
+        privateKey: string;
+        publicKey: string;
+        description: string;
+    }
+    export interface RootCertInfo {
+        id: number;
+        createAt: Date;
+        name: string;
+        mode: string;
+        encryptionMode: string;
+        passPhrase: string;
+        description: string;
+        publicKey: string;
+        privateKey: string;
+    }
+    export interface searchSSHLog extends ReqPage {
+        info: string;
+        status: string;
+        startTime?: string | Date;
+        endTime?: string | Date;
+    }
+    export interface analysisSSHLog extends ReqPage {
+        orderBy: string;
+    }
+    export interface sshHistory {
+        date: Date;
+        area: string;
+        user: string;
+        authMode: string;
+        address: string;
+        port: string;
+        status: string;
+        message: string;
+    }
+
+    export interface DiskBasicInfo {
+        device: string;
+        size: string;
+        model: string;
+        diskType: string;
+        isRemovable: boolean;
+        isSystem: boolean;
+        filesystem: string;
+        used: string;
+        avail: string;
+        usePercent: number;
+        mountPoint: string;
+        isMounted: boolean;
+        serial: string;
+    }
+
+    export interface DiskInfo extends DiskBasicInfo {
+        partitions?: DiskBasicInfo[];
+    }
+
+    export interface CompleteDiskInfo {
+        disks: DiskInfo[];
+        unpartitionedDisks: DiskBasicInfo[];
+        systemDisks?: DiskInfo[];
+        totalDisks: number;
+        totalCapacity: number;
+    }
+
+    export interface DiskPartition {
+        device: string;
+        filesystem: string;
+        label: string;
+        autoMount: boolean;
+        mountPoint: string;
+        noFail: boolean;
+    }
+
+    export interface DiskMount {
+        device: string;
+        mountPoint: string;
+        filesystem?: string;
+    }
+
+    export interface DiskUmount {
+        mountPoint: string;
+    }
+
+    export interface ComponentInfo {
+        exists: boolean;
+        version: string;
+        path: string;
+        error: string;
+    }
+}

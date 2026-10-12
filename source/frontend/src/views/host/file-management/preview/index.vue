@@ -1,0 +1,197 @@
+<template>
+    <DialogPro
+        v-model="open"
+        :show-close="false"
+        append-to-body
+        @opened="onOpen"
+        :class="isFullscreen ? 'w-full' : '!w-3/4'"
+        :top="'5vh'"
+        :fullscreen="isFullscreen"
+        :close-on-click-modal="true"
+        @close="handleClose"
+    >
+        <template #header>
+            <div class="flex items-center justify-between">
+                <span>{{ $t('commons.button.preview') + ' - ' + filePath }}</span>
+                <el-space alignment="center" :size="10" class="dialog-header-icon">
+                    <el-tooltip :content="loadTooltip()" placement="top" v-if="fileType !== 'excel'">
+                        <el-icon @click="toggleFullscreen" class="cursor-pointer hover:scale-110">
+                            <FullScreen />
+                        </el-icon>
+                    </el-tooltip>
+                    <el-icon @click="handleClose" size="20" class="cursor-pointer hover:scale-110"><Close /></el-icon>
+                </el-space>
+            </div>
+        </template>
+        <div
+            v-loading="loading"
+            :style="isFullscreen ? 'height: 90vh' : 'height: 80vh'"
+            :class="fileType === 'image' ? 'overflow-y-auto' : 'flex justify-center items-center'"
+        >
+            <template v-if="fileType === 'image'">
+                <div class="flex h-full">
+                    <aside
+                        class="w-[200px] overflow-y-auto p-2 sm:block hidden left-aside rounded"
+                        v-if="imageFiles.length > 1"
+                    >
+                        <template v-for="(item, index) in imageFiles" :key="index">
+                            <el-tooltip :content="item.path" placement="right">
+                                <div
+                                    class="text-sm truncate mb-1 rounded p-1 left-item"
+                                    @click="changeImg(item.path)"
+                                    :class="item.path === filePath ? 'left-item-default' : ''"
+                                >
+                                    {{ item.path }}
+                                </div>
+                            </el-tooltip>
+                        </template>
+                    </aside>
+                    <main class="flex-1 overflow-hidden">
+                        <el-tooltip :content="filePath" placement="bottom">
+                            <el-image
+                                loading="lazy"
+                                :src="fileUrl"
+                                :alt="filePath"
+                                fit="contain"
+                                class="w-full h-full"
+                            />
+                        </el-tooltip>
+                    </main>
+                </div>
+            </template>
+            <video v-else-if="fileType === 'video'" :src="fileUrl" controls autoplay class="size-3/4"></video>
+
+            <audio v-else-if="fileType === 'audio'" :src="fileUrl" controls></audio>
+
+            <vue-office-docx
+                v-else-if="fileType === 'word'"
+                :src="fileUrl"
+                :style="isFullscreen ? 'height: 90vh' : 'height: 80vh'"
+                class="w-full"
+                @rendered="renderedHandler"
+                @error="errorHandler"
+            />
+
+            <vue-office-excel
+                v-else-if="fileType === 'excel'"
+                :src="fileUrl"
+                :style="isFullscreen ? 'height: 90vh;' : 'height: 80vh'"
+                class="w-full"
+                @rendered="renderedHandler"
+                @error="errorHandler"
+            />
+        </div>
+    </DialogPro>
+</template>
+
+<script lang="ts" setup>
+import i18n from '@/lang';
+import { ref } from 'vue';
+
+import { Close, FullScreen } from '@element-plus/icons-vue';
+import VueOfficeDocx from '@vue-office/docx';
+import VueOfficeExcel from '@vue-office/excel';
+import '@vue-office/docx/lib/index.css';
+import '@vue-office/excel/lib/index.css';
+import { MsgError } from '@/utils/message';
+
+interface EditProps {
+    fileType: string;
+    path: string;
+    name: string;
+    extension: string;
+    imageFiles: [];
+    currentNode: string;
+}
+
+const open = ref(false);
+const loading = ref(false);
+const filePath = ref('');
+const fileName = ref('');
+const fileType = ref('');
+const fileUrl = ref('');
+const currentNode = ref('');
+const imageFiles = ref([]);
+
+const fileExtension = ref('');
+const isFullscreen = ref(false);
+const em = defineEmits(['close']);
+
+const handleClose = () => {
+    open.value = false;
+
+    em('close', open.value);
+};
+
+const renderedHandler = () => {
+    loading.value = false;
+};
+const errorHandler = () => {
+    open.value = false;
+    MsgError(i18n.global.t('commons.msg.unSupportType'));
+};
+const loadTooltip = () => {
+    return i18n.global.t('commons.button.' + (isFullscreen.value ? 'quitFullscreen' : 'fullscreen'));
+};
+
+const toggleFullscreen = () => {
+    isFullscreen.value = !isFullscreen.value;
+};
+
+const getDownloadUrl = (path: string) => {
+    const baseUrl = `${import.meta.env.VITE_API_URL as string}/files/download`;
+    const encodedPath = encodeURIComponent(path);
+    const timestamp = new Date().getTime();
+    return `${baseUrl}?operateNode=${currentNode.value}&path=${encodedPath}&timestamp=${timestamp}`;
+};
+
+const acceptParams = (props: EditProps) => {
+    imageFiles.value = [];
+    fileExtension.value = props.extension;
+    fileName.value = props.name;
+    filePath.value = props.path;
+    fileType.value = props.fileType;
+    currentNode.value = props.currentNode;
+    isFullscreen.value = fileType.value === 'excel';
+
+    loading.value = true;
+    fileUrl.value = getDownloadUrl(props.path);
+    imageFiles.value = props.imageFiles.map((item) => ({
+        path: item,
+        url: getDownloadUrl(item),
+    }));
+    open.value = true;
+    loading.value = false;
+};
+
+const onOpen = () => {};
+
+const changeImg = (path: string) => {
+    filePath.value = path;
+    fileUrl.value = getDownloadUrl(path);
+};
+
+defineExpose({ acceptParams });
+</script>
+
+<style scoped lang="scss">
+.dialog-top {
+    top: 0;
+}
+
+.dialog-header-icon {
+    color: var(--el-color-info);
+}
+.left-aside {
+    background-color: var(--panel-menu-bg-color);
+    opacity: 85%;
+}
+.left-item {
+    &:hover {
+        background: var(--el-menu-item-bg-color-active) !important;
+    }
+}
+.left-item-default {
+    background: var(--el-menu-item-bg-color-active) !important;
+}
+</style>

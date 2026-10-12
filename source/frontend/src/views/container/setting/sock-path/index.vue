@@ -1,0 +1,123 @@
+<template>
+    <div>
+        <DrawerPro v-model="drawerVisible" :header="$t('container.sockPath')" @close="handleClose" size="small">
+            <el-form
+                ref="formRef"
+                label-position="top"
+                :model="form"
+                :rules="rules"
+                @submit.prevent
+                v-loading="loading"
+            >
+                <el-form-item :label="$t('container.sockPath')" prop="dockerSockPath">
+                    <el-input v-model="form.dockerSockPath">
+                        <template #prepend>unix://</template>
+                        <template #append>
+                            <el-button icon="Folder" @click="fileRef.acceptParams({})" />
+                        </template>
+                    </el-input>
+                    <span class="input-help">{{ $t('container.sockPathHelper1') }}</span>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="drawerVisible = false">{{ $t('commons.button.cancel') }}</el-button>
+                <el-button :disabled="loading" type="primary" @click="onSubmit(formRef)">
+                    {{ $t('commons.button.confirm') }}
+                </el-button>
+            </template>
+        </DrawerPro>
+        <FileList ref="fileRef" @choose="loadBuildDir" />
+    </div>
+</template>
+<script lang="ts" setup>
+import { reactive, ref } from 'vue';
+import i18n from '@/lang';
+import { MsgSuccess } from '@/utils/message';
+import FileList from '@/components/file-list/index.vue';
+import { updateAgentSetting } from '@/api/modules/setting';
+import { ElMessageBox, FormInstance } from 'element-plus';
+
+const emit = defineEmits<{ (e: 'search'): void }>();
+
+interface DialogProps {
+    dockerSockPath: string;
+}
+const drawerVisible = ref();
+const loading = ref();
+const fileRef = ref();
+
+const form = reactive({
+    dockerSockPath: '',
+    currentPath: '',
+});
+const formRef = ref<FormInstance>();
+const rules = reactive({
+    dockerSockPath: [{ required: true, validator: checkSockPath, trigger: 'blur' }],
+});
+
+function checkSockPath(rule: any, value: any, callback: any) {
+    if (!value.endsWith('.sock')) {
+        return callback(new Error(i18n.global.t('container.sockPathErr')));
+    }
+    callback();
+}
+
+const acceptParams = (params: DialogProps): void => {
+    form.dockerSockPath = params.dockerSockPath.replaceAll('unix://', '');
+    form.currentPath = params.dockerSockPath.replaceAll('unix://', '');
+    drawerVisible.value = true;
+};
+
+const loadBuildDir = async (path: string) => {
+    form.dockerSockPath = path;
+};
+
+const onSubmit = async (formEl: FormInstance | undefined) => {
+    if (!formEl) return;
+    formEl.validate(async (valid) => {
+        if (!valid) return;
+        ElMessageBox.confirm(
+            `
+            <div style="line-height: 1.6;">
+                <ul style="padding-left: 18px; margin: 0;">
+                    <li>${i18n.global.t('container.restartHelper')}</li>
+                    <li>${i18n.global.t('container.sockPathMsg')}</li>
+                </ul>
+            </div>
+            `,
+            i18n.global.t('container.sockPath'),
+            {
+                confirmButtonText: i18n.global.t('commons.button.confirm'),
+                cancelButtonText: i18n.global.t('commons.button.cancel'),
+                dangerouslyUseHTMLString: true,
+            },
+        ).then(async () => {
+            loading.value = true;
+            let params = {
+                key: 'DockerSockPath',
+                value: form.dockerSockPath.startsWith('unix://')
+                    ? form.dockerSockPath
+                    : 'unix://' + form.dockerSockPath,
+            };
+            await updateAgentSetting(params)
+                .then(() => {
+                    loading.value = false;
+                    handleClose();
+                    emit('search');
+                    MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+                })
+                .catch(() => {
+                    loading.value = false;
+                });
+        });
+    });
+};
+
+const handleClose = () => {
+    drawerVisible.value = false;
+};
+
+defineExpose({
+    acceptParams,
+});
+</script>

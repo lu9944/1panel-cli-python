@@ -11,6 +11,7 @@ import builtins
 from .client import PanelClient
 from .errors import CliError
 from .session import load_session
+from . import apps
 
 
 def check_code(resp: dict) -> None:
@@ -53,7 +54,7 @@ def find_mysql_db(client: PanelClient, instance: str, name: str) -> dict:
 def list(profile: str, db_type: str, instance: str | None) -> None:
     client = client_for(profile)
     db_type = db_type or "mysql"
-    instance = instance or db_type
+    instance = apps.resolve_instance_name(client, instance or db_type)
 
     if db_type in ("mysql", "mariadb"):
         body = {
@@ -91,6 +92,7 @@ def create(
     remark: str | None,
 ) -> None:
     client = client_for(profile)
+    instance = apps.resolve_instance_name(client, instance)
     encoded = (
         base64.b64encode(password.encode("utf-8")).decode("ascii") if password else ""
     )
@@ -111,6 +113,7 @@ def create(
 
 def delete(profile: str, name: str, instance: str, db_type: str, force: bool) -> None:
     client = client_for(profile)
+    instance = apps.resolve_instance_name(client, instance)
     db = find_mysql_db(client, instance, name)
 
     check_body = {"id": db.get("id", 0), "type": db_type, "database": instance}
@@ -141,6 +144,7 @@ def delete(profile: str, name: str, instance: str, db_type: str, force: bool) ->
 
 def users(profile: str, instance: str) -> None:
     client = client_for(profile)
+    instance = apps.resolve_instance_name(client, instance)
     resp = _parse(
         client.post_json("api/v2/databases/users/search", {"database": instance}),
         "查询用户失败",
@@ -165,6 +169,7 @@ def user_add(
     dbs: list[str], remark: str | None,
 ) -> None:
     client = client_for(profile)
+    instance = apps.resolve_instance_name(client, instance)
     body = {
         "database": instance,
         "username": username,
@@ -180,6 +185,7 @@ def user_add(
 
 def user_del(profile: str, username: str, instance: str, host: str) -> None:
     client = client_for(profile)
+    instance = apps.resolve_instance_name(client, instance)
     body = {"database": instance, "username": username, "host": host}
     resp = _parse(client.post_json("api/v2/databases/users/del", body), "删除用户失败")
     check_code(resp)
@@ -188,6 +194,7 @@ def user_del(profile: str, username: str, instance: str, host: str) -> None:
 
 def user_passwd(profile: str, username: str, password: str, instance: str, host: str) -> None:
     client = client_for(profile)
+    instance = apps.resolve_instance_name(client, instance)
     body = {
         "database": instance,
         "username": username,

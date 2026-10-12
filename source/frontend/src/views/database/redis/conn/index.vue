@@ -1,0 +1,260 @@
+<template>
+    <DrawerPro v-model="dialogVisible" :header="$t('database.databaseConnInfo')" @close="handleClose" size="small">
+        <el-form @submit.prevent v-loading="loading" ref="formRef" :model="form" label-position="top">
+            <el-form-item v-if="form.from === 'local'">
+                <template #label>
+                    <div class="flex items-center justify-between">
+                        <span>{{ $t('database.containerConn') }}</span>
+                        <el-button link @click="copyConnURL(true)" icon="DocumentCopy">
+                            {{ $t('database.copyConnURL') }}
+                        </el-button>
+                    </div>
+                </template>
+                <el-card class="mini-border-card">
+                    <el-descriptions :column="1">
+                        <el-descriptions-item :label="$t('database.connAddress')">
+                            <el-tooltip
+                                v-if="loadRedisInfo(true).length > 48"
+                                :content="loadRedisInfo(true)"
+                                placement="top"
+                            >
+                                {{ loadRedisInfo(true).substring(0, 48) }}...
+                            </el-tooltip>
+                            <span else>
+                                {{ loadRedisInfo(true) }}
+                            </span>
+                            <CopyButton :content="loadRedisInfo(true)" />
+                        </el-descriptions-item>
+                        <el-descriptions-item :label="$t('commons.table.port')">
+                            6379
+                            <CopyButton content="6379" />
+                        </el-descriptions-item>
+                    </el-descriptions>
+                </el-card>
+                <span class="input-help">
+                    {{ $t('database.containerConnHelper') }}
+                </span>
+            </el-form-item>
+            <el-form-item>
+                <template #label>
+                    <div class="flex items-center justify-between">
+                        <span>{{ $t('database.remoteConn') }}</span>
+                        <el-button link @click="copyConnURL(false)" icon="DocumentCopy">
+                            {{ $t('database.copyConnURL') }}
+                        </el-button>
+                    </div>
+                </template>
+                <el-card class="mini-border-card">
+                    <el-descriptions :column="1">
+                        <el-descriptions-item :label="$t('database.connAddress')">
+                            <el-tooltip
+                                v-if="loadRedisInfo(false).length > 48"
+                                :content="loadRedisInfo(false)"
+                                placement="top"
+                            >
+                                {{ loadRedisInfo(false).substring(0, 48) }}...
+                            </el-tooltip>
+                            <span else>
+                                {{ loadRedisInfo(false) }}
+                            </span>
+                            <CopyButton :content="loadRedisInfo(false)" />
+                        </el-descriptions-item>
+                        <el-descriptions-item :label="$t('commons.table.port')">
+                            {{ form.port }}
+                            <CopyButton :content="form.port + ''" />
+                        </el-descriptions-item>
+                    </el-descriptions>
+                </el-card>
+                <span class="input-help">
+                    {{ $t('database.remoteConnHelper2') }}
+                </span>
+            </el-form-item>
+
+            <el-divider border-style="dashed" />
+            <el-form-item :label="$t('commons.login.password')" v-if="form.from === 'local'" prop="password">
+                <el-input
+                    style="width: calc(100% - 205px)"
+                    type="password"
+                    show-password
+                    clearable
+                    v-model.trim="form.password"
+                />
+                <el-button-group>
+                    <CopyButton class="copy_button" :isIcon="false" :content="form.password" />
+                    <el-button @click="random">
+                        {{ $t('commons.button.random') }}
+                    </el-button>
+                </el-button-group>
+            </el-form-item>
+
+            <div v-if="form.from !== 'local'">
+                <el-form-item :label="$t('commons.login.password')">
+                    <el-tag>{{ form.password }}</el-tag>
+                    <CopyButton :content="form.password" />
+                </el-form-item>
+            </div>
+        </el-form>
+
+        <ConfirmDialog ref="confirmDialogRef" @confirm="onSubmit"></ConfirmDialog>
+
+        <template #footer>
+            <span class="dialog-footer">
+                <el-button :disabled="loading" @click="dialogVisible = false">
+                    {{ $t('commons.button.cancel') }}
+                </el-button>
+                <el-button
+                    v-permission
+                    :disabled="loading || form.status !== 'Running'"
+                    type="primary"
+                    @click="onSave(formRef)"
+                >
+                    {{ $t('commons.button.confirm') }}
+                </el-button>
+            </span>
+        </template>
+    </DrawerPro>
+</template>
+
+<script lang="ts" setup>
+import { reactive, ref } from 'vue';
+import i18n from '@/lang';
+import { ElForm } from 'element-plus';
+import { changeRedisPassword, getDatabase } from '@/api/modules/database';
+import ConfirmDialog from '@/components/confirm-dialog/index.vue';
+import { getAppConnInfo } from '@/api/modules/app';
+import { MsgSuccess } from '@/utils/message';
+import { getRandomStr } from '@/utils/id';
+import { copyText } from '@/utils/clipboard';
+import { getAgentSettingInfo } from '@/api/modules/setting';
+import { useGlobalStore } from '@/composables/useGlobalStore';
+const { currentNodeAddr } = useGlobalStore();
+
+const loading = ref(false);
+
+const dialogVisible = ref(false);
+const form = reactive({
+    status: '',
+    type: '',
+    systemIP: '',
+    password: '',
+    serviceName: '',
+    containerName: '',
+    port: 0,
+
+    from: '',
+    database: '',
+    remoteIP: '',
+});
+
+const confirmDialogRef = ref();
+
+const emit = defineEmits(['checkExist', 'closeTerminal']);
+
+type FormInstance = InstanceType<typeof ElForm>;
+const formRef = ref<FormInstance>();
+
+interface DialogProps {
+    from: string;
+    type: string;
+    database: string;
+}
+const acceptParams = (params: DialogProps): void => {
+    form.password = '';
+    form.from = params.from;
+    form.type = params.type;
+    form.database = params.database;
+    loadPassword();
+    dialogVisible.value = true;
+};
+const handleClose = () => {
+    dialogVisible.value = false;
+};
+
+const random = async () => {
+    form.password = getRandomStr(16);
+};
+
+const loadPassword = async () => {
+    if (form.from === 'local') {
+        const res = await getAppConnInfo(form.type, form.database);
+        form.status = res.data.status;
+        form.password = res.data.password || '';
+        form.port = res.data.port || 3306;
+        form.serviceName = res.data.serviceName || '';
+        form.containerName = res.data.containerName || '';
+        loadSystemIP();
+        return;
+    }
+    const res = await getDatabase(form.database);
+    form.password = res.data.password || '';
+    form.port = res.data.port || 3306;
+    form.password = res.data.password;
+    form.remoteIP = res.data.address;
+};
+
+const loadSystemIP = async () => {
+    const res = await getAgentSettingInfo();
+    form.systemIP = res.data.systemIP || currentNodeAddr.value || i18n.global.t('database.localIP');
+};
+
+function loadRedisInfo(isContainer: boolean) {
+    if (isContainer) {
+        return form.from === 'local' ? form.containerName : form.systemIP;
+    } else {
+        return form.from === 'local' ? form.systemIP : form.remoteIP;
+    }
+}
+
+const copyConnURL = (isContainer: boolean) => {
+    const host = loadRedisInfo(isContainer);
+    const port = isContainer && form.from === 'local' ? 6379 : form.port;
+    const encodedPassword = encodeURIComponent(form.password);
+    copyText(`redis://:${encodedPassword}@${host}:${port}`);
+};
+
+const onSubmit = async () => {
+    loading.value = true;
+    emit('closeTerminal');
+    await changeRedisPassword(form.database, form.password)
+        .then(() => {
+            loading.value = false;
+            MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+            dialogVisible.value = false;
+            emit('checkExist');
+        })
+        .catch(() => {
+            loading.value = false;
+        });
+};
+
+const onSave = async (formEl: FormInstance | undefined) => {
+    if (!formEl) return;
+    formEl.validate(async (valid) => {
+        if (!valid) return;
+        let params = {
+            header: i18n.global.t('database.confChange'),
+            operationInfo: i18n.global.t('database.restartNowHelper'),
+            submitInputInfo: i18n.global.t('database.restartNow'),
+        };
+        confirmDialogRef.value!.acceptParams(params);
+    });
+};
+
+defineExpose({
+    acceptParams,
+});
+</script>
+
+<style lang="scss" scoped>
+.copy_button {
+    border-radius: 0px;
+    border-left-width: 0px;
+}
+:deep(.el-input__wrapper) {
+    border-top-right-radius: 0px;
+    border-bottom-right-radius: 0px;
+}
+:deep(.el-form-item__label) {
+    width: 100%;
+}
+</style>

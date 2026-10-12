@@ -1,5 +1,11 @@
 name: Build Skill Package
 
+# 说明:本 workflow 不依赖任何 GitHub 托管 action(部分 runner 无法访问 github.com),
+# 全部步骤使用 run + 平台自带的 GITHUB_TOKEN 完成:
+#   - 用 git clone + GITHUB_TOKEN 拉代码(替代 actions/checkout)
+#   - 单元测试 / 打包 / 压缩(替代 setup-python、upload-artifact)
+#   - 用 curl 调 GITHUB_API_URL 创建/更新 Release 并上传附件(替代 gh CLI)
+
 on:
   workflow_dispatch:
   push:
@@ -14,135 +20,114 @@ jobs:
     name: 打包 1panel 技能包
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Read version
-        id: version
-        run: |
-          VERSION="$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Run unit tests
-        run: python3 -m unittest discover -s tests
-
-      - name: Build skill package
-        run: |
-          scripts/install_skill.sh dist/1panel-skill
-          cat > dist/1panel-skill/install.sh <<'EOF'
-          #!/usr/bin/env bash
-          # 将本技能包安装到 AI 工具的 skills 目录。
-          # 用法: bash install.sh [目标目录]
-          # 默认:已存在 ~/.config/opencode/skills 时装到 opencode,否则尝试 Claude Code,
-          #       都不存在时使用 opencode 默认路径。
-          set -euo pipefail
-
-          SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-          if [[ $# -ge 1 ]]; then
-            TARGET="$1"
-          elif [[ -d "$HOME/.config/opencode/skills" ]]; then
-            TARGET="$HOME/.config/opencode/skills/1panel-skill"
-          elif [[ -d "$HOME/.claude/skills" ]]; then
-            TARGET="$HOME/.claude/skills/1panel-skill"
-          else
-            TARGET="$HOME/.config/opencode/skills/1panel-skill"
-          fi
-
-          if [[ "$(cd "$TARGET" 2>/dev/null && pwd || true)" == "$SRC" ]]; then
-            echo "当前目录就是目标目录: $TARGET"
-            exit 0
-          fi
-
-          mkdir -p "$TARGET/bin" "$TARGET/references"
-          rm -rf "$TARGET/panel_cli" "$TARGET/references"
-          cp -r "$SRC/panel_cli" "$TARGET/panel_cli"
-          cp -r "$SRC/references/." "$TARGET/references/"
-          cp "$SRC/SKILL.md" "$SRC/commands.md" "$SRC/README.md" "$SRC/.env.example" "$TARGET/"
-          cp "$SRC/bin/1panel-cli" "$TARGET/bin/1panel-cli"
-          cp "$SRC/.env.example" "$TARGET/bin/.env.example"
-          chmod +x "$TARGET/bin/1panel-cli"
-          find "$TARGET/panel_cli" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
-
-          echo "已安装到: $TARGET"
-          echo "验证: $TARGET/bin/1panel-cli --version"
-          EOF
-          chmod +x dist/1panel-skill/install.sh
-          find dist/1panel-skill -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
-          dist/1panel-skill/bin/1panel-cli --version
-          ls -la dist/1panel-skill
-
-      - name: Zip package
-        run: |
-          cd dist
-          zip -qr "1panel-skill-${{ steps.version.outputs.version }}.zip" 1panel-skill
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: 1panel-skill-${{ steps.version.outputs.version }}
-          path: dist/1panel-skill
-          if-no-files-found: error
-          include-hidden-files: true
-
-      - name: Publish release
+      - name: 环境检查
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            TAG="$GITHUB_REF_NAME"
-          else
-            TAG="v${VERSION}"
-          fi
-          ASSET="dist/1panel-skill-${VERSION}.zip"
-          NOTES="1Panel v2 面板管理 Agent Skill(Python 版),验证基线 1Panel v2.2.5。
+          set -e
+          echo "server=${GITHUB_SERVER_URL:-?} repo=${GITHUB_REPOSITORY:-?} ref=${GITHUB_REF:-?}"
+          echo "sha=${GITHUB_SHA:-?} api=${GITHUB_API_URL:-?}"
+          if [ -n "${GITHUB_TOKEN:-}" ]; then echo "token: set"; else echo "token: empty"; fi
+          git --version
+          python3 --version
+          if command -v zip >/dev/null 2>&1; then echo "zip: ok"; else echo "zip: 缺失(用 python3 zipfile 兜底)"; fi
 
-          下载 zip 解压后运行 bash install.sh,或手动把 1panel-skill 目录复制到 opencode / Claude Code 的 skills 目录。"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$ASSET" --clobber
-            gh release edit "$TAG" --title "1panel-cli Skill $TAG" --notes "$NOTES"
-            echo "已更新 Release: $TAG"
-          else
-            gh release create "$TAG" "$ASSET" \
-              --target "$GITHUB_SHA" \
-              --title "1panel-cli Skill $TAG" \
-              --notes "$NOTES"
-            echo "已发布 Release: $TAG"
+      - name: 拉取代码(GIT_SERVER + GITHUB_TOKEN)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          SERVER="${GITHUB_SERVER_URL:-https://github.com}"; SERVER="${SERVER%/}"
+          HOST="${SERVER#*://}"
+          REF="${GITHUB_REF_NAME:-master}"
+          rm -rf repo
+          git clone --quiet --depth 1 --branch "$REF" \
+            "http://x-access-token:${GITHUB_TOKEN}@${HOST}/${GITHUB_REPOSITORY}.git" repo
+          cd repo
+          git log --oneline -1
+          echo "workspace=$PWD"
+
+      - name: 单元测试
+        run: |
+          cd repo
+          python3 -m unittest discover -s tests
+
+      - name: 打包技能包
+        run: |
+          cd repo
+          scripts/build_skill_package.sh "$PWD/dist"
+          dist/1panel-skill/bin/1panel-cli --version
+
+      - name: 发布 Release(仅 tag;curl 调 API,兼容 Gitea/GitHub)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GITHUB_TOKEN:-}" ]; then
+            echo "GITHUB_TOKEN 未注入,无法发布 Release(检查 workflow 的 permissions/secrets)"; exit 1
           fi
+          cd repo
+          TAG="${GITHUB_REF_NAME}"
+          API="${GITHUB_API_URL:-https://api.github.com}"
+          REPO="${GITHUB_REPOSITORY}"
+          AUTH="Authorization: token ${GITHUB_TOKEN}"
+          VERSION="$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"
+          ASSET="dist/1panel-skill-${VERSION}.zip"
+          [ -f "$ASSET" ] || { echo "缺少附件: $ASSET"; exit 1; }
+          NOTES="1Panel v2 面板管理 Agent Skill(Python 版),CLI 版本 ${VERSION},验证基线 1Panel v2.3.2。下载 zip 解压后运行 bash install.sh,或手动把 1panel-skill 目录复制到 opencode / Claude Code 的 skills 目录。"
+
+          REL_JSON="$(curl -sS -H "$AUTH" "$API/repos/$REPO/releases/tags/$TAG")"
+          REL_ID="$(printf '%s' "$REL_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", 0))' 2>/dev/null || echo 0)"
+          if [ "${REL_ID:-0}" = "0" ]; then
+            PAYLOAD="$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "name": sys.argv[2], "body": sys.argv[3], "draft": False, "prerelease": False}))' \
+              "$TAG" "1panel-cli Skill $TAG" "$NOTES")"
+            REL_ID="$(curl -sS -H "$AUTH" -H 'Content-Type: application/json' -X POST \
+              "$API/repos/$REPO/releases" -d "$PAYLOAD" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", 0))')"
+            echo "已创建 Release: $TAG (id=$REL_ID)"
+          else
+            echo "Release 已存在: $TAG (id=$REL_ID),更新附件并保留现有说明"
+          fi
+          [ "${REL_ID:-0}" != "0" ] || { echo "创建/查询 Release 失败"; exit 1; }
+
+          printf '%s' "$REL_JSON" | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          for a in d.get("assets", []):
+              print(a["id"], a["name"])
+          ' | while read -r AID ANAME; do
+            if [ "$ANAME" = "$(basename "$ASSET")" ]; then
+              curl -sS -H "$AUTH" -X DELETE "$API/repos/$REPO/releases/$REL_ID/assets/$AID" >/dev/null
+              echo "已删除旧附件: $ANAME"
+            fi
+          done
+
+          curl -sS -H "$AUTH" -X POST \
+            "$API/repos/$REPO/releases/$REL_ID/assets?name=$(basename "$ASSET")" \
+            -F "attachment=@${ASSET}" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print("已上传附件:", d.get("name"), d.get("size"), d.get("browser_download_url", ""))'
+          echo "Release: ${GITHUB_SERVER_URL:-https://github.com}/${REPO}/releases/tag/$TAG"
 
       - name: Job summary
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          REPO: ${{ github.repository }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            TAG="$GITHUB_REF_NAME"
-          else
-            TAG="v${VERSION}"
+          set -e
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "## 1panel 技能包构建完成"
+              echo ""
+              echo "- 仓库: \`${GITHUB_REPOSITORY}\`"
+              echo "- Ref: \`${GITHUB_REF}\`"
+              echo "- 附件: \`1panel-skill-<version>.zip\`(tag 构建时已附加到 Release)"
+              echo ""
+              echo "### 安装"
+              echo '```sh'
+              echo "# 解压下载的 zip 后"
+              echo "cd 1panel-skill"
+              echo "bash install.sh                  # 自动安装到 opencode 或 Claude Code 的 skills 目录"
+              echo "bash install.sh /自定义/技能目录  # 或显式指定目标目录"
+              echo '```'
+              echo ""
+              echo "验证: \`<技能目录>/bin/1panel-cli --version\`"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
-          {
-            echo "## 1panel 技能包已生成"
-            echo ""
-            echo "- 版本: \`${VERSION}\`"
-            echo "- Release: https://github.com/${REPO}/releases/tag/${TAG}"
-            echo "- 产物: 本页 **Artifacts** 区域的 \`1panel-skill-${VERSION}\`(zip,解压得到 \`1panel-skill/\` 目录)"
-            echo ""
-            echo "### 安装"
-            echo '```sh'
-            echo "# 解压下载的 artifact"
-            echo "cd 1panel-skill"
-            echo "bash install.sh                  # 自动安装到 opencode 或 Claude Code 的 skills 目录"
-            echo "bash install.sh /自定义/技能目录  # 或显式指定目标目录"
-            echo ""
-            echo "# 手动安装(opencode 示例)"
-            echo "mv 1panel-skill ~/.config/opencode/skills/"
-            echo '```'
-            echo ""
-            echo "验证: \`~/.config/opencode/skills/1panel-skill/bin/1panel-cli --version\`"
-          } >> "$GITHUB_STEP_SUMMARY"

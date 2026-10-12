@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -103,6 +104,7 @@ def config(profile: str, domain: str, file: str | None) -> None:
     client, _ = _client_for(profile)
     website = get_website(client, domain)
     website_id = website.get("id", 0)
+    ensure_openresty_compat(client)
 
     if file:
         try:
@@ -139,11 +141,18 @@ def https(profile: str, domain: str, opts: HttpsOptions) -> None:
     client, _ = _client_for(profile)
     website = get_website(client, domain)
     website_id = website.get("id", 0)
+    ensure_openresty_compat(client)
 
     if opts.enable is None and opts.ssl_id is None and opts.cert_file is None:
-        resp = _parse(client.get(f"api/v2/websites/{website_id}/https"), "查询 https 配置失败")
-        check_code(resp)
-        st = resp.get("data") or {}
+        resp = client.get(f"api/v2/websites/{website_id}/https")
+        if resp.status >= 500:
+            raise CliError(
+                "读取 HTTPS 配置失败(面板返回 HTTP 500)。已知原因:本地应用路径兼容问题;"
+                "可先运行 `1panel-cli web repair` 修复后重试"
+            )
+        payload = _parse(resp, "查询 https 配置失败")
+        check_code(payload)
+        st = payload.get("data") or {}
         print(f"{domain} HTTPS: {'已开启' if st.get('enable') else '未开启'}")
         ssl = st.get("ssl")
         if ssl:
@@ -155,38 +164,19 @@ def https(profile: str, domain: str, opts: HttpsOptions) -> None:
         return
 
     enable = True if opts.enable is None else opts.enable
-    http_config = opts.http_config or "HTTPToHTTPS"
-    body: dict = {
-        "websiteId": website_id,
-        "enable": enable,
-        "httpConfig": http_config,
-        "type": "existed",
-    }
     if enable:
-        if opts.cert_file and opts.key_file:
-            try:
-                certificate = Path(opts.cert_file).read_text(encoding="utf-8")
-            except OSError as exc:
-                raise CliError(f"读取证书文件失败 {opts.cert_file}: {exc}") from exc
-            try:
-                private_key = Path(opts.key_file).read_text(encoding="utf-8")
-            except OSError as exc:
-                raise CliError(f"读取私钥文件失败 {opts.key_file}: {exc}") from exc
-            body["type"] = "manual"
-            body["importType"] = "paste"
-            body["certificate"] = certificate
-            body["privateKey"] = private_key
-        else:
-            if opts.ssl_id is None:
-                raise CliError(
-                    "启用 HTTPS 需要提供 --ssl-id(可先运行 web ssl 申请证书)或 --cert/--key 上传证书"
-                )
-            body["type"] = "existed"
-            body["websiteSSLId"] = opts.ssl_id
-    resp = _parse(
-        client.post_json(f"api/v2/websites/{website_id}/https", body), "更新 https 配置失败"
-    )
-    check_code(resp)
+        apply_https(client, website_id, opts.ssl_id, opts.http_config, opts.cert_file, opts.key_file)
+    else:
+        body = {
+            "websiteId": website_id,
+            "enable": False,
+            "httpConfig": opts.http_config or "HTTPToHTTPS",
+            "type": "existed",
+        }
+        resp = _parse(
+            client.post_json(f"api/v2/websites/{website_id}/https", body), "更新 https 配置失败"
+        )
+        check_code(resp)
     print(f"{domain} HTTPS 已{'开启' if enable else '关闭'}")
 
 
@@ -217,7 +207,7 @@ def ssl(profile: str, domain: str, opts: SslOptions) -> None:
         raise CliError("创建证书失败: 未返回证书 ID")
     print(f"证书已创建: id={ssl_id} domain={domain}")
 
-    # v2.2.5 的 /websites/ssl 创建后会自动异步发起申请(website_ssl.go:263);
+    # 1Panel 的 /websites/ssl 创建后会自动异步发起申请(website_ssl.go 中 `go ObtainSSL`);
     # 此时显式 obtain 会返回「任务执行中,请勿重复执行」——视为已发起,避免误报失败。
     resp = _parse(
         client.post_json("api/v2/websites/ssl/obtain", {"ID": ssl_id, "skipDNSCheck": False}),
@@ -334,22 +324,190 @@ class CreateOptions:
     type: str
     alias: str | None
     remark: str | None
+    proxy: str | None = None
+    ssl_id: int | None = None
+    http_config: str | None = None
+    spa: bool = False
+    spa_api_prefixes: str | None = None
+
+
+OPENRESTY_APP_KEYS = ("openresty", "localopenresty")
+DEFAULT_SPA_API_PREFIXES = "api,auth,health,linear"
+# 1Panel 本地应用(离线/内置商店)的安装目录为 <apps>/local/<key>/<name>,
+# 但部分 nginx 相关接口固定读取 <apps>/<key>/<name>(详见 ensure_openresty_compat)
+LOCAL_APP_MARKER = "/apps/local/"
 
 
 def new_uuid() -> str:
     return str(uuid.UUID(bytes=os.urandom(16), version=4))
 
 
-def find_openresty_install(client: PanelClient) -> int:
-    body = {"page": 1, "pageSize": 100, "name": "openresty", "type": "", "tags": []}
+def list_installed_apps(client: PanelClient) -> list[dict]:
+    body = {"page": 1, "pageSize": 200, "name": "", "type": "", "tags": []}
     resp = _parse(
-        client.post_json("api/v2/apps/installed/search", body), "查询 openresty 安装信息失败"
+        client.post_json("api/v2/apps/installed/search", body), "查询已安装应用失败"
     )
     check_code(resp)
-    for it in (resp.get("data") or {}).get("items") or []:
-        if it.get("appKey") == "openresty" and it.get("id"):
-            return int(it["id"])
+    return (resp.get("data") or {}).get("items") or []
+
+
+def find_openresty_install_item(client: PanelClient) -> dict:
+    for it in list_installed_apps(client):
+        if str(it.get("appKey") or "") in OPENRESTY_APP_KEYS:
+            return it
     raise CliError("未找到已安装的 openresty,请先运行 apps install openresty")
+
+
+def find_openresty_install(client: PanelClient) -> int:
+    item = find_openresty_install_item(client)
+    if not item.get("id"):
+        raise CliError("解析 openresty 安装 ID 失败")
+    return int(item["id"])
+
+
+def openresty_path_compat(install: dict) -> tuple[str, str] | None:
+    """推导本地应用的 (面板期望路径, 实际路径);不适用于远程应用时返回 None。"""
+    app_key = str(install.get("appKey") or "")
+    path = str(install.get("path") or "").rstrip("/")
+    if not app_key.startswith("local") or LOCAL_APP_MARKER not in path:
+        return None
+    head, _, tail = path.partition(LOCAL_APP_MARKER)
+    key_dir = tail.split("/", 1)[0]
+    if not key_dir:
+        return None
+    return f"{head}/apps/{key_dir}", os.path.dirname(path)
+
+
+def ensure_openresty_compat(client: PanelClient) -> str:
+    """兼容 1Panel 本地应用路径问题(自动创建软链)。
+
+    返回值: skip(无需处理) / ok(已兼容) / fixed(已修复) / unavailable(工具不在面板主机)。
+    """
+    try:
+        install = find_openresty_install_item(client)
+    except CliError:
+        return "skip"
+    compat = openresty_path_compat(install)
+    if not compat:
+        return "skip"
+    expected_root, actual_root = compat
+    if os.path.exists(expected_root):
+        return "ok"
+    if not os.path.exists(actual_root):
+        return "unavailable"
+    try:
+        os.symlink(actual_root, expected_root)
+    except OSError as exc:
+        raise CliError(
+            f"检测到 1Panel 本地应用路径兼容问题,但自动创建软链失败: {exc};"
+            f"请在面板主机执行: ln -s {actual_root} {expected_root}"
+        ) from exc
+    print(f"已修复面板本地应用路径兼容: {expected_root} -> {actual_root}")
+    return "fixed"
+
+
+def repair(profile: str) -> None:
+    """修复已知兼容问题(本地应用路径软链),供面板不匹配报错时使用。"""
+    client, _ = _client_for(profile)
+    installs = list_installed_apps(client)
+    if not installs:
+        print("当前没有已安装应用,无需修复。")
+        return
+    fixed = 0
+    for install in installs:
+        compat = openresty_path_compat(install)
+        if not compat:
+            continue
+        expected_root, actual_root = compat
+        name = install.get("name", "")
+        if os.path.exists(expected_root):
+            print(f"{name}: 路径兼容正常({expected_root})")
+            continue
+        if not os.path.exists(actual_root):
+            print(f"{name}: 未找到实际目录 {actual_root}(工具可能不在面板主机,请手动检查)")
+            continue
+        try:
+            os.symlink(actual_root, expected_root)
+        except OSError as exc:
+            raise CliError(f"创建软链失败: {exc};请手动执行: ln -s {actual_root} {expected_root}") from exc
+        print(f"{name}: 已创建软链 {expected_root} -> {actual_root}")
+        fixed += 1
+    print(f"修复完成(新建软链 {fixed} 个)。")
+
+
+def delete(profile: str, domain: str, force: bool) -> None:
+    """删除网站;遇到面板本地应用 key 的已知问题时可用 --force 走兼容模式。"""
+    client, _ = _client_for(profile)
+    website = get_website(client, domain)
+    website_id = int(website.get("id", 0) or 0)
+    body = {
+        "id": website_id,
+        "deleteApp": False,
+        "deleteBackup": True,
+        "forceDelete": True,
+        "deleteDB": False,
+    }
+
+    resp = _parse(client.post_json("api/v2/websites/del", body), "删除网站失败")
+    if resp.get("code") == 200:
+        print(f"网站已删除: {domain}")
+        return
+    message = resp.get("message", "") or ""
+    if "record not found" not in message:
+        raise CliError(f"面板返回错误 (code={resp.get('code', -1)}): {message}")
+    if not force:
+        raise CliError(
+            "删除失败: 面板已知问题(本地应用 key 为 localopenresty,但删除流程固定按 openresty 查询,"
+            "报 record not found);确认可用 --force 让本工具临时改名应用 key 完成删除"
+            "(会先备份 agent.db,删除后自动还原)"
+        )
+    _delete_with_local_app_key_workaround(client, body, domain)
+
+
+def _delete_with_local_app_key_workaround(client: PanelClient, body: dict, domain: str) -> None:
+    """临时把 localopenresty 改名为 openresty,删除网站后还原(仅同机可用)。"""
+    import sqlite3
+
+    from .initcmd import AGENT_DB
+
+    db_path = Path(AGENT_DB)
+    if not db_path.exists():
+        raise CliError(
+            f"未找到面板数据库 {db_path}(--force 需本工具与面板同机);"
+            "可在面板主机手动执行: UPDATE apps SET key='openresty' WHERE key='localopenresty';"
+            "删除后改回"
+        )
+    backup = db_path.with_name(db_path.name + ".1panel-cli.bak")
+    src = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    dst = sqlite3.connect(str(backup))
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+
+    con = sqlite3.connect(str(db_path), timeout=10)
+    renamed: list[tuple[int, str]] = []
+    try:
+        con.execute("PRAGMA busy_timeout=10000")
+        rows = con.execute("SELECT id, key FROM apps WHERE key = 'localopenresty'").fetchall()
+        if not rows:
+            raise CliError("未发现 localopenresty 应用记录,请手动检查面板数据库")
+        for app_id, key in rows:
+            con.execute("UPDATE apps SET key = ? WHERE id = ?", ("openresty", app_id))
+            renamed.append((app_id, key))
+        con.commit()
+        try:
+            resp = _parse(client.post_json("api/v2/websites/del", body), "解析删除响应失败")
+            check_code(resp)
+        finally:
+            for app_id, key in renamed:
+                con.execute("UPDATE apps SET key = ? WHERE id = ?", (key, app_id))
+            con.commit()
+    finally:
+        con.close()
+    print(f"网站已删除: {domain}")
+    print(f"已使用本地应用 key 兼容模式(数据库备份: {backup})")
 
 
 def find_default_website_group(client: PanelClient) -> int:
@@ -369,8 +527,155 @@ def find_default_website_group(client: PanelClient) -> int:
     raise CliError("面板没有可用的网站分组")
 
 
+def normalize_proxy(proxy_pass: str) -> str:
+    """规范化反代地址:补全协议前缀,允许 127.0.0.1:3500 这种写法。"""
+    upstream = (proxy_pass or "").strip()
+    if not upstream:
+        raise CliError("需要后端地址(如 http://127.0.0.1:3500)")
+    if "://" not in upstream:
+        upstream = "http://" + upstream
+    return upstream
+
+
+def build_spa_content(proxy_pass: str, api_prefixes: str = DEFAULT_SPA_API_PREFIXES) -> str:
+    """生成 SPA 前端路由回退配置(error_page + proxy_intercept_errors)。
+
+    后端返回 404 时改为返回 /index.html,使 React/Vue 等前端路由刷新不 404;
+    API 前缀、静态资源与隐藏路径保持原 404。
+    """
+    upstream = normalize_proxy(proxy_pass)
+    prefixes = [p.strip().strip("/") for p in (api_prefixes or "").split(",") if p.strip()]
+    prefix_re = "|".join(re.escape(p) for p in prefixes) if prefixes else "api"
+    return f"""# SPA 前端路由回退:后端返回 404 时改为返回 index.html(React/Vue 等)
+proxy_intercept_errors on;
+error_page 404 = @spa_fallback;
+
+location @spa_fallback {{
+    if ($uri ~ ^/({prefix_re})(/|$)) {{
+        return 404;
+    }}
+    if ($uri ~* \\.[a-zA-Z0-9]+$) {{
+        return 404;
+    }}
+    if ($uri ~ (^|/)\\.) {{
+        return 404;
+    }}
+    rewrite ^ /index.html break;
+    proxy_pass {upstream};
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port $server_port;
+}}
+"""
+
+
+def detect_proxy_pass(client: PanelClient, website_id: int) -> str:
+    resp = _parse(
+        client.post_json("api/v2/websites/proxies", {"id": website_id}), "读取反代配置失败"
+    )
+    check_code(resp)
+    for item in resp.get("data") or []:
+        if item.get("proxyPass") and item.get("enable") is not False:
+            return str(item["proxyPass"])
+    raise CliError("未找到该网站的反代目标,请用 --proxy 指定后端地址")
+
+
+def write_spa_rewrite(
+    client: PanelClient, website_id: int, proxy_pass: str, api_prefixes: str | None = None
+) -> None:
+    content = build_spa_content(proxy_pass, api_prefixes or DEFAULT_SPA_API_PREFIXES)
+    resp = _parse(
+        client.post_json(
+            "api/v2/websites/rewrite/update",
+            {"websiteId": website_id, "name": "SPA-Fallback", "content": content},
+        ),
+        "写入 SPA 回退配置失败",
+    )
+    check_code(resp)
+    print("已启用 SPA 前端路由回退(刷新深层路由不再 404)")
+
+
+def spa(
+    profile: str,
+    domain: str,
+    proxy: str | None,
+    api_prefixes: str | None,
+    remove: bool,
+) -> None:
+    client, _ = _client_for(profile)
+    website = get_website(client, domain)
+    website_id = website.get("id", 0)
+    ensure_openresty_compat(client)
+
+    if remove:
+        content = "# SPA 回退已关闭\n"
+        resp = _parse(
+            client.post_json(
+                "api/v2/websites/rewrite/update",
+                {"websiteId": website_id, "name": "SPA-Fallback", "content": content},
+            ),
+            "关闭 SPA 回退失败",
+        )
+        check_code(resp)
+        print(f"{domain} 的 SPA 回退已关闭")
+        return
+
+    upstream = proxy or detect_proxy_pass(client, website_id)
+    write_spa_rewrite(client, website_id, upstream, api_prefixes)
+
+
+def apply_https(
+    client: PanelClient,
+    website_id: int,
+    ssl_id: int | None,
+    http_config: str | None,
+    cert_file: str | None = None,
+    key_file: str | None = None,
+) -> None:
+    body: dict = {
+        "websiteId": website_id,
+        "enable": True,
+        "httpConfig": http_config or "HTTPToHTTPS",
+        "type": "existed",
+    }
+    if cert_file and key_file:
+        try:
+            certificate = Path(cert_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise CliError(f"读取证书文件失败 {cert_file}: {exc}") from exc
+        try:
+            private_key = Path(key_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise CliError(f"读取私钥文件失败 {key_file}: {exc}") from exc
+        body["type"] = "manual"
+        body["importType"] = "paste"
+        body["certificate"] = certificate
+        body["privateKey"] = private_key
+    else:
+        if ssl_id is None:
+            raise CliError(
+                "启用 HTTPS 需要提供 --ssl-id(可先运行 web ssl 申请证书)或 --cert/--key 上传证书"
+            )
+        body["websiteSSLId"] = ssl_id
+    resp = _parse(
+        client.post_json(f"api/v2/websites/{website_id}/https", body), "更新 https 配置失败"
+    )
+    check_code(resp)
+
+
 def create(profile: str, domain: str, opts: CreateOptions) -> None:
     client, _ = _client_for(profile)
+    ensure_openresty_compat(client)
+
+    web_type = "proxy" if opts.proxy else opts.type
+    if opts.proxy and opts.type != "proxy":
+        print(f"检测到 --proxy,网站类型使用 proxy(忽略 --type {opts.type})")
+    if opts.spa and web_type != "proxy":
+        raise CliError("--spa 仅适用于反代网站(请配合 --proxy 使用)")
+    if opts.ssl_id and opts.type not in ("", "static", "proxy"):
+        raise CliError("--ssl-id 仅支持创建 static / proxy 网站时使用")
 
     openresty_id = find_openresty_install(client)
     group_id = find_default_website_group(client)
@@ -378,7 +683,7 @@ def create(profile: str, domain: str, opts: CreateOptions) -> None:
 
     body = {
         "primaryDomain": domain,
-        "type": opts.type,
+        "type": web_type,
         "alias": alias,
         "remark": opts.remark or "",
         "appType": "installed",
@@ -388,7 +693,25 @@ def create(profile: str, domain: str, opts: CreateOptions) -> None:
         "taskID": new_uuid(),
         "IPV6": False,
     }
+    if opts.proxy:
+        body["proxy"] = normalize_proxy(opts.proxy)
+    if opts.ssl_id:
+        body["enableSSL"] = True
+        body["websiteSSLID"] = opts.ssl_id
     resp = _parse(client.post_json("api/v2/websites", body), "解析创建网站响应失败")
     check_code(resp)
-    print(f"网站已创建: {domain} (alias={alias}, 类型={opts.type})")
+    print(f"网站已创建: {domain} (alias={alias}, 类型={web_type})")
+    if opts.proxy:
+        print(f"反代目标: {normalize_proxy(opts.proxy)}")
+
+    website = find_website(client, domain)
+    website_id = website.get("id", 0)
+
+    if opts.ssl_id:
+        if opts.http_config and opts.http_config != "HTTPToHTTPS":
+            apply_https(client, website_id, opts.ssl_id, opts.http_config)
+        print(f"HTTPS 已启用(证书 ID {opts.ssl_id},HTTP 跳转 {opts.http_config or 'HTTPToHTTPS'})")
+    if opts.spa:
+        upstream = opts.proxy or detect_proxy_pass(client, website_id)
+        write_spa_rewrite(client, website_id, upstream, opts.spa_api_prefixes)
     print("可运行 `1panel-cli web list` 查看面板实际网站目录")

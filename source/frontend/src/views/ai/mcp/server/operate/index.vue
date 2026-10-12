@@ -1,0 +1,343 @@
+<template>
+    <DrawerPro
+        v-model="open"
+        :header="$t('commons.button.' + mode)"
+        :resource="mcpServer.name"
+        @close="handleClose"
+        size="large"
+    >
+        <el-form
+            ref="mcpServerForm"
+            label-position="top"
+            :model="mcpServer"
+            label-width="125px"
+            :rules="rules"
+            v-loading="loading"
+        >
+            <el-form-item>
+                <el-button v-permission @click="importRef.acceptParams()" type="primary" plain>
+                    {{ $t('aiTools.mcp.importMcpJson') }}
+                </el-button>
+            </el-form-item>
+            <el-form-item :label="$t('commons.table.name')" prop="name">
+                <el-input v-model="mcpServer.name" :disabled="mode == 'edit'" />
+            </el-form-item>
+            <el-form-item :label="$t('commons.table.type')" prop="type">
+                <el-select v-model="mcpServer.type">
+                    <el-option label="npx" value="npx" />
+                    <el-option label="uvx" value="uvx" />
+                </el-select>
+                <span class="input-help">
+                    {{ $t('aiTools.mcp.' + mcpServer.type + 'Helper') }}
+                </span>
+            </el-form-item>
+            <el-form-item :label="$t('runtime.runScript')" prop="command">
+                <el-input
+                    v-model="mcpServer.command"
+                    type="textarea"
+                    :rows="3"
+                    :placeholder="
+                        $t('ssl.commonNameHelper') +
+                        (mcpServer.type == 'npx'
+                            ? ' npx -y @modelcontextprotocol/server-github'
+                            : ' uvx mcp-server-fetch')
+                    "
+                ></el-input>
+            </el-form-item>
+            <el-form-item :label="$t('aiTools.mcp.baseUrl')" prop="url">
+                <el-input v-model.trim="mcpServer.url">
+                    <template #prepend>
+                        <el-select v-model="mcpServer.protocol" class="pre-select">
+                            <el-option label="http" value="http://" />
+                            <el-option label="https" value="https://" />
+                        </el-select>
+                    </template>
+                </el-input>
+                <span class="input-help">
+                    {{ $t('aiTools.mcp.baseUrlHelper') }}
+                </span>
+            </el-form-item>
+            <el-form-item :label="$t('aiTools.mcp.outputTransport')" prop="outputTransport">
+                <el-select v-model="mcpServer.outputTransport">
+                    <el-option label="sse" value="sse" />
+                    <el-option label="streamableHttp" value="streamableHttp" />
+                </el-select>
+            </el-form-item>
+            <el-form-item :label="$t('aiTools.mcp.ssePath')" prop="ssePath" v-if="mcpServer.outputTransport === 'sse'">
+                <el-input v-model.trim="mcpServer.ssePath"></el-input>
+                <span class="input-help">
+                    {{ $t('aiTools.mcp.ssePathHelper') }}
+                </span>
+            </el-form-item>
+            <el-form-item
+                :label="$t('aiTools.mcp.streamableHttpPath')"
+                prop="streamableHttpPath"
+                v-if="mcpServer.outputTransport === 'streamableHttp'"
+            >
+                <el-input v-model.trim="mcpServer.streamableHttpPath"></el-input>
+                <span class="input-help">
+                    {{ $t('aiTools.mcp.streamableHttpPathHelper') }}
+                </span>
+            </el-form-item>
+            <el-form-item
+                v-if="mcpServer.outputTransport === 'streamableHttp'"
+                :label="$t('aiTools.mcp.protocolVersion')"
+                prop="protocolVersion"
+            >
+                <el-input v-model.trim="mcpServer.protocolVersion" />
+                <span class="input-help">
+                    {{ $t('aiTools.mcp.protocolVersionHelper') }}
+                </span>
+            </el-form-item>
+            <el-form-item :label="$t('app.params')" prop="gatewayArgs">
+                <el-input
+                    v-model="mcpServer.gatewayArgs"
+                    type="textarea"
+                    :rows="3"
+                    :maxlength="4096"
+                    placeholder='--header "x-user-id: 123" --logLevel debug'
+                />
+                <span class="input-help">
+                    {{ $t('aiTools.mcp.gatewayArgsHelper') }}
+                </span>
+            </el-form-item>
+            <el-form-item :label="$t('container.image')" prop="gatewayImage">
+                <el-input v-model.trim="mcpServer.gatewayImage" />
+            </el-form-item>
+            <el-form-item :label="$t('app.containerName')" prop="containerName">
+                <el-input v-model.trim="mcpServer.containerName"></el-input>
+            </el-form-item>
+            <el-tabs type="border-card" class="mt-2">
+                <el-tab-pane :label="$t('commons.table.port')">
+                    <div class="mt-1.5">
+                        <el-row :gutter="20">
+                            <el-col :span="8" :xs="24">
+                                <el-form-item :label="$t('commons.table.port')" prop="port">
+                                    <el-input v-model.number="mcpServer.port" />
+                                </el-form-item>
+                            </el-col>
+                            <el-col :span="6" :xs="24">
+                                <el-form-item :label="$t('app.allowPort')" prop="hostIP">
+                                    <el-switch
+                                        v-model="mcpServer.hostIP"
+                                        :active-value="'0.0.0.0'"
+                                        :inactive-value="'127.0.0.1'"
+                                    />
+                                </el-form-item>
+                            </el-col>
+                        </el-row>
+                    </div>
+                </el-tab-pane>
+                <el-tab-pane :label="$t('runtime.environment')">
+                    <Environment :environments="mcpServer.environments" :show-helper="false" />
+                </el-tab-pane>
+                <el-tab-pane :label="$t('container.mount')">
+                    <Volumes :volumes="mcpServer.volumes" />
+                </el-tab-pane>
+            </el-tabs>
+        </el-form>
+        <template #footer>
+            <span>
+                <el-button @click="handleClose" :disabled="loading">{{ $t('commons.button.cancel') }}</el-button>
+                <el-button v-permission type="primary" @click="submit(mcpServerForm)" :disabled="loading">
+                    {{ $t('commons.button.confirm') }}
+                </el-button>
+            </span>
+        </template>
+    </DrawerPro>
+    <Import ref="importRef" @confirm="getImport" />
+</template>
+
+<script lang="ts" setup>
+import { AI } from '@/api/interface/ai';
+import { createMcpServer, getMcpDomain, updateMcpServer } from '@/api/modules/ai';
+import { Rules } from '@/global/form-rules';
+import i18n from '@/lang';
+import { newUUID } from '@/utils/id';
+import { MsgSuccess } from '@/utils/message';
+import { FormInstance } from 'element-plus';
+import { ref, watch } from 'vue';
+import Environment from '@/views/website/runtime/components/environment/index.vue';
+import Volumes from '@/views/website/runtime/components/volume/index.vue';
+import Import from '../import/index.vue';
+
+const open = ref(false);
+const mode = ref('create');
+const loading = ref(false);
+const mcpServerForm = ref();
+const importRef = ref();
+const defaultProtocolVersion = '2025-06-18';
+const defaultGatewayImages: Record<string, string> = {
+    npx: 'supercorp/supergateway:3.4.3',
+    uvx: 'supercorp/supergateway:uvx',
+};
+const newMcpServer = (): AI.McpServer => {
+    return {
+        id: 0,
+        name: '',
+        port: 8000,
+        status: '',
+        message: '',
+        baseUrl: '',
+        ssePath: '',
+        command: '',
+        containerName: '',
+        environments: [],
+        volumes: [],
+        hostIP: '127.0.0.1',
+        protocol: 'http://',
+        url: '',
+        outputTransport: 'sse',
+        streamableHttpPath: '',
+        type: 'npx',
+        gatewayImage: defaultGatewayImages.npx,
+        protocolVersion: defaultProtocolVersion,
+        gatewayArgs: '',
+        taskID: '',
+    };
+};
+const em = defineEmits(['close', 'task']);
+const mcpServer = ref(newMcpServer());
+const rules = ref({
+    name: [Rules.requiredInput, Rules.appName],
+    command: [Rules.requiredInput],
+    port: [Rules.requiredInput, Rules.port],
+    containerName: [Rules.requiredInput],
+    url: [Rules.requiredInput],
+    ssePath: [Rules.requiredInput],
+    outputTransport: [Rules.requiredSelect],
+    streamableHttpPath: [Rules.requiredInput],
+    type: [Rules.requiredSelect],
+    gatewayImage: [Rules.requiredInput],
+    protocolVersion: [Rules.requiredInput],
+});
+const hasWebsite = ref(false);
+
+const acceptParams = async (params: AI.McpServer) => {
+    hasWebsite.value = false;
+    mode.value = params.id ? 'edit' : 'create';
+    let mcpDomainRes;
+    try {
+        mcpDomainRes = await getMcpDomain();
+        if (mcpDomainRes.data.connUrl != '') {
+            hasWebsite.value = true;
+        }
+    } catch (error) {}
+
+    if (mode.value == 'edit') {
+        mcpServer.value = params;
+        if (!mcpServer.value.environments) {
+            mcpServer.value.environments = [];
+        }
+        if (!mcpServer.value.volumes) {
+            mcpServer.value.volumes = [];
+        }
+        const parts = mcpServer.value.baseUrl.split(/(https?:\/\/)/).filter(Boolean);
+        mcpServer.value.protocol = parts[0];
+        mcpServer.value.url = parts[1];
+        mcpServer.value.outputTransport = mcpServer.value.outputTransport || 'sse';
+        mcpServer.value.type = mcpServer.value.type || 'npx';
+        mcpServer.value.gatewayImage = mcpServer.value.gatewayImage || defaultGatewayImages[mcpServer.value.type];
+        mcpServer.value.protocolVersion = mcpServer.value.protocolVersion || defaultProtocolVersion;
+        mcpServer.value.gatewayArgs = mcpServer.value.gatewayArgs || '';
+    } else {
+        mcpServer.value = newMcpServer();
+        if (params.port) {
+            mcpServer.value.port = params.port;
+        }
+        if (mcpDomainRes.data && mcpDomainRes.data.connUrl != '') {
+            const parts = mcpDomainRes.data.connUrl.split(/(https?:\/\/)/).filter(Boolean);
+            mcpServer.value.protocol = parts[0];
+            mcpServer.value.url = parts[1];
+            mcpServer.value.baseUrl = mcpDomainRes.data.connUrl;
+        }
+    }
+    open.value = true;
+};
+
+watch(
+    () => mcpServer.value.name,
+    (newVal) => {
+        if (newVal && mode.value == 'create') {
+            mcpServer.value.containerName = newVal;
+            mcpServer.value.ssePath = '/' + newVal;
+            mcpServer.value.streamableHttpPath = '/' + newVal;
+        }
+    },
+    { deep: true },
+);
+
+watch(
+    () => mcpServer.value.type,
+    (newVal, oldVal) => {
+        if (!oldVal || mcpServer.value.gatewayImage === defaultGatewayImages[oldVal]) {
+            mcpServer.value.gatewayImage = defaultGatewayImages[newVal] || defaultGatewayImages.npx;
+        }
+    },
+);
+
+const normalizeGatewayConfig = () => {
+    mcpServer.value.gatewayImage = mcpServer.value.gatewayImage || defaultGatewayImages[mcpServer.value.type];
+    mcpServer.value.protocolVersion = mcpServer.value.protocolVersion || defaultProtocolVersion;
+};
+
+const handleClose = () => {
+    open.value = false;
+    em('close', false);
+};
+
+const getImport = async (data: AI.ImportMcpServer[]) => {
+    if (!data) {
+        return;
+    }
+    const importServer = data[0];
+    mcpServer.value.name = importServer.name;
+    mcpServer.value.containerName = importServer.containerName;
+    mcpServer.value.ssePath = importServer.ssePath;
+    mcpServer.value.command = importServer.command;
+    mcpServer.value.environments = importServer.environments || [];
+};
+
+const submit = async (formEl: FormInstance | undefined) => {
+    if (!formEl) return;
+    await formEl.validate(async (valid) => {
+        if (!valid) {
+            return;
+        }
+        let request = true;
+        if (mcpServer.value.hostIP != '0.0.0.0' && !hasWebsite.value) {
+            await ElMessageBox.confirm(i18n.global.t('app.installWarn'), i18n.global.t('app.checkTitle'), {
+                confirmButtonText: i18n.global.t('commons.button.confirm'),
+                cancelButtonText: i18n.global.t('commons.button.cancel'),
+            }).catch(() => {
+                request = false;
+            });
+        }
+        if (!request) {
+            return;
+        }
+        try {
+            loading.value = true;
+            normalizeGatewayConfig();
+            const taskID = newUUID();
+            mcpServer.value.taskID = taskID;
+            mcpServer.value.baseUrl = mcpServer.value.protocol + mcpServer.value.url;
+            if (mode.value == 'create') {
+                await createMcpServer(mcpServer.value);
+                MsgSuccess(i18n.global.t('commons.msg.createSuccess'));
+            } else {
+                await updateMcpServer(mcpServer.value);
+                MsgSuccess(i18n.global.t('commons.msg.updateSuccess'));
+            }
+            em('task', taskID);
+            handleClose();
+        } finally {
+            loading.value = false;
+        }
+    });
+};
+
+defineExpose({
+    acceptParams,
+});
+</script>

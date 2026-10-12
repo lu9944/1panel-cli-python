@@ -1,0 +1,95 @@
+<template>
+    <el-tabs
+        v-bind="$attrs"
+        v-model="tabsStore.activeTabPath"
+        class="common-tabs"
+        type="card"
+        :closable="tabsStore.openedTabs.length > 1"
+        @tab-change="tabChange"
+        @tab-remove="closeTab"
+    >
+        <tabs-view-item
+            v-for="item in tabsStore.openedTabs"
+            ref="tabItems"
+            :key="item.path"
+            :tab-item="item"
+            @close-tab="closeTab"
+            @close-other-tabs="closeOtherTabs"
+            @close-tabs="closeTabs"
+            @dropdown-visible-change="dropdownVisibleChange"
+        />
+    </el-tabs>
+</template>
+
+<script setup lang="ts">
+import { onMounted, ref } from 'vue';
+import { TabsStore } from '@/store';
+import { useRoute, useRouter } from 'vue-router';
+import TabsViewItem from './components/TabItem.vue';
+
+const router = useRouter();
+const route = useRoute();
+const tabsStore = TabsStore();
+const tabItems = ref();
+
+onMounted(() => {
+    if (!tabsStore.openedTabs.length) {
+        tabsStore.addTab(route);
+    }
+    tabsStore.activeTabPath = route.path;
+});
+
+const tabChange = (tabPath) => {
+    const tab = tabsStore.findTab(tabPath);
+    if (tab) {
+        router.push({ path: tab.path, query: { uncached: 'true' } });
+        tabsStore.activeTabPath = tab.path;
+    }
+};
+
+const closeTab = (tabPath) => {
+    const lastTabPath = tabsStore.removeTab(tabPath);
+    if (tabPath !== tabsStore.activeTabPath) {
+        return;
+    }
+    if (lastTabPath) {
+        tabChange(lastTabPath);
+    }
+};
+
+const closeOtherTabs = (tabPath) => {
+    tabsStore.removeOtherTabs(tabPath);
+    tabChange(tabPath);
+};
+
+const closeTabs = (tabPath, type) => {
+    tabsStore.removeTabs(tabPath, type);
+    tabChange(tabPath);
+};
+
+const dropdownVisibleChange = (visible, tabPath) => {
+    if (visible) {
+        // 关闭其他下拉菜单
+        tabItems.value.forEach(({ dropdownRef }) => {
+            if (dropdownRef.id !== tabPath) {
+                dropdownRef.handleClose();
+            }
+        });
+    }
+};
+</script>
+
+<style scoped lang="scss">
+:deep(.el-tabs__header) {
+    margin: 0;
+    .el-tabs__item.is-active {
+        border-bottom-color: var(--el-color-primary) !important;
+        border-bottom-width: 2px !important;
+    }
+}
+.common-tabs {
+    margin-bottom: 7px;
+    margin-left: 20px;
+    margin-right: 20px;
+}
+</style>

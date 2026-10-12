@@ -1,0 +1,596 @@
+package client
+
+import (
+	"compress/gzip"
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path"
+	"strings"
+	"time"
+
+	"github.com/1Panel-dev/1Panel/agent/app/dto"
+	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"github.com/1Panel-dev/1Panel/agent/constant"
+	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
+	"github.com/1Panel-dev/1Panel/agent/utils/common"
+	"github.com/1Panel-dev/1Panel/agent/utils/files"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/client"
+)
+
+type Remote struct {
+	Type     string
+	Client   *sql.DB
+	Database string
+	User     string
+	Password string
+	Address  string
+	Port     uint
+
+	SSL        bool
+	RootCert   string
+	ClientKey  string
+	ClientCert string
+	SkipVerify bool
+}
+
+func NewRemote(db Remote) *Remote {
+	return &db
+}
+
+func (r *Remote) Create(info CreateInfo) error {
+	if err := r.CreateDatabase(info); err != nil {
+		return err
+	}
+	if len(info.Username) == 0 {
+		return nil
+	}
+	if err := r.CreateUser(info, true); err != nil {
+		_ = r.ExecSQL(fmt.Sprintf("drop database if exists `%s`", info.Name), info.Timeout)
+		return err
+	}
+
+	return nil
+}
+
+func (r *Remote) CreateDatabase(info CreateInfo) error {
+	createSql := fmt.Sprintf("create database `%s` default character set %s collate %s", info.Name, info.Format, info.Collation)
+	if len(info.Collation) == 0 {
+		createSql = fmt.Sprintf("create database `%s` default character set %s", info.Name, info.Format)
+	}
+	if err := r.ExecSQL(createSql, info.Timeout); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "error 1007") {
+			return buserr.New("ErrDatabaseIsExist")
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Remote) CreateUser(info CreateInfo, withDeleteDB bool) error {
+	for _, user := range userIdentities(info.Username, info.Permission) {
+		if err := r.ExecSQL(createUserSQL(user, info.Password), info.Timeout); err != nil {
+			if isUserExistsErr(err) {
+				return buserr.New("ErrUserIsExist")
+			}
+			if withDeleteDB {
+				_ = r.Delete(DeleteInfo{
+					Name:        info.Name,
+					Version:     info.Version,
+					Username:    info.Username,
+					Permission:  info.Permission,
+					ForceDelete: true,
+					Timeout:     300})
+			}
+			return err
+		}
+		if err := r.ExecSQL(createUserGrantSQL(info, user), info.Timeout); err != nil {
+			if withDeleteDB {
+				_ = r.Delete(DeleteInfo{
+					Name:        info.Name,
+					Version:     info.Version,
+					Username:    info.Username,
+					Permission:  info.Permission,
+					ForceDelete: true,
+					Timeout:     300})
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Remote) CreateUserOnly(info UserInfo, password string, timeout uint) error {
+	if err := r.ExecSQL(createUserSQL(userIdentity(info.Username, info.Host), password), timeout); err != nil {
+		if isUserExistsErr(err) {
+			return buserr.New("ErrUserIsExist")
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *Remote) GrantUser(info GrantInfo, timeout uint) error {
+	return r.ExecSQL(grantUserSQL(info), timeout)
+}
+
+func (r *Remote) RevokeGrant(info GrantInfo, timeout uint) error {
+	if err := r.ExecSQL(revokeGrantSQL(info), timeout); err != nil {
+		return err
+	}
+	_ = r.ExecSQL(revokeGrantOptionSQL(info), timeout)
+	return nil
+}
+
+func (r *Remote) DeleteUser(info UserInfo, version string, timeout uint) error {
+	return r.ExecSQL(dropUserSQL(info, version), timeout)
+}
+
+func (r *Remote) UpdateUser(info UserUpdateInfo, timeout uint) error {
+	if info.Host == info.NewHost {
+		return nil
+	}
+	return r.ExecSQL(renameUserSQL(info), timeout)
+}
+
+func (r *Remote) DeleteDatabase(info DeleteInfo) error {
+	if len(info.Name) == 0 {
+		return nil
+	}
+	if err := r.ExecSQL(dropDatabaseSQL(info.Name), info.Timeout); err != nil && !info.ForceDelete {
+		return fmt.Errorf("drop database failed, err: %v", err)
+	}
+	return nil
+}
+
+func (r *Remote) ListUsers(timeout uint) ([]UserInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+	rows, err := r.Client.QueryContext(ctx, "select user,host from mysql.user order by user,host")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	users := make([]UserInfo, 0)
+	for rows.Next() {
+		var user, host string
+		if err := rows.Scan(&user, &host); err != nil {
+			return nil, err
+		}
+		users = append(users, UserInfo{Username: user, Host: host})
+	}
+	return users, rows.Err()
+}
+
+func (r *Remote) ListGrants(timeout uint) ([]GrantInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+	rows, err := r.Client.QueryContext(ctx, "select db,user,host from mysql.db where db not in ('information_schema','mysql','performance_schema','sys','__recycle_bin__','recycle_bin') order by db,user,host")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	grants := make([]GrantInfo, 0)
+	for rows.Next() {
+		var db, user, host string
+		if err := rows.Scan(&db, &user, &host); err != nil {
+			return nil, err
+		}
+		if user == "root" {
+			continue
+		}
+		grants = append(grants, GrantInfo{Database: db, Username: user, Host: host})
+	}
+	return grants, rows.Err()
+}
+
+func (r *Remote) Delete(info DeleteInfo) error {
+	for _, user := range userIdentities(info.Username, info.Permission) {
+		if strings.HasPrefix(info.Version, "5.6") {
+			if err := r.ExecSQL(fmt.Sprintf("drop user %s", user), info.Timeout); err != nil && !info.ForceDelete {
+				return fmt.Errorf("drop user failed, err: %v", err)
+			}
+		} else {
+			if err := r.ExecSQL(fmt.Sprintf("drop user if exists %s", user), info.Timeout); err != nil && !info.ForceDelete {
+				return fmt.Errorf("drop user failed, err: %v", err)
+			}
+		}
+	}
+	if len(info.Name) != 0 {
+		if err := r.ExecSQL(dropDatabaseSQL(info.Name), info.Timeout); err != nil && !info.ForceDelete {
+			return fmt.Errorf("drop database failed, err: %v", err)
+		}
+	}
+	if !info.ForceDelete {
+		global.LOG.Info("execute delete database sql successful, now start to drop uploads and records")
+	}
+
+	return nil
+}
+
+func (r *Remote) ChangePassword(info PasswordChangeInfo) error {
+	if info.Username != "root" {
+		for _, user := range userIdentities(info.Username, info.Permission) {
+			if err := r.ExecSQL(changeUserPasswordSQL(user, info.Password, info.Version), info.Timeout); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	hosts, err := r.ExecSQLForHosts(info.Timeout)
+	if err != nil {
+		return err
+	}
+	for _, host := range hosts {
+		if host == "%" || host == "localhost" {
+			passwordRootChangeCMD := fmt.Sprintf("set password for 'root'@'%s' = password('%s')", host, info.Password)
+			if !strings.HasPrefix(info.Version, "5.7") && !strings.HasPrefix(info.Version, "5.6") {
+				passwordRootChangeCMD = fmt.Sprintf("alter user 'root'@'%s' identified by '%s';", host, info.Password)
+			}
+			if err := r.ExecSQL(passwordRootChangeCMD, info.Timeout); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (r *Remote) ChangeAccess(info AccessChangeInfo) error {
+	if info.Username == "root" {
+		info.OldPermission = "%"
+		info.Name = "*"
+		info.Password = r.Password
+	}
+	if info.Permission != info.OldPermission {
+		if err := r.Delete(DeleteInfo{
+			Version:     info.Version,
+			Username:    info.Username,
+			Permission:  info.OldPermission,
+			ForceDelete: true,
+			Timeout:     300}); err != nil {
+			return err
+		}
+		if info.Username == "root" {
+			return nil
+		}
+	}
+	if err := r.CreateUser(CreateInfo{
+		Name:       info.Name,
+		Version:    info.Version,
+		Username:   info.Username,
+		Password:   info.Password,
+		Permission: info.Permission,
+		Timeout:    info.Timeout,
+	}, false); err != nil {
+		return err
+	}
+	if err := r.ExecSQL("flush privileges", 300); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Remote) Backup(info BackupInfo) error {
+	if cmd.CheckIllegal(r.Password, r.Address, r.User, info.Name, info.Format) {
+		return buserr.New("ErrCmdIllegal")
+	}
+	fileOp := files.NewFileOp()
+	if !fileOp.Stat(info.TargetDir) {
+		if err := os.MkdirAll(info.TargetDir, os.ModePerm); err != nil {
+			return fmt.Errorf("mkdir %s failed, err: %v", info.TargetDir, err)
+		}
+	}
+	dumpCmd := "mysqldump"
+	if r.Type == constant.AppMariaDB {
+		dumpCmd = "mariadb-dump"
+	}
+	global.LOG.Infof("start to %s | gzip > %s.gzip", dumpCmd, info.TargetDir+"/"+info.FileName)
+	image, err := loadImage(info.Type, info.Version)
+	if err != nil {
+		return err
+	}
+	info.Args = append(info.Args, "--routines")
+	itemArgs := common.RemoveRepeatStr(info.Args)
+	var args []string
+	for _, arg := range itemArgs {
+		if len(arg) == 0 {
+			continue
+		}
+		args = append(args, arg)
+	}
+
+	backupArgs := []string{"run", "--rm", "--net=host", "-i", image, dumpCmd}
+	backupArgs = append(backupArgs, args...)
+	backupArgs = append(
+		backupArgs,
+		"-h", r.Address,
+		"-P", fmt.Sprintf("%d", r.Port),
+		"-u"+r.User,
+		"-p"+r.Password,
+		sslSkip(info.Version, r.Type),
+		"--default-character-set="+info.Format,
+		info.Name,
+	)
+	debugArgs := append([]string{}, backupArgs...)
+	for i, arg := range debugArgs {
+		if strings.Contains(arg, r.Password) {
+			debugArgs[i] = strings.ReplaceAll(arg, r.Password, "******")
+		}
+	}
+	global.LOG.Debug("docker " + strings.Join(debugArgs, " "))
+	cmdMgr := cmd.NewCommandMgr()
+	if _, err := cmdMgr.RunPipeToFile(path.Join(info.TargetDir, info.FileName),
+		cmd.PipeCommand{Name: "docker", Args: backupArgs},
+		cmd.PipeCommand{Name: "gzip", Args: []string{"-cf"}},
+	); err != nil {
+		return fmt.Errorf("handle backup database failed, err: %v", err)
+	}
+	return nil
+}
+
+func (r *Remote) Recover(info RecoverInfo) error {
+	if cmd.CheckIllegal(r.Password, r.Address, r.User, info.Name, info.Format) {
+		return buserr.New("ErrCmdIllegal")
+	}
+	fi, _ := os.Open(info.SourceFile)
+	defer func() { _ = fi.Close() }()
+
+	image, err := loadImage(info.Type, info.Version)
+	if err != nil {
+		return err
+	}
+
+	recoverArgs := []string{
+		"run", "--rm", "--net=host", "-i", image, r.Type,
+		"-h", r.Address,
+		"-P", fmt.Sprintf("%d", r.Port),
+		"-u" + r.User,
+		"-p" + r.Password,
+		sslSkip(info.Version, r.Type),
+		"--default-character-set=" + info.Format,
+		info.Name,
+	}
+	debugArgs := append([]string{}, recoverArgs...)
+	for i, arg := range debugArgs {
+		if strings.Contains(arg, r.Password) {
+			debugArgs[i] = strings.ReplaceAll(arg, r.Password, "******")
+		}
+	}
+	global.LOG.Debug("docker " + strings.Join(debugArgs, " "))
+	cmd := exec.Command("docker", recoverArgs...)
+
+	if strings.HasSuffix(info.SourceFile, ".gz") {
+		gzipFile, err := os.Open(info.SourceFile)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = gzipFile.Close() }()
+		gzipReader, err := gzip.NewReader(gzipFile)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = gzipReader.Close() }()
+		cmd.Stdin = gzipReader
+	} else {
+		cmd.Stdin = fi
+	}
+	stdout, err := cmd.CombinedOutput()
+	stdStr := strings.ReplaceAll(string(stdout), "mysql: [Warning] Using a password on the command line interface can be insecure.\n", "")
+	if err != nil || strings.HasPrefix(string(stdStr), "ERROR ") {
+		return errors.New(stdStr)
+	}
+
+	return nil
+}
+
+func (r *Remote) SyncDB(version string) ([]SyncDBInfo, error) {
+	var datas []SyncDBInfo
+	rows, err := r.Client.Query("select schema_name, default_character_set_name, default_collation_name from information_schema.SCHEMATA")
+	if err != nil {
+		return datas, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var dbName, charsetName, collation string
+		if err = rows.Scan(&dbName, &charsetName, &collation); err != nil {
+			return datas, err
+		}
+		if dbName == "information_schema" || dbName == "mysql" || dbName == "performance_schema" || dbName == "sys" || dbName == "__recycle_bin__" || dbName == "recycle_bin" {
+			continue
+		}
+		dataItem := SyncDBInfo{
+			Name:      dbName,
+			From:      "remote",
+			MysqlName: r.Database,
+			Format:    charsetName,
+			Collation: collation,
+		}
+		userRows, err := r.Client.Query("select user,host from mysql.db where db = ?", dbName)
+		if err != nil {
+			global.LOG.Debugf("sync user of db %s failed, err: %v", dbName, err)
+			dataItem.Permission = "%"
+			datas = append(datas, dataItem)
+			continue
+		}
+
+		var permissionItem []string
+		isLocal := true
+		i := 0
+		for userRows.Next() {
+			var user, host string
+			if err = userRows.Scan(&user, &host); err != nil {
+				return datas, err
+			}
+			if user == "root" {
+				continue
+			}
+			if i == 0 {
+				dataItem.Username = user
+			}
+			if dataItem.Username == user && host == "%" {
+				isLocal = false
+				dataItem.Permission = "%"
+			} else if dataItem.Username == user && host != "localhost" {
+				isLocal = false
+				permissionItem = append(permissionItem, host)
+			}
+			i++
+		}
+		if len(dataItem.Username) == 0 {
+			dataItem.Permission = "%"
+		} else {
+			if isLocal {
+				dataItem.Permission = "localhost"
+			}
+			if len(dataItem.Permission) == 0 {
+				dataItem.Permission = strings.Join(permissionItem, ",")
+			}
+		}
+		datas = append(datas, dataItem)
+	}
+	if err = rows.Err(); err != nil {
+		return datas, err
+	}
+	return datas, nil
+}
+
+func (r *Remote) Close() {
+	_ = r.Client.Close()
+}
+
+func (r *Remote) ExecSQL(command string, timeout uint) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	if _, err := r.Client.ExecContext(ctx, command); err != nil {
+		return err
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return buserr.New("ErrExecTimeOut")
+	}
+
+	return nil
+}
+
+func (r *Remote) LoadFormatCollation(timeout uint) ([]dto.MysqlFormatCollationOption, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	rows, err := r.Client.QueryContext(ctx, "SELECT CHARACTER_SET_NAME, COLLATION_NAME FROM INFORMATION_SCHEMA.COLLATIONS ORDER BY CHARACTER_SET_NAME, COLLATION_NAME;")
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return nil, buserr.New("ErrExecTimeOut")
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	formatMap := make(map[string][]string)
+	for rows.Next() {
+		var item FormatCollation
+		if err := rows.Scan(&item.Format, &item.Collation); err != nil {
+			return nil, err
+		}
+		if !item.Format.Valid {
+			continue
+		}
+		if _, ok := formatMap[item.Format.String]; !ok {
+			formatMap[item.Format.String] = []string{item.Collation.String}
+		} else {
+			formatMap[item.Format.String] = append(formatMap[item.Format.String], item.Collation.String)
+		}
+	}
+	options := []dto.MysqlFormatCollationOption{}
+	for key, val := range formatMap {
+		options = append(options, dto.MysqlFormatCollationOption{
+			Format:     key,
+			Collations: val,
+		})
+	}
+
+	return options, nil
+}
+
+func (r *Remote) ExecSQLForHosts(timeout uint) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	results, err := r.Client.QueryContext(ctx, "select host from mysql.user where user='root';")
+	if err != nil {
+		return nil, err
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return nil, buserr.New("ErrExecTimeOut")
+	}
+	var rows []string
+	defer func() { _ = results.Close() }()
+	for results.Next() {
+		var host string
+		if err := results.Scan(&host); err != nil {
+			continue
+		}
+		rows = append(rows, host)
+	}
+	return rows, nil
+}
+
+func loadImage(dbType, version string) (string, error) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return "", err
+	}
+	defer cli.Close()
+	images, err := cli.ImageList(context.Background(), image.ListOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	for _, image := range images {
+		for _, tag := range image.RepoTags {
+			if !strings.HasPrefix(tag, dbType+":") {
+				continue
+			}
+			if dbType == "mariadb" && strings.HasPrefix(tag, "mariadb:") {
+				return tag, nil
+			}
+			if strings.HasPrefix(version, "5.6") && strings.HasPrefix(tag, "mysql:5.6") {
+				return tag, nil
+			}
+			if strings.HasPrefix(version, "5.7") && strings.HasPrefix(tag, "mysql:5.7") {
+				return tag, nil
+			}
+			if strings.HasPrefix(version, "8.") && strings.HasPrefix(tag, "mysql:8.") {
+				return tag, nil
+			}
+		}
+	}
+	return loadVersion(dbType, version), nil
+}
+
+func loadVersion(dbType string, version string) string {
+	if dbType == "mariadb" {
+		return "mariadb:11.3.2"
+	}
+	if strings.HasPrefix(version, "5.6") {
+		return "mysql:5.6.51"
+	}
+	if strings.HasPrefix(version, "5.7") {
+		return "mysql:5.7.44"
+	}
+	return "mysql:8.2.0"
+}
+
+func sslSkip(version, dbType string) string {
+	if dbType == constant.AppMariaDB || strings.HasPrefix(version, "5.6") || strings.HasPrefix(version, "5.7") {
+		return "--skip-ssl"
+	}
+	return "--ssl-mode=DISABLED"
+}

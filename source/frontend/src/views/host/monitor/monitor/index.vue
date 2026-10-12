@@ -1,0 +1,897 @@
+<template>
+    <div>
+        <MonitorRouter />
+
+        <div class="content-container__search">
+            <el-card>
+                <div class="monitor-toolbar monitor-toolbar--global">
+                    <el-date-picker
+                        @change="searchGlobal()"
+                        v-model="timeRangeGlobal"
+                        type="datetimerange"
+                        range-separator="-"
+                        :start-placeholder="$t('commons.search.timeStart')"
+                        :end-placeholder="$t('commons.search.timeEnd')"
+                        :shortcuts="shortcuts"
+                        class="monitor-time-range"
+                        :size="isMobile ? 'small' : 'default'"
+                    ></el-date-picker>
+                    <TableRefresh class="monitor-refresh float-right" @search="searchGlobal()" />
+                </div>
+            </el-card>
+        </div>
+        <el-row :gutter="7" class="card-interval">
+            <el-col :span="24">
+                <el-card style="overflow: inherit">
+                    <template #header>
+                        <div class="monitor-toolbar monitor-toolbar--card">
+                            <span class="title">{{ $t('monitor.avgLoad') }}</span>
+                            <el-date-picker
+                                @change="search('load')"
+                                v-model="timeRangeLoad"
+                                type="datetimerange"
+                                range-separator="-"
+                                :start-placeholder="$t('commons.search.timeStart')"
+                                :end-placeholder="$t('commons.search.timeEnd')"
+                                :shortcuts="shortcuts"
+                                class="monitor-time-range"
+                                :size="isMobile ? 'small' : 'default'"
+                            ></el-date-picker>
+                        </div>
+                    </template>
+                    <div class="chart" v-loading="loadingMap.load">
+                        <v-charts
+                            height="400px"
+                            id="loadLoadChart"
+                            type="line"
+                            :option="chartsOption['loadLoadChart']"
+                            v-if="chartsOption['loadLoadChart']"
+                            :dataZoom="true"
+                        />
+                    </div>
+                </el-card>
+            </el-col>
+        </el-row>
+        <el-row :gutter="7" class="card-interval">
+            <el-col :xs="24" :sm="24" :md="12" :lg="12" :xl="12">
+                <el-card style="overflow: inherit">
+                    <template #header>
+                        <div class="monitor-toolbar monitor-toolbar--card">
+                            <span class="title">CPU</span>
+                            <el-date-picker
+                                @change="search('cpu')"
+                                v-model="timeRangeCpu"
+                                type="datetimerange"
+                                range-separator="-"
+                                :start-placeholder="$t('commons.search.timeStart')"
+                                :end-placeholder="$t('commons.search.timeEnd')"
+                                :shortcuts="shortcuts"
+                                class="monitor-time-range"
+                                :size="isMobile ? 'small' : 'default'"
+                            ></el-date-picker>
+                        </div>
+                    </template>
+                    <div class="chart" v-loading="loadingMap.cpu">
+                        <v-charts
+                            height="400px"
+                            id="loadCPUChart"
+                            type="line"
+                            :option="chartsOption['loadCPUChart']"
+                            v-if="chartsOption['loadCPUChart']"
+                            :dataZoom="true"
+                        />
+                    </div>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="24" :md="12" :lg="12" :xl="12">
+                <el-card style="overflow: inherit">
+                    <template #header>
+                        <div class="monitor-toolbar monitor-toolbar--card">
+                            <span class="title">{{ $t('monitor.memory') }}</span>
+                            <el-date-picker
+                                @change="search('memory')"
+                                v-model="timeRangeMemory"
+                                type="datetimerange"
+                                range-separator="-"
+                                :start-placeholder="$t('commons.search.timeStart')"
+                                :end-placeholder="$t('commons.search.timeEnd')"
+                                :shortcuts="shortcuts"
+                                class="monitor-time-range"
+                                :size="isMobile ? 'small' : 'default'"
+                            ></el-date-picker>
+                        </div>
+                    </template>
+                    <div class="chart" v-loading="loadingMap.memory">
+                        <v-charts
+                            height="400px"
+                            id="loadMemoryChart"
+                            type="line"
+                            :option="chartsOption['loadMemoryChart']"
+                            v-if="chartsOption['loadMemoryChart']"
+                            :dataZoom="true"
+                        />
+                    </div>
+                </el-card>
+            </el-col>
+        </el-row>
+        <el-row :gutter="7" class="card-interval">
+            <el-col :xs="24" :sm="24" :md="12" :lg="12" :xl="12">
+                <el-card style="overflow: inherit">
+                    <template #header>
+                        <div class="monitor-toolbar monitor-toolbar--card">
+                            <div>
+                                <span class="title">{{ $t('monitor.disk') }} I/O{{ $t('commons.colon') }}</span>
+                                <el-dropdown max-height="300px">
+                                    <span class="networkOption">
+                                        {{ ioChoose === 'all' ? $t('commons.table.all') : ioChoose }}
+                                    </span>
+                                    <template #dropdown>
+                                        <el-dropdown-menu>
+                                            <div v-for="item in ioOptions" :key="item">
+                                                <el-dropdown-item v-if="item === 'all'" @click="changeIO('all')">
+                                                    {{ $t('commons.table.all') }}
+                                                </el-dropdown-item>
+                                                <el-dropdown-item v-else @click="changeIO(item)">
+                                                    {{ item }}
+                                                </el-dropdown-item>
+                                            </div>
+                                        </el-dropdown-menu>
+                                    </template>
+                                </el-dropdown>
+                            </div>
+                            <el-date-picker
+                                @change="search('io')"
+                                v-model="timeRangeIO"
+                                type="datetimerange"
+                                range-separator="-"
+                                :start-placeholder="$t('commons.search.timeStart')"
+                                :end-placeholder="$t('commons.search.timeEnd')"
+                                :shortcuts="shortcuts"
+                                class="monitor-time-range"
+                                :size="isMobile ? 'small' : 'default'"
+                            ></el-date-picker>
+                        </div>
+                    </template>
+                    <div class="chart" v-loading="loadingMap.io">
+                        <v-charts
+                            height="400px"
+                            id="loadIOChart"
+                            type="line"
+                            :option="chartsOption['loadIOChart']"
+                            v-if="chartsOption['loadIOChart']"
+                            :dataZoom="true"
+                        />
+                    </div>
+                </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="24" :md="12" :lg="12" :xl="12">
+                <el-card style="overflow: inherit">
+                    <template #header>
+                        <div class="monitor-toolbar monitor-toolbar--card">
+                            <div>
+                                <span class="title">{{ $t('monitor.network') }}{{ $t('commons.colon') }}</span>
+                                <el-dropdown max-height="300px">
+                                    <span class="networkOption">
+                                        {{ networkChoose === 'all' ? $t('commons.table.all') : networkChoose }}
+                                    </span>
+                                    <template #dropdown>
+                                        <el-dropdown-menu>
+                                            <div v-for="item in netOptions" :key="item">
+                                                <el-dropdown-item v-if="item === 'all'" @click="changeNetwork('all')">
+                                                    {{ $t('commons.table.all') }}
+                                                </el-dropdown-item>
+                                                <el-dropdown-item v-else @click="changeNetwork(item)">
+                                                    {{ item }}
+                                                </el-dropdown-item>
+                                            </div>
+                                        </el-dropdown-menu>
+                                    </template>
+                                </el-dropdown>
+                            </div>
+                            <el-date-picker
+                                @change="search('network')"
+                                v-model="timeRangeNetwork"
+                                type="datetimerange"
+                                range-separator="-"
+                                :start-placeholder="$t('commons.search.timeStart')"
+                                :end-placeholder="$t('commons.search.timeEnd')"
+                                :shortcuts="shortcuts"
+                                class="monitor-time-range"
+                                :size="isMobile ? 'small' : 'default'"
+                            ></el-date-picker>
+                        </div>
+                    </template>
+                    <div class="chart" v-loading="loadingMap.network">
+                        <v-charts
+                            height="400px"
+                            id="loadNetworkChart"
+                            type="line"
+                            :option="chartsOption['loadNetworkChart']"
+                            v-if="chartsOption['loadNetworkChart']"
+                            :dataZoom="true"
+                        />
+                    </div>
+                </el-card>
+            </el-col>
+        </el-row>
+    </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted, watch } from 'vue';
+import { loadMonitor, getNetworkOptions, getIOOptions } from '@/api/modules/host';
+import { computeSize, computeSizeFromKBs } from '@/utils/size';
+import { dateFormatWithoutYear } from '@/utils/date';
+import i18n from '@/lang';
+import MonitorRouter from '@/views/host/monitor/index.vue';
+import { useGlobalStore } from '@/composables/useGlobalStore';
+import { shortcuts } from '@/utils/shortcuts';
+import { Host } from '@/api/interface/host';
+
+const { defaultIO, defaultNetwork, isMobile } = useGlobalStore();
+
+const monitorBase = ref();
+const timeRangeGlobal = ref<[Date, Date]>([new Date(new Date().setHours(0, 0, 0, 0)), new Date()]);
+const timeRangeLoad = ref<[Date, Date]>([new Date(new Date().setHours(0, 0, 0, 0)), new Date()]);
+const timeRangeCpu = ref<[Date, Date]>([new Date(new Date().setHours(0, 0, 0, 0)), new Date()]);
+const timeRangeMemory = ref<[Date, Date]>([new Date(new Date().setHours(0, 0, 0, 0)), new Date()]);
+const timeRangeIO = ref<[Date, Date]>([new Date(new Date().setHours(0, 0, 0, 0)), new Date()]);
+const timeRangeNetwork = ref<[Date, Date]>([new Date(new Date().setHours(0, 0, 0, 0)), new Date()]);
+const networkChoose = ref();
+const netOptions = ref();
+const ioChoose = ref();
+const ioOptions = ref();
+const chartsOption = ref<Record<string, any>>({
+    loadLoadChart: null,
+    loadCPUChart: null,
+    loadMemoryChart: null,
+    loadIOChart: null,
+    loadNetworkChart: null,
+});
+const loadingMap = reactive({
+    load: false,
+    cpu: false,
+    memory: false,
+    io: false,
+    network: false,
+});
+
+const getLoadChartGrid = () =>
+    isMobile.value ? { left: 8, right: 8, top: 64, bottom: '20%', containLabel: true } : undefined;
+const getMultiSeriesChartLegend = () =>
+    isMobile.value
+        ? { show: true, type: 'scroll', orient: 'horizontal', left: 8, right: 8, top: 0, bottom: null }
+        : { show: true, type: 'plain', orient: 'horizontal', left: 'center', top: null, bottom: 15 };
+const getTransferChartGrid = () =>
+    isMobile.value
+        ? { left: 8, right: 8, top: 64, bottom: 110, containLabel: true }
+        : { left: getSideWidth(true), right: getSideWidth(true), bottom: '20%' };
+const getSingleSeriesChartGrid = () =>
+    isMobile.value ? { left: 8, right: 8, top: 40, bottom: 110, containLabel: true } : undefined;
+const getSingleSeriesChartLegend = () =>
+    isMobile.value
+        ? { show: true, type: 'plain', top: 0, bottom: null, left: 'center', right: null }
+        : { show: true, type: 'plain', top: null, bottom: 15, left: 'center' };
+const getMobileChartXAxis = () =>
+    isMobile.value ? { axisLabel: { interval: 'auto', hideOverlap: true, fontSize: 10 } } : undefined;
+
+watch(isMobile, () => {
+    const loadOption = chartsOption.value.loadLoadChart;
+    if (loadOption) {
+        chartsOption.value.loadLoadChart = {
+            ...loadOption,
+            grid: getLoadChartGrid(),
+            legend: getMultiSeriesChartLegend(),
+        };
+    }
+
+    for (const chartKey of ['loadCPUChart', 'loadMemoryChart']) {
+        const chartOption = chartsOption.value[chartKey];
+        if (!chartOption) {
+            continue;
+        }
+        chartsOption.value[chartKey] = {
+            ...chartOption,
+            grid: getSingleSeriesChartGrid(),
+            legend: getSingleSeriesChartLegend(),
+            xAxis: getMobileChartXAxis(),
+        };
+    }
+
+    for (const chartKey of ['loadIOChart', 'loadNetworkChart']) {
+        const chartOption = chartsOption.value[chartKey];
+        if (!chartOption) {
+            continue;
+        }
+        chartsOption.value[chartKey] = {
+            ...chartOption,
+            grid: getTransferChartGrid(),
+            legend: getMultiSeriesChartLegend(),
+            xAxis: getMobileChartXAxis(),
+        };
+    }
+});
+
+const searchTime = ref();
+const searchInfo = reactive<Host.MonitorSearch>({
+    param: '',
+    io: '',
+    network: '',
+    startTime: new Date(new Date().setHours(0, 0, 0, 0)),
+    endTime: new Date(),
+});
+
+const searchGlobal = () => {
+    timeRangeLoad.value = timeRangeGlobal.value;
+    timeRangeCpu.value = timeRangeGlobal.value;
+    timeRangeMemory.value = timeRangeGlobal.value;
+    timeRangeIO.value = timeRangeGlobal.value;
+    timeRangeNetwork.value = timeRangeGlobal.value;
+    search('load');
+    search('cpu');
+    search('memory');
+    search('io');
+    search('network');
+};
+
+const search = async (param: string) => {
+    searchInfo.param = param;
+    switch (param) {
+        case 'load':
+            searchTime.value = timeRangeLoad.value;
+            break;
+        case 'cpu':
+            searchTime.value = timeRangeCpu.value;
+            break;
+        case 'memory':
+            searchTime.value = timeRangeMemory.value;
+            break;
+        case 'io':
+            searchTime.value = timeRangeIO.value;
+            searchInfo.io = ioChoose.value || 'all';
+            break;
+        case 'network':
+            searchTime.value = timeRangeNetwork.value;
+            searchInfo.network = networkChoose.value || 'all';
+            break;
+        case 'all':
+            searchTime.value = timeRangeNetwork.value;
+            searchInfo.io = ioChoose.value || 'all';
+            searchInfo.network = networkChoose.value || 'all';
+            break;
+    }
+    if (searchTime.value && searchTime.value.length === 2) {
+        searchInfo.startTime = searchTime.value[0];
+        searchInfo.endTime = searchTime.value[1];
+    }
+    setChartLoading(param, true);
+    try {
+        const res = await loadMonitor(searchInfo);
+        monitorBase.value = res.data;
+        for (const item of monitorBase.value) {
+            if (!item.value) {
+                item.value = [];
+                item.date = [];
+            }
+            switch (item.param) {
+                case 'base':
+                    let baseDate = item.date.length === 0 ? loadEmptyDate(timeRangeCpu.value) : item.date;
+                    baseDate = baseDate.map(function (item: any) {
+                        return dateFormatWithoutYear(item);
+                    });
+                    if (param === 'cpu' || param === 'all') {
+                        initCPUCharts(baseDate, item);
+                    }
+                    if (param === 'memory' || param === 'all') {
+                        initMemCharts(baseDate, item);
+                    }
+                    if (param === 'load' || param === 'all') {
+                        initLoadCharts(item);
+                    }
+                    break;
+                case 'io':
+                    initIOCharts(item);
+                    break;
+                case 'network':
+                    initNetCharts(item);
+                    break;
+            }
+        }
+    } finally {
+        setChartLoading(param, false);
+    }
+};
+
+const changeNetwork = (item: string) => {
+    networkChoose.value = item;
+    search('network');
+};
+
+const changeIO = (item: string) => {
+    ioChoose.value = item;
+    search('io');
+};
+
+const loadOptions = async () => {
+    const res = await getNetworkOptions();
+    netOptions.value = res.data;
+    searchInfo.network = defaultNetwork.value || (netOptions.value && netOptions.value[0]);
+    networkChoose.value = searchInfo.network;
+
+    const res1 = await getIOOptions();
+    ioOptions.value = res1.data;
+    searchInfo.io = defaultIO.value || (ioOptions.value && ioOptions.value[0]);
+    ioChoose.value = searchInfo.io;
+
+    search('all');
+};
+
+const setChartLoading = (param: string, value: boolean) => {
+    if (param === 'all') {
+        loadingMap.load = value;
+        loadingMap.cpu = value;
+        loadingMap.memory = value;
+        loadingMap.io = value;
+        loadingMap.network = value;
+        return;
+    }
+    switch (param) {
+        case 'load':
+            loadingMap.load = value;
+            break;
+        case 'cpu':
+            loadingMap.cpu = value;
+            break;
+        case 'memory':
+            loadingMap.memory = value;
+            break;
+        case 'io':
+            loadingMap.io = value;
+            break;
+        case 'network':
+            loadingMap.network = value;
+            break;
+    }
+};
+
+function initLoadCharts(item: Host.MonitorData) {
+    let itemLoadDate = item.date.length === 0 ? loadEmptyDate(timeRangeLoad.value) : item.date;
+    let loadDate = itemLoadDate.map(function (item: any) {
+        return dateFormatWithoutYear(item);
+    });
+    let load1Data = item.value.map(function (item: any) {
+        return item.cpuLoad1.toFixed(2);
+    });
+    load1Data = load1Data.length === 0 ? loadEmptyData() : load1Data;
+    let load5Data = item.value.map(function (item: any) {
+        return item.cpuLoad5.toFixed(2);
+    });
+    load5Data = load5Data.length === 0 ? loadEmptyData() : load5Data;
+    let load15Data = item.value.map(function (item: any) {
+        return item.cpuLoad15.toFixed(2);
+    });
+    load15Data = load15Data.length === 0 ? loadEmptyData() : load15Data;
+    let loadUsage = item.value.map(function (item: any) {
+        return { value: item.loadUsage.toFixed(2), top: item.topCPUItems, unit: '%' };
+    });
+    loadUsage = loadUsage.length === 0 ? loadTopEmptyData() : loadUsage;
+    chartsOption.value['loadLoadChart'] = {
+        xData: loadDate,
+        yData: [
+            {
+                name: '1 ' + i18n.global.t('commons.units.minute', 1),
+                data: load1Data,
+            },
+            {
+                name: '5 ' + i18n.global.t('commons.units.minute', 5),
+                data: load5Data,
+            },
+            {
+                name: '15 ' + i18n.global.t('commons.units.minute', 15),
+                data: load15Data,
+            },
+            {
+                name: i18n.global.t('monitor.resourceUsage'),
+                data: loadUsage,
+                yAxisIndex: 1,
+            },
+        ],
+        yAxis: [
+            { type: 'value', name: i18n.global.t('monitor.loadDetail') },
+            {
+                type: 'value',
+                name: i18n.global.t('monitor.resourceUsage') + ' ( % )',
+                position: 'right',
+                alignTicks: true,
+            },
+        ],
+        grid: getLoadChartGrid(),
+        legend: getMultiSeriesChartLegend(),
+        tooltip: {
+            trigger: 'axis',
+            formatter: function (datas: any) {
+                return withCPUProcess(datas);
+            },
+        },
+    };
+}
+
+function initCPUCharts(baseDate: any, items: Host.MonitorData) {
+    let data = items.value.map(function (item: any) {
+        return { value: item.cpu.toFixed(2), top: item.topCPUItems, unit: '%' };
+    });
+    data = data.length === 0 ? loadTopEmptyData() : data;
+    chartsOption.value['loadCPUChart'] = {
+        xData: baseDate,
+        yData: [
+            {
+                name: 'CPU',
+                data: data,
+            },
+        ],
+        tooltip: {
+            trigger: 'axis',
+            formatter: function (datas: any) {
+                return withCPUProcess(datas);
+            },
+        },
+        grid: getSingleSeriesChartGrid(),
+        legend: getSingleSeriesChartLegend(),
+        xAxis: getMobileChartXAxis(),
+        formatStr: '%',
+    };
+}
+
+function initMemCharts(baseDate: any, items: Host.MonitorData) {
+    let data = items.value.map(function (item: any) {
+        return { value: item.memory.toFixed(2), top: item.topMemItems };
+    });
+    data = data.length === 0 ? loadTopEmptyData() : data;
+    chartsOption.value['loadMemoryChart'] = {
+        xData: baseDate,
+        yData: [
+            {
+                name: i18n.global.t('monitor.memory'),
+                data: data,
+            },
+        ],
+        tooltip: {
+            trigger: 'axis',
+            formatter: function (datas: any) {
+                return withMemProcess(datas);
+            },
+        },
+        grid: getSingleSeriesChartGrid(),
+        legend: getSingleSeriesChartLegend(),
+        xAxis: getMobileChartXAxis(),
+        formatStr: '%',
+    };
+}
+
+function initNetCharts(item: Host.MonitorData) {
+    let networkDate = item.date.length === 0 ? loadEmptyDate(timeRangeNetwork.value) : item.date;
+    let date = networkDate.map(function (item: any) {
+        return dateFormatWithoutYear(item);
+    });
+    let networkUp = item.value.map(function (item: any) {
+        return item.up.toFixed(2);
+    });
+    networkUp = networkUp.length === 0 ? loadEmptyData() : networkUp;
+    let networkOut = item.value.map(function (item: any) {
+        return item.down.toFixed(2);
+    });
+    networkOut = networkOut.length === 0 ? loadEmptyData() : networkOut;
+
+    chartsOption.value['loadNetworkChart'] = {
+        xData: date,
+        yData: [
+            {
+                name: i18n.global.t('monitor.up'),
+                data: networkUp,
+            },
+            {
+                name: i18n.global.t('monitor.down'),
+                data: networkOut,
+            },
+        ],
+        tooltip: {
+            trigger: 'axis',
+            formatter: function (datas: any) {
+                let res = loadDate(datas[0].name);
+                for (const item of datas) {
+                    res += loadSeries(item, computeSizeFromKBs(item.data), '');
+                }
+                return res;
+            },
+        },
+        grid: getTransferChartGrid(),
+        legend: getMultiSeriesChartLegend(),
+        xAxis: getMobileChartXAxis(),
+        formatStr: 'KB/s',
+    };
+}
+
+function initIOCharts(item: Host.MonitorData) {
+    let itemIODate = item.date?.length === 0 ? loadEmptyDate(timeRangeIO.value) : item.date;
+    let ioDate = itemIODate.map(function (item: any) {
+        return dateFormatWithoutYear(item);
+    });
+    let ioRead = item.value.map(function (item: any) {
+        return Number((item.read / 1024).toFixed(2));
+    });
+    ioRead = ioRead.length === 0 ? loadEmptyData() : ioRead;
+    let ioWrite = item.value.map(function (item: any) {
+        return Number((item.write / 1024).toFixed(2));
+    });
+    ioWrite = ioWrite.length === 0 ? loadEmptyData() : ioWrite;
+    let ioCount = item.value.map(function (item: any) {
+        return item.count;
+    });
+    ioCount = ioCount.length === 0 ? loadEmptyData() : ioCount;
+    let ioTime = item.value.map(function (item: any) {
+        return item.time;
+    });
+    ioTime = ioTime.length === 0 ? loadEmptyData() : ioTime;
+    chartsOption.value['loadIOChart'] = {
+        xData: ioDate,
+        yData: [
+            {
+                name: i18n.global.t('monitor.read'),
+                data: ioRead,
+            },
+            {
+                name: i18n.global.t('monitor.write'),
+                data: ioWrite,
+            },
+            {
+                name: i18n.global.t('monitor.readWriteCount'),
+                data: ioCount,
+                yAxisIndex: 1,
+            },
+            {
+                name: i18n.global.t('monitor.readWriteTime'),
+                data: ioTime,
+                yAxisIndex: 1,
+            },
+        ],
+        tooltip: {
+            trigger: 'axis',
+            formatter: function (datas: any) {
+                let res = loadDate(datas[0].name);
+                for (const item of datas) {
+                    if (
+                        item.seriesName === i18n.global.t('monitor.read') ||
+                        item.seriesName === i18n.global.t('monitor.write')
+                    ) {
+                        res += loadSeries(item, computeSizeFromKBs(item.data), '');
+                    }
+                    if (item.seriesName === i18n.global.t('monitor.readWriteCount')) {
+                        res += loadSeries(item, item.data, i18n.global.t('commons.units.time') + '/s');
+                    }
+                    if (item.seriesName === i18n.global.t('monitor.readWriteTime')) {
+                        res += loadSeries(item, item.data, ' ms');
+                    }
+                }
+                return res;
+            },
+        },
+        grid: getTransferChartGrid(),
+        legend: getMultiSeriesChartLegend(),
+        xAxis: getMobileChartXAxis(),
+        yAxis: [
+            { type: 'value', name: '( KB/s )', axisLabel: { fontSize: 10 } },
+            {
+                type: 'value',
+                position: 'right',
+                alignTicks: true,
+                axisLabel: {
+                    fontSize: 10,
+                },
+            },
+        ],
+    };
+}
+
+function loadEmptyDate(timeRange: any) {
+    if (timeRange.length != 2) {
+        return;
+    }
+    let date1 = new Date(timeRange[0]);
+    let date2 = new Date(timeRange[1]);
+    return [date1, date2];
+}
+function loadEmptyData() {
+    return [0, 0];
+}
+function loadTopEmptyData() {
+    return [{ value: 0, top: 0, unit: '' }];
+}
+
+function withCPUProcess(datas: any) {
+    let tops;
+    let res = loadDate(datas[0].name);
+    for (const item of datas) {
+        if (item.data?.top) {
+            tops = item.data?.top;
+        }
+        res += loadSeries(item, item.data.value ? item.data.value : item.data, item.data.unit || '');
+    }
+    if (!tops) {
+        return res;
+    }
+    res += `
+        <div style="margin-top: 10px; border-bottom: 1px dashed black;"></div>
+        <table style="border-collapse: collapse; margin-top: 20px; font-size: 12px;">
+        <thead>
+            <tr>
+            <th style="padding: 6px 8px;">PID</th>
+            <th style="padding: 6px 8px;">${i18n.global.t('commons.table.user')}</th>
+            <th style="padding: 6px 8px;">${i18n.global.t('menu.process')}</th>
+            <th style="padding: 6px 8px;">${i18n.global.t('monitor.percent')}</th>
+            </tr>
+        </thead>
+        <tbody>
+    `;
+    for (const row of tops) {
+        res += `
+            <tr>
+                <td style="padding: 6px 8px; text-align: center;">
+                    ${row.pid}
+                </td>
+                <td style="padding: 6px 8px; text-align: center;">
+                    ${row.user}
+                </td>
+                <td style="padding: 6px 8px; text-align: center;">
+                    ${row.name}
+                </td>
+                <td style="padding: 6px 8px; text-align: center;">
+                    ${row.percent.toFixed(2)}%
+                </td>
+            </tr>
+        `;
+    }
+    return res;
+}
+
+function withMemProcess(datas: any) {
+    let res = loadDate(datas[0].name);
+    for (const item of datas) {
+        res += loadSeries(item, item.data.value ? item.data.value : item.data, ' %');
+    }
+    if (!datas[0].data.top) {
+        return res;
+    }
+    res += `
+        <div style="margin-top: 10px; border-bottom: 1px dashed black;"></div>
+        <table style="border-collapse: collapse; margin-top: 20px; font-size: 12px;">
+        <thead>
+            <tr>
+                <th style="padding: 6px 8px;">PID</th>
+                <th style="padding: 6px 8px;">${i18n.global.t('commons.table.user')}</th>
+                <th style="padding: 6px 8px;">${i18n.global.t('menu.process')}</th>
+                <th style="padding: 6px 8px;">${i18n.global.t('monitor.memory')}</th>
+                <th style="padding: 6px 8px;">${i18n.global.t('monitor.percent')}</th>
+            </tr>
+        </thead>
+        <tbody>
+    `;
+    for (const item of datas) {
+        for (const row of item.data.top) {
+            res += `
+                  <tr>
+                    <td style="padding: 6px 8px; text-align: center;">
+                      <span style="display: inline-block;"></span>
+                      ${row.pid}
+                    </td>
+                    <td style="padding: 6px 8px; text-align: center;">
+                      ${row.user}
+                    </td>
+                    <td style="padding: 6px 8px; text-align: center;">
+                      ${row.name}
+                    </td>
+                    <td style="padding: 6px 8px; text-align: center;">
+                      ${computeSize(row.memory)}
+                    </td>
+                    <td style="padding: 6px 8px; text-align: center;">
+                      ${row.percent.toFixed(2)}%
+                    </td>
+                  </tr>
+                `;
+        }
+    }
+    return res;
+}
+
+function loadDate(name: any) {
+    return ` <div style="display: inline-block; width: 100%; padding-bottom: 10px;">
+                ${i18n.global.t('commons.search.date')}: ${name.replaceAll('\n', ' ')}
+            </div>`;
+}
+
+function loadSeries(item: any, data: any, unit: any) {
+    return `<div style="width: 100%;">
+                ${item.marker} ${item.seriesName}: ${data} ${unit}
+            </div>`;
+}
+
+function getSideWidth(b: boolean) {
+    return !b || document.body.clientWidth > 1600 ? '7%' : '10%';
+}
+
+onMounted(() => {
+    loadOptions();
+});
+</script>
+
+<style scoped lang="scss">
+.content-container__search {
+    margin-top: 7px;
+    .el-card {
+        --el-card-padding: 12px;
+    }
+}
+.networkOption {
+    font-size: 16px;
+    font-weight: 500;
+    margin-top: 3px;
+    cursor: pointer;
+    color: var(--el-color-primary);
+}
+.title {
+    font-size: 16px;
+    font-weight: 500;
+}
+.chart {
+    width: 100%;
+    height: 400px;
+    min-width: 0;
+}
+.el-dropdown {
+    vertical-align: baseline;
+}
+
+.monitor-toolbar {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+
+    > :first-child {
+        min-width: 0;
+    }
+}
+
+.monitor-toolbar :deep(.monitor-time-range) {
+    width: 100%;
+    min-width: 0;
+    max-width: 360px;
+    flex: 0 1 360px;
+}
+
+@media only screen and (max-width: 1024px) {
+    .monitor-toolbar--card {
+        flex-wrap: wrap;
+
+        :deep(.monitor-time-range) {
+            max-width: none;
+            flex-basis: 100%;
+        }
+    }
+}
+
+@media only screen and (max-width: 767px) {
+    .monitor-toolbar--global {
+        flex-wrap: wrap;
+
+        :deep(.monitor-time-range) {
+            max-width: none;
+            flex-basis: 100%;
+        }
+
+        :deep(.monitor-refresh) {
+            margin-left: auto;
+        }
+    }
+}
+</style>

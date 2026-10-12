@@ -1,8 +1,10 @@
-# 1panel-cli v0.4.1 命令速查(Python / 1Panel v2.2.5)
+# 1panel-cli v2.3.2 命令速查(Python / 1Panel v2.3.2)
 
 首次使用先运行 `1panel-cli init` 自动生成 `.env`(无需手填账号);然后运行 `1panel-cli doctor`,确认六项检查通过。所有命令支持全局参数 `--env <PATH>`、`--profile <NAME>`、`--node <NODE>`;节点也可由 `PANEL_NODE` 设置。全局参数放在子命令前后均可。
 
-> 本清单面向 1Panel v2.2.5 验证;新版面板的统一防火墙 API 与 Docker 端口守护命令会自动探测,旧版(v2.2.5)走旧接口。
+> 本清单面向 1Panel v2.3.2 验证;旧版面板(v2.2.x)的旧防火墙接口与中间版本(带 `rules/check` 的统一接口)会自动探测并回退。
+>
+> 请求失败或参数不确定时,阅读随技能附带的 1Panel v2.3.2 完整源码 `source/`:`api describe` 输出的 `sourcePath` 可直接定位文件(路由 `source/*/router/`、DTO `source/*/app/dto/`、行为 `source/*/app/service/`)。内置路由清单 `panel_cli/data/api-v2.3.2.json` 即由该源码生成。
 
 ## 会话
 
@@ -20,7 +22,7 @@
 | 命令 | 说明 |
 |---|---|
 | `apps list [--name X] [--type X] [--tag X] [--installed] [--all]` | 列出应用 |
-| `apps install <name> [--version V] [--param K=V] [--wait] [--timeout S]` | 安装应用 |
+| `apps install <name> [--version V] [--param K=V] [--wait] [--timeout S] [--no-pull]` | 安装应用(`--no-pull` 离线场景直接用本地镜像) |
 | `apps info <name>` | 应用详情及数据库/Redis 连接信息 |
 | `apps config <name> [--set K=V] [--compose]` | 查看/修改配置 |
 | `apps password <name> <new>` | 修改 mysql/mariadb/redis root 密码 |
@@ -39,6 +41,9 @@
 | `db user passwd <user> <new> [--host %] [--instance NAME]` | 修改用户密码 |
 | `db passwd <new> [--instance NAME]` | 修改实例 root 密码 |
 
+> 实例名即应用安装名。离线包中三应用以规范 key 注册(`mysql`/`redis`),若历史数据使用
+> `local` 前缀名称(如 `localmysql`),CLI 会自动互相解析,`--instance` 传任一写法均可。
+
 ## redis
 
 | 命令 | 说明 |
@@ -54,27 +59,42 @@
 |---|---|
 | `web list` | 列出网站和实际网站目录 |
 | `web create <domain> [--type static] [--alias X] [--remark X]` | 新建网站 |
+| `web create <domain> --proxy http://127.0.0.1:3500 [--ssl-id N] [--spa]` | **一步完成反代 + HTTPS + SPA 回退**(指定 `--proxy` 时自动使用 proxy 类型) |
 | `web config <domain> [--file x.conf]` | 读取/修改 nginx 配置 |
 | `web https <domain> [--enable --ssl-id N \| --cert/--key \| --disable]` | 查看/设置 HTTPS |
+| `web spa <domain> [--proxy URL] [--api-prefixes a,b] [--remove]` | 开启/关闭 SPA 前端路由回退(刷新深层路由不再 404) |
+| `web delete <domain> [--force]` | 删除网站;报 `record not found` 时用 `--force` 走本地应用 key 兼容模式 |
+| `web repair` | 修复本地应用路径兼容问题(软链) |
 | `web ssl <domain> --email x [--provider http] [--key-type RSA2048] [--no-auto-renew]` | 申请证书 |
 | `web upload <domain> <file> [--to DIR]` | 上传文件 |
 | `web extract <domain> <archive> [--to DIR] [--type zip]` | 解压文件 |
 
+### web 常见问题(本地应用商店)
+
+- **反代目标**：`--proxy` 接受 `http://127.0.0.1:3500` 或 `127.0.0.1:3500`(自动补 `http://`);也可先建站再 `web spa` 自动读取现有反代目标。
+- **HTTPS 报 500 / 开启后配置未生效**：本地应用路径问题,`web https/config/spa` 已内置自动软链修复;仍失败时运行 `web repair`(等价手动 `ln -s /opt/1panel/apps/local/openresty /opt/1panel/apps/openresty`)。
+- **SPA 回退原理**：写入面板「自定义重写」(`/www/sites/<alias>/rewrite/<alias>.conf`),包含 `proxy_intercept_errors on`(必须,否则上游 404 不会触发 `error_page`)+ `error_page 404 = @spa_fallback`,回退到后端 `/index.html`;`/api` 等前缀、静态资源、隐藏路径保持原 404。
+- **删除网站报 `record not found`**（历史数据）:旧版面板的删除流程固定按 `openresty` 查询应用记录(本地应用 key 为 `localopenresty`)。配套离线包已让本地应用以规范 key 注册,不再触发;历史数据可用 `web delete <domain> --force`(备份 agent.db、临时改名后再删除并自动还原,需与面板同机)。
+- **应用 key / 实例名**:配套离线包注册规范 key(`openresty`/`mysql`/`redis`);历史数据可能是 `local*` 写法,CLI 的 `apps`/`db`/`redis` 命令会自动兼容两种写法。
+
 ## firewall
 
-命令自动探测新版统一规则接口(`/hosts/firewall/settings`)和 v2.2.5 旧接口。v2.2.5 面板走旧接口:
+CLI 会自动探测三种接口形态:
 
-- 状态:`POST /hosts/firewall/base`;启停/Ping:`POST /hosts/firewall/operate`
-- 列表:`POST /hosts/firewall/search`;端口:`/firewall/port`;IP:`/firewall/ip`;转发:`/firewall/forward`;批量:`/firewall/batch`
+| 形态 | 探测依据 | 说明 |
+|---|---|---|
+| `v231`(1Panel v2.3.2+) | 有 `GET /hosts/firewall/settings`,无 `POST /hosts/firewall/rules/check` | 统一规则接口;写操作返回 `taskID`,CLI 自动轮询 `logs/tasks/search` 并汇报结果 |
+| `checked`(中间版本) | 有 `GET /hosts/firewall/settings` 且有 `rules/check` | 创建前先规则检查(`checkFlag`) |
+| `legacy`(v2.2.x) | 无 `/hosts/firewall/settings` | 旧门面接口(`/firewall/search|port|ip|forward|batch`) |
 
-新版面板(dev-v2 及以后)创建流程会自动执行 `rules/check` → `rules`,删除使用托管规则 UUID;转发走独立 `/forward/*` 接口。
+v2.3.2 面板的写操作均为异步任务(规则创建/删除、端口转发、Docker 端口策略、防火墙启停),CLI 默认等待任务完成(轮询超时 60 秒)并显示成功或失败原因。
 
 | 命令 | 说明 |
 |---|---|
-| `firewall status` | 状态、后端与新版后端选择(系统/转发/Docker) |
-| `firewall start\|stop\|restart` | 生命周期操作 |
+| `firewall status` | 状态、后端与后端选择(系统/转发/Docker) |
+| `firewall start\|stop\|restart` | 生命周期操作(等待异步任务) |
 | `firewall allow-ping\|ban-ping` | Ping 策略 |
-| `firewall list [--type port\|address\|forward] [--info X] [--strategy X]` | 规则列表 |
+| `firewall list [--type port\|address\|forward] [--info X] [--strategy X]` | 规则列表(统一接口显示托管状态/来源) |
 | `firewall port add <port> [--protocol tcp\|udp\|tcp/udp] [--strategy accept\|drop] [--source IP] [--desc X]` | 添加端口规则 |
 | `firewall port del <port> [--protocol P] [--strategy S] [--source IP]` | 删除匹配的托管端口规则 |
 | `firewall batch <p1,p2,...> [--protocol P]` | 批量添加端口规则 |
@@ -83,19 +103,25 @@
 | `firewall forward add <port> --to IP:PORT [--protocol P] [--interface X]` | 添加端口转发 |
 | `firewall forward del <port> --to IP:PORT [--num N]` | 删除端口转发 |
 
-### firewall docker(新版 Docker 端口守护,仅新版面板)
+> v2.3.2 的 `POST /hosts/firewall/port` 仅供面板内部使用(从面板探针调用返回 403),统一接口下不要通过 `api post` 直接调用旧接口。
+
+### firewall docker(Docker 端口守护,需 v2.3.x+)
 
 | 命令 | 说明 |
 |---|---|
 | `firewall docker status` | 守护状态(后端/初始化/绑定/生效) |
-| `firewall docker ports` | 列出容器已发布端口与防护策略(含策略 UUID) |
+| `firewall docker ports` | 列出容器已发布端口、防护策略、管控目标与策略 UUID |
 | `firewall docker sync` | 同步 Docker 端口防护规则 |
-| `firewall docker operate [--operation init\|bind\|unbind]` | 初始化/绑定/解绑守护 |
+| `firewall docker operate [--operation init\|bind\|unbind]` | 初始化/绑定/解绑守护(初始化等待异步任务) |
 | `firewall docker allow <PORT> --sources a,b [--protocol P] [--desc X]` | 仅允许指定来源访问已发布端口 |
 | `firewall docker deny <PORT> [--sources a,b] [--protocol P] [--desc X]` | 拒绝指定来源;省略 --sources 时拒绝所有来源 |
-| `firewall docker policy-del --uuid <UUID>` | 删除一条防护策略 |
+| `firewall docker policy-del --uuid <UUID>` | 删除一条防护策略(等待异步任务) |
 
-v2.2.5 面板上执行 `firewall docker *` 会明确提示「当前面板不支持新版统一防火墙 API」。更高级的规则同步(`rules/sync`)、重置(`rules/reset`)与排序(`rules/reorder`)可通过 `api` 命令调用(仅新版面板存在)。
+v2.3.2 的 Docker 端口守护注意事项:
+
+- 写操作请求体为 `policies` 列表(按 `family/hostIP/hostPort/protocol/mode/sources/description`),CLI 已按端口地址族拆分 `--sources`;某个已发布地址族没有对应来源时会报错而不是静默跳过。
+- 若端口流量由宿主机防火墙接管(`managementTarget=host_firewall`,例如宿主防火墙启用后 Docker userland proxy 处理的 IPv6 映射),Docker 守护策略对其无效;CLI 会跳过该端口并提示改用 `firewall port/ip` 规则。
+- v2.2.x 面板上执行 `firewall docker *` 会明确提示不支持。更高级的规则同步(`rules/sync`)、重置(`rules/reset`)、排序(`rules/reorder`)与规则检查可通过 `api` 命令调用。
 
 ## api — 发现和调用 API
 
@@ -104,15 +130,30 @@ v2.2.5 面板上执行 `firewall docker *` 会明确提示「当前面板不支�
 | `api list [--filter TEXT]` | 列出官方源码路由;按路径、处理器、摘要、标签过滤 |
 | `api describe <METHOD> <PATH>` | 显示路由元数据,并合并当前面板 Swagger 请求模型 |
 | `api get <PATH>` | GET |
-| `api post <PATH> [--body JSON]` | POST |
-| `api put <PATH> [--body JSON]` | PUT |
+| `api post <PATH> [--body JSON] [--body-file PATH]` | POST,`--body-file -` 从标准输入读取 |
+| `api put <PATH> [--body JSON] [--body-file PATH]` | PUT,`--body-file -` 从标准输入读取 |
 | `api delete <PATH>` | DELETE |
 
-路径相对 `/api/v2`,请求自动带 Cookie、CSRF、`Accept-Language` 和 `CurrentNode`。内置清单由 1Panel `v2.2.5` 源码生成(754 条路由,Swagger 收录 731 条;v2.2.5 无 DELETE/PUT 路由,PUT/DELETE 供新版面板使用)。已在 v2.2.5 面板上全量核验:754 条路由全部注册可调用。`api describe` 支持用真实取值匹配参数路由(如 `websites/ca/1` 可匹配 `websites/ca/:id`);调用不存在的路由或方法不符时会给出明确报错,而不是打印 HTML。示例:
+路径相对 `/api/v2`,请求自动带 Cookie、CSRF、`Accept-Language` 和 `CurrentNode`。内置清单由 1Panel `v2.3.2` 源码生成(787 条路由,Swagger 收录 756 条)。已在 v2.3.2 面板上全量核验:787 条路由全部注册可调用。`api describe` 支持用真实取值匹配参数路由(如 `websites/ca/1` 可匹配 `websites/ca/:id`);调用不存在的路由或方法不符时会给出明确报错,而不是打印 HTML。
+
+响应默认脱敏:字段名命中 `privateKey` / `password` / `passwd` / `token` / `secret` / `accessKey` / `hmacKey` / `authorization` / `credential` 等,或值中出现 PEM 私钥块(`RSA/EC/OPENSSH/PGP ... PRIVATE KEY`),输出统一替换为 `***REDACTED***` / `***REDACTED PRIVATE KEY***`。确需原值(如读取证书私钥)时显式加全局参数 `--show-secrets`(或环境变量 `PANEL_CLI_SHOW_SECRETS=1`),并自行承担泄露风险;请求体含敏感内容时优先用 `--body-file`,不要让私钥出现在命令行参数里。
+
+示例:
 
 ```sh
-1panel-cli api list --filter templates
-1panel-cli api describe POST websites/templates/search
-1panel-cli api describe POST containers/compose/pin   # v2.2.5 已注册,但未收录于 Swagger
+1panel-cli api list --filter firewall
+1panel-cli api describe POST hosts/firewall/rules
+1panel-cli api post hosts/firewall/rules/search --body '{"page":1,"pageSize":20,"info":"","all":true,"scopes":[{"provider":"ufw","family":"ipv4","chain":"incoming","direction":"input"}]}'
 1panel-cli api post apps/search --body '{"page":1,"pageSize":10}'
+
+# 导入本地 HTTPS 证书(nginx 格式 pem + key):JSON 经 stdin 提交,私钥不进命令行
+python3 - <<'PY' | 1panel-cli api post websites/ssl/upload --body-file -
+import json
+print(json.dumps({
+    "type": "paste",
+    "privateKey": open("example.com.key").read(),
+    "certificate": open("example.com.pem").read(),
+    "description": "manual import",
+}))
+PY
 ```

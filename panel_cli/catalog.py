@@ -1,4 +1,4 @@
-"""API 路由目录:内置 v2.2.5 源码清单 + 当前面板 Swagger 运行时合并。
+"""API 路由目录:内置 v2.3.2 源码清单 + 当前面板 Swagger 运行时合并。
 
 对应 Rust 版 catalog.rs。
 """
@@ -13,7 +13,8 @@ from .client import PanelClient
 from .errors import CliError
 from .session import load_session
 
-BUILTIN_CATALOG_PATH = Path(__file__).resolve().parent / "data" / "api-v2.2.5.json"
+BUILTIN_CATALOG_PATH = Path(__file__).resolve().parent / "data" / "api-v2.3.2.json"
+SOURCE_ROOT = Path(__file__).resolve().parent.parent / "source"
 HTTP_METHODS = ("get", "post", "put", "delete", "patch")
 
 
@@ -170,6 +171,18 @@ def resolve_swagger_operation(
     return best[1], best[2]
 
 
+def source_reference(route_source: str) -> str:
+    """路由清单里的源码相对路径 → 技能目录内可直接阅读的 `source/...` 路径。
+
+    仅当技能目录附带 `source/`(1Panel v2.3.2 源码)且该文件存在时返回。
+    """
+    if not route_source or route_source == "runtime-swagger":
+        return ""
+    if (SOURCE_ROOT / route_source).is_file():
+        return f"source/{route_source}"
+    return ""
+
+
 def route_text(route: Route) -> str:
     return " ".join(
         [route.method, route.path, route.handler, route.summary, " ".join(route.tags)]
@@ -233,7 +246,8 @@ def list_routes(profile: str, filter_text: str) -> None:
         f"Swagger 已记录 {catalog.swagger_documented_count}/{catalog.route_count}"
     )
     if runtime is None:
-        print("提示:当前面板 Swagger 不可用,以上结果来自源码生成的内置完整清单。")
+        suffix = "(源码见 source/)" if SOURCE_ROOT.is_dir() else ""
+        print(f"提示:当前面板 Swagger 不可用,以上结果来自源码生成的内置完整清单{suffix}。")
     elif len(routes) > catalog.route_count:
         print(f"当前面板 Swagger 另补充 {len(routes) - catalog.route_count} 条运行时路由。")
 
@@ -302,6 +316,9 @@ def describe(profile: str, method: str, path: str) -> None:
                 "swaggerDocumented": route.swagger_documented,
             }
         )
+        source_path = source_reference(route.source)
+        if source_path:
+            result["sourcePath"] = source_path
     else:
         result.update({"source": "runtime-swagger", "runtimeOnly": True})
 
@@ -313,5 +330,11 @@ def describe(profile: str, method: str, path: str) -> None:
         if schemas:
             result["schemas"] = schemas
     elif route is not None:
-        result["note"] = "当前面板 Swagger 未收录或不可用;请求体请结合 handler/source 查看"
+        if "sourcePath" in result:
+            result["note"] = (
+                "当前面板 Swagger 未收录或不可用;"
+                f"请求体与参数请阅读源码 {result['sourcePath']} 及对应 DTO"
+            )
+        else:
+            result["note"] = "当前面板 Swagger 未收录或不可用;请求体请结合 handler/source 查看"
     print(json.dumps(result, ensure_ascii=False, indent=2))

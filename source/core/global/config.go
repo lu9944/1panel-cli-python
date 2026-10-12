@@ -1,0 +1,39 @@
+package global
+
+type ServerConfig struct {
+	Base      Base      `mapstructure:"base"`
+	Conn      Conn      `mapstructure:"conn"`
+	LogConfig LogConfig `mapstructure:"log"`
+}
+
+type Base struct {
+	Mode           string `mapstructure:"mode"`
+	Username       string `mapstructure:"username"`
+	Password       string `mapstructure:"password"`
+	Language       string `mapstructure:"language"`
+	IsDemo         bool   `mapstructure:"is_demo"`
+	IsOffline      bool   `mapstructure:"is_offline"`
+	IsFxplay       bool   `mapstructure:"is_fxplay"`
+	Edition        string `mapstructure:"edition"`
+	IsEnterprise   bool   `mapstructure:"is_enterprise"`
+	Version        string `mapstructure:"version"`
+	InstallDir     string `mapstructure:"install_dir"`
+	ChangeUserInfo string `mapstructure:"change_user_info"`
+	EncryptKey     string `mapstructure:"encrypt_key"`
+}
+
+type Conn struct {
+	Port        string `mapstructure:"port"`
+	BindAddress string `mapstructure:"bindAddress"`
+	Ipv6        string `mapstructure:"ipv6"`
+	SSL         string `mapstructure:"ssl"`
+	Entrance    string `mapstructure:"entrance"`
+}
+
+type LogConfig struct {
+	Level     string `mapstructure:"level"`
+	TimeZone  string `mapstructure:"timeZone"`
+	LogName   string `mapstructure:"log_name"`
+	LogSuffix string `mapstructure:"log_suffix"`
+	MaxBackup int    `mapstructure:"max_backup"`
+}

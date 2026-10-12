@@ -1,0 +1,499 @@
+package service
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	pathUtils "path"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"github.com/1Panel-dev/1Panel/agent/utils/alert_push"
+
+	"github.com/1Panel-dev/1Panel/agent/app/dto"
+	"github.com/1Panel-dev/1Panel/agent/app/model"
+	"github.com/1Panel-dev/1Panel/agent/app/repo"
+	"github.com/1Panel-dev/1Panel/agent/app/task"
+	"github.com/1Panel-dev/1Panel/agent/constant"
+	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/i18n"
+	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
+	"github.com/1Panel-dev/1Panel/agent/utils/files"
+	"github.com/1Panel-dev/1Panel/agent/utils/ntp"
+)
+
+func (u *CronjobService) HandleJob(cronjob *model.Cronjob) {
+	cronjobItem, _ := cronjobRepo.Get(repo.WithByID(cronjob.ID))
+	if cronjobItem.IsExecuting {
+		cronjobRepo.AddFailedRecord(cronjob.ID, i18n.GetMsgByKey("InExecuting"))
+		return
+	}
+	record := cronjobRepo.StartRecords(cronjob.ID)
+	taskItem, err := task.NewTaskWithOps(fmt.Sprintf("cronjob-%s", cronjob.Name), task.TaskHandle, task.TaskScopeCronjob, record.TaskID, cronjob.ID)
+	if err != nil {
+		global.LOG.Errorf("new task for exec shell failed, err: %v", err)
+		return
+	}
+	if cronjob.Type == "snapshot" {
+		go func() {
+			_ = cronjobRepo.UpdateRecords(record.ID, map[string]interface{}{"records": record.Records})
+			if err := taskRepo.Save(context.Background(), taskItem.Task); err != nil {
+				global.LOG.Errorf("save task for snapshot cronjob failed, err: %v", err)
+				return
+			}
+			if err = u.handleSnapshot(*cronjob, record, taskItem); err != nil {
+				if len(taskItem.Task.CurrentStep) == 0 {
+					taskItem.Log(err.Error())
+					taskItem.Task.Status = constant.StatusFailed
+					taskItem.Task.ErrorMsg = err.Error()
+					taskItem.Task.EndAt = time.Now()
+					_ = taskRepo.Save(context.Background(), taskItem.Task)
+				}
+				cronjobRepo.EndRecords(record, constant.StatusFailed, err.Error(), record.Records)
+				handleCronJobAlert(cronjob)
+				return
+			}
+			cronjobRepo.EndRecords(record, constant.StatusSuccess, "", record.Records)
+		}()
+		return
+	}
+	if err = u.loadTask(cronjob, &record, taskItem); err != nil {
+		global.LOG.Debugf("prepare to handle cron job [%s] %s failed, err: %v", cronjob.Type, cronjob.Name, err)
+		item, _ := taskRepo.GetFirst(taskRepo.WithByID(record.TaskID))
+		if len(item.ID) == 0 {
+			record.TaskID = ""
+		}
+		cronjobRepo.EndRecords(record, constant.StatusFailed, err.Error(), record.Records)
+		handleCronJobAlert(cronjob)
+		return
+	}
+	go func() {
+		if err := taskItem.Execute(); err != nil {
+			taskItem, _ := taskRepo.GetFirst(taskRepo.WithByID(record.TaskID))
+			if len(taskItem.ID) == 0 {
+				record.TaskID = ""
+			}
+			cronjobRepo.EndRecords(record, constant.StatusFailed, err.Error(), record.Records)
+			handleCronJobAlert(cronjob)
+		} else {
+			cronjobRepo.EndRecords(record, constant.StatusSuccess, "", record.Records)
+		}
+	}()
+}
+
+func (u *CronjobService) loadTask(cronjob *model.Cronjob, record *model.JobRecords, taskItem *task.Task) error {
+	var err error
+	switch cronjob.Type {
+	case "shell":
+		if cronjob.ScriptMode == "library" {
+			scriptItem, _ := scriptRepo.Get(repo.WithByID(cronjob.ScriptID))
+			if scriptItem.ID == 0 {
+				return fmt.Errorf("load script from db failed, err: %v", err)
+			}
+			cronjob.Script = scriptItem.Script
+			cronjob.ScriptMode = "input"
+		}
+		if len(cronjob.Script) == 0 {
+			return fmt.Errorf("the script content is empty and is skipped")
+		}
+		u.handleShell(*cronjob, taskItem)
+		u.removeExpiredLog(*cronjob)
+	case "curl":
+		if len(cronjob.URL) == 0 {
+			return fmt.Errorf("the url is empty and is skipped")
+		}
+		u.handleCurl(*cronjob, taskItem)
+		u.removeExpiredLog(*cronjob)
+	case "ntp":
+		u.handleNtpSync(*cronjob, taskItem)
+		u.removeExpiredLog(*cronjob)
+	case "cutWebsiteLog":
+		err = u.handleCutWebsiteLog(cronjob, record.StartTime, taskItem)
+	case "clean":
+		u.handleSystemClean(*cronjob, taskItem)
+		u.removeExpiredLog(*cronjob)
+	case "website":
+		err = u.handleWebsite(*cronjob, record.StartTime, taskItem)
+	case "app":
+		err = u.handleApp(*cronjob, record.StartTime, taskItem)
+	case "database":
+		err = u.handleDatabase(*cronjob, record.StartTime, taskItem)
+	case "directory":
+		if len(cronjob.SourceDir) == 0 {
+			return fmt.Errorf("the source dir is empty and is skipped")
+		}
+		err = u.handleDirectory(*cronjob, record.StartTime, taskItem)
+	case "log":
+		err = u.handleSystemLog(*cronjob, record.StartTime, taskItem)
+	case "syncIpGroup":
+		u.handleSyncIpGroup(*cronjob, taskItem)
+	case "cleanLog":
+		u.handleCleanLog(*cronjob, taskItem)
+	}
+	return err
+}
+
+func (u *CronjobService) handleShell(cronjob model.Cronjob, taskItem *task.Task) {
+	cmdMgr := cmd.NewCommandMgr(cmd.WithTask(*taskItem), cmd.WithContext(taskItem.TaskCtx))
+
+	taskItem.AddSubTaskWithOps(i18n.GetWithName("HandleShell", cronjob.Name), func(t *task.Task) error {
+		if len(cronjob.ContainerName) != 0 {
+			scriptItem := cronjob.Script
+			if cronjob.ScriptMode == "select" {
+				scriptItem = pathUtils.Join("/tmp", pathUtils.Base(cronjob.Script))
+				if err := cmdMgr.Run("docker", "cp", cronjob.Script, cronjob.ContainerName+":"+scriptItem); err != nil {
+					return err
+				}
+			}
+			command := "sh"
+			if len(cronjob.Command) != 0 {
+				command = cronjob.Command
+			}
+			if len(cronjob.User) != 0 {
+				return cmdMgr.Run("docker", "exec", "-u", cronjob.User, cronjob.ContainerName, command, "-c", scriptItem)
+			}
+			return cmdMgr.Run("docker", "exec", cronjob.ContainerName, command, "-c", scriptItem)
+		}
+		if len(cronjob.Executor) == 0 {
+			cronjob.Executor = "bash"
+		}
+		if cronjob.ScriptMode == "input" {
+			suffix := ".sh"
+			if strings.HasPrefix(cronjob.Executor, "python") {
+				suffix = ".py"
+			}
+			fileItem := pathUtils.Join(global.Dir.DataDir, "task", "shell", cronjob.Name, cronjob.Name+suffix)
+			_ = os.MkdirAll(pathUtils.Dir(fileItem), os.ModePerm)
+			shellFile, err := os.OpenFile(fileItem, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, constant.DirPerm)
+			if err != nil {
+				return err
+			}
+			defer shellFile.Close()
+			if _, err := shellFile.WriteString(cronjob.Script); err != nil {
+				return err
+			}
+			if len(cronjob.User) == 0 {
+				return cmdMgr.Run(cronjob.Executor, fileItem)
+			}
+			return cmdMgr.Run("sudo", "-u", cronjob.User, cronjob.Executor, fileItem)
+		}
+		if len(cronjob.User) == 0 {
+			return cmdMgr.Run(cronjob.Executor, cronjob.Script)
+		}
+		if err := cmdMgr.Run("sudo", "-u", cronjob.User, cronjob.Executor, cronjob.Script); err != nil {
+			return err
+		}
+		return nil
+	}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
+}
+
+func (u *CronjobService) handleCurl(cronjob model.Cronjob, taskItem *task.Task) {
+	urls := strings.Split(cronjob.URL, ",")
+	for _, url := range urls {
+		if len(strings.TrimSpace(url)) == 0 {
+			continue
+		}
+		taskItem.AddSubTaskWithOps(i18n.GetWithName("HandleCurl", url), func(t *task.Task) error {
+			taskItem.LogStart(i18n.GetWithName("HandleCurl", url))
+			cmdMgr := cmd.NewCommandMgr(cmd.WithTask(*taskItem))
+			return cmdMgr.Run("curl", url)
+		}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
+	}
+}
+
+func (u *CronjobService) handleNtpSync(cronjob model.Cronjob, taskItem *task.Task) {
+	taskItem.AddSubTaskWithOps(i18n.GetMsgByKey("HandleNtpSync"), func(t *task.Task) error {
+		ntpServer, err := settingRepo.Get(settingRepo.WithByKey("NtpSite"))
+		if err != nil {
+			return err
+		}
+		taskItem.Logf("ntp server: %s", ntpServer.Value)
+		ntime, err := ntp.GetRemoteTime(ntpServer.Value)
+		if err != nil {
+			return err
+		}
+		if err := ntp.UpdateSystemTime(ntime.Format(constant.DateTimeLayout)); err != nil {
+			return err
+		}
+		return nil
+	}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
+}
+
+func (u *CronjobService) handleCleanLog(cronjob model.Cronjob, taskItem *task.Task) {
+	taskItem.AddSubTaskWithOps(i18n.GetWithName("CleanLog", cronjob.Name), func(t *task.Task) error {
+		config := GetCleanLogConfig(cronjob)
+		for _, scope := range config.Scopes {
+			switch scope {
+			case "website":
+				websites, _ := websiteRepo.List()
+				for _, website := range websites {
+					curStr := i18n.GetWithName("CleanLogByName", website.PrimaryDomain)
+					t.LogStart(curStr)
+					accessLogPath := GetSitePath(website, SiteAccessLog)
+					if err := os.Truncate(accessLogPath, 0); err != nil {
+						t.LogFailedWithErr(curStr, err)
+						continue
+					}
+					errLogPath := GetSitePath(website, SiteErrorLog)
+					if err := os.Truncate(errLogPath, 0); err != nil {
+						t.LogFailedWithErr(curStr, err)
+						continue
+					}
+					t.LogSuccess(curStr)
+				}
+				appInstall, _ := getAppInstallByKey(constant.AppOpenresty)
+				if appInstall.ID > 0 {
+					curStr := i18n.GetWithName("CleanLogByName", "OpenResty")
+					t.LogStart(curStr)
+					accessLogPath := pathUtils.Join(appInstall.GetPath(), "log", "access.log")
+					if err := os.Truncate(accessLogPath, 0); err != nil {
+						t.LogFailedWithErr(curStr, err)
+					}
+					errLogPath := pathUtils.Join(appInstall.GetPath(), "log", "error.log")
+					if err := os.Truncate(errLogPath, 0); err != nil {
+						t.LogFailedWithErr(curStr, err)
+					}
+					t.LogSuccess(curStr)
+				}
+			}
+		}
+		return nil
+	}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
+}
+
+func (u *CronjobService) handleSyncIpGroup(cronjob model.Cronjob, taskItem *task.Task) {
+	taskItem.AddSubTaskWithOps(i18n.GetWithName("SyncIpGroup", cronjob.Name), func(t *task.Task) error {
+		appInstall, err := getAppInstallByKey(constant.AppOpenresty)
+		if err != nil {
+			return err
+		}
+		ipGroupDir := pathUtils.Join(appInstall.GetPath(), "1pwaf", "data", "rules", "ip_group")
+		urlDir := pathUtils.Join(ipGroupDir, "ip_group_url")
+		_, err = os.Stat(urlDir)
+		if err != nil && os.IsNotExist(err) {
+			return buserr.New("WafIpGroupNotFound")
+		}
+
+		urlsFiles, err := os.ReadDir(urlDir)
+		if err != nil {
+			return err
+		}
+		for _, file := range urlsFiles {
+			if file.IsDir() || !strings.HasSuffix(file.Name(), "_url") {
+				continue
+			}
+			urlFilePath := filepath.Join(urlDir, file.Name())
+
+			urlContent, err := os.ReadFile(urlFilePath)
+			if err != nil {
+				continue
+			}
+			remoteURL := strings.TrimSpace(string(urlContent))
+			if remoteURL == "" {
+				continue
+			}
+			resp, err := http.Get(remoteURL)
+			if err != nil {
+				continue
+			}
+
+			ipGroupFile := strings.TrimSuffix(file.Name(), "_url")
+			ipGroupPath := filepath.Join(ipGroupDir, ipGroupFile)
+
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				taskItem.Logf("get remote ip group %s failed %s status code %d", ipGroupFile, remoteURL, resp.StatusCode)
+				continue
+			}
+
+			outFile, err := os.OpenFile(ipGroupPath, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
+			if err != nil {
+				resp.Body.Close()
+				taskItem.Logf("sync %s failed %v", ipGroupFile, err)
+				continue
+			}
+
+			writer := bufio.NewWriter(outFile)
+			_, err = io.Copy(writer, resp.Body)
+			if err != nil {
+				outFile.Close()
+				resp.Body.Close()
+				taskItem.Logf("sync %s failed , write file failed %v", ipGroupFile, err)
+				continue
+			}
+			writer.Flush()
+			outFile.Close()
+			resp.Body.Close()
+			taskItem.LogSuccess(i18n.Get("TaskSync") + " " + ipGroupFile)
+		}
+		if err := opNginx(appInstall.ContainerName, constant.NginxReload); err != nil {
+			return err
+		}
+		return nil
+	}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
+}
+
+func (u *CronjobService) handleCutWebsiteLog(cronjob *model.Cronjob, startTime time.Time, taskItem *task.Task) error {
+	clientMap := NewBackupClientMap([]string{fmt.Sprintf("%v", cronjob.DownloadAccountID)})
+	if !clientMap[fmt.Sprintf("%d", cronjob.DownloadAccountID)].isOk {
+		return buserr.New(i18n.GetMsgWithDetail("LoadBackupFailed", clientMap[fmt.Sprintf("%d", cronjob.DownloadAccountID)].message))
+	}
+	taskItem.AddSubTaskWithOps(i18n.GetWithName("CutWebsiteLog", cronjob.Name), func(t *task.Task) error {
+		websites := loadWebsForJob(*cronjob)
+		fileOp := files.NewFileOp()
+		baseDir := GetOpenrestyDir(SitesRootDir)
+		for _, website := range websites {
+			taskItem.Log(website.Alias)
+			var record model.BackupRecord
+			record.Status = constant.StatusSuccess
+			record.From = "cronjob"
+			record.Type = "cut-website-log"
+			record.CronjobID = cronjob.ID
+			record.Name = website.Alias
+			record.DetailName = website.Alias
+			record.DownloadAccountID, record.SourceAccountIDs = cronjob.DownloadAccountID, cronjob.SourceAccountIDs
+			backupDir := pathUtils.Join(global.Dir.LocalBackupDir, "log", "website", website.Alias)
+			if !fileOp.Stat(backupDir) {
+				_ = os.MkdirAll(backupDir, constant.DirPerm)
+			}
+			record.FileDir = strings.TrimPrefix(backupDir, global.Dir.LocalBackupDir+"/")
+			record.FileName = fmt.Sprintf("%s_log_%s.gz", website.PrimaryDomain, startTime.Format(constant.DateTimeSlimLayout))
+			if err := backupRepo.CreateRecord(&record); err != nil {
+				global.LOG.Errorf("save backup record failed, err: %v", err)
+				return err
+			}
+
+			websiteLogDir := pathUtils.Join(baseDir, website.Alias, "log")
+			srcAccessLogPath := pathUtils.Join(websiteLogDir, "access.log")
+			srcErrorLogPath := pathUtils.Join(websiteLogDir, "error.log")
+
+			dstFilePath := pathUtils.Join(backupDir, record.FileName)
+			if err := backupLogFile(dstFilePath, websiteLogDir, fileOp); err != nil {
+				taskItem.LogFailedWithErr("CutWebsiteLog", err)
+				continue
+			} else {
+				_ = fileOp.WriteFile(srcAccessLogPath, strings.NewReader(""), constant.DirPerm)
+				_ = fileOp.WriteFile(srcErrorLogPath, strings.NewReader(""), constant.DirPerm)
+			}
+			taskItem.Log(i18n.GetMsgWithMap("CutWebsiteLogSuccess", map[string]interface{}{"name": website.PrimaryDomain, "path": dstFilePath}))
+			u.removeExpiredBackup(*cronjob, clientMap, record)
+		}
+		return nil
+	}, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
+	return nil
+}
+
+func backupLogFile(dstFilePath, websiteLogDir string, fileOp files.FileOp) error {
+	cmdMgr := cmd.NewCommandMgr()
+	if err := cmdMgr.Run("tar", "-czf", dstFilePath, "-C", websiteLogDir, "access.log", "error.log"); err != nil {
+		dstDir := pathUtils.Dir(dstFilePath)
+		if err = fileOp.Copy(pathUtils.Join(websiteLogDir, "access.log"), dstDir); err != nil {
+			return err
+		}
+		if err = fileOp.Copy(pathUtils.Join(websiteLogDir, "error.log"), dstDir); err != nil {
+			return err
+		}
+		if err = cmdMgr.Run("tar", "-czf", dstFilePath, "-C", dstDir, "access.log", "error.log"); err != nil {
+			return err
+		}
+		_ = fileOp.DeleteFile(pathUtils.Join(dstDir, "access.log"))
+		_ = fileOp.DeleteFile(pathUtils.Join(dstDir, "error.log"))
+		return nil
+	}
+	return nil
+}
+
+func (u *CronjobService) handleSystemClean(cronjob model.Cronjob, taskItem *task.Task) {
+	cleanTask := doSystemClean(taskItem)
+	taskItem.AddSubTaskWithOps(i18n.GetMsgByKey("HandleSystemClean"), cleanTask, nil, int(cronjob.RetryTimes), time.Duration(cronjob.Timeout)*time.Second)
+}
+
+func (u *CronjobService) removeExpiredBackup(cronjob model.Cronjob, accountMap map[string]backupClientHelper, record model.BackupRecord) {
+	var opts []repo.DBOption
+	opts = append(opts, repo.WithByFrom("cronjob"))
+	opts = append(opts, backupRepo.WithByCronID(cronjob.ID))
+	opts = append(opts, repo.WithOrderDesc("created_at"))
+	if record.ID != 0 {
+		opts = append(opts, repo.WithByType(record.Type))
+		opts = append(opts, repo.WithByName(record.Name))
+		opts = append(opts, repo.WithByDetailName(record.DetailName))
+	}
+	records, _ := backupRepo.ListRecord(opts...)
+	if len(records) <= int(cronjob.RetainCopies) {
+		return
+	}
+	for i := int(cronjob.RetainCopies); i < len(records); i++ {
+		accounts := strings.Split(cronjob.SourceAccountIDs, ",")
+		if cronjob.Type == "snapshot" {
+			for _, account := range accounts {
+				if len(account) != 0 {
+					if _, ok := accountMap[account]; !ok {
+						continue
+					}
+					if !accountMap[account].isOk {
+						continue
+					}
+					_, _ = accountMap[account].client.Delete(pathUtils.Join(accountMap[account].backupPath, "system_snapshot", records[i].FileName))
+				}
+			}
+			_ = snapshotRepo.Delete(repo.WithByName(strings.TrimSuffix(records[i].FileName, ".tar.gz")))
+		} else {
+			for _, account := range accounts {
+				if len(account) != 0 {
+					if _, ok := accountMap[account]; !ok {
+						continue
+					}
+					if !accountMap[account].isOk {
+						continue
+					}
+					_, _ = accountMap[account].client.Delete(pathUtils.Join(accountMap[account].backupPath, records[i].FileDir, records[i].FileName))
+				}
+			}
+		}
+		_ = backupRepo.DeleteRecord(context.Background(), repo.WithByID(records[i].ID))
+	}
+}
+
+func (u *CronjobService) removeExpiredLog(cronjob model.Cronjob) {
+	records, _ := cronjobRepo.ListRecord(cronjobRepo.WithByJobID(int(cronjob.ID)), repo.WithOrderDesc("created_at"))
+	if len(records) <= int(cronjob.RetainCopies) {
+		return
+	}
+	for i := int(cronjob.RetainCopies); i < len(records); i++ {
+		if len(records[i].File) != 0 {
+			files := strings.Split(records[i].File, ",")
+			for _, file := range files {
+				_ = os.Remove(file)
+			}
+		}
+		_ = cronjobRepo.DeleteRecord(repo.WithByID(records[i].ID))
+		_ = taskRepo.Delete(taskRepo.WithByID(records[i].TaskID))
+		_ = os.Remove(pathUtils.Join(global.CONF.Base.InstallDir, "1panel/log/task/Cronjob", records[i].TaskID+".log"))
+	}
+}
+
+func hasBackup(cronjobType string) bool {
+	return cronjobType == "app" || cronjobType == "database" || cronjobType == "website" || cronjobType == "directory" || cronjobType == "snapshot" || cronjobType == "log" || cronjobType == "cutWebsiteLog"
+}
+
+func handleCronJobAlert(cronjob *model.Cronjob) {
+	pushAlert := dto.PushAlert{
+		TaskName:  cronjob.Name,
+		AlertType: cronjob.Type,
+		EntryID:   cronjob.ID,
+		Param:     cronjob.Type,
+	}
+	_ = alert_push.PushAlert(pushAlert)
+}
+
+func GetCleanLogConfig(cronJob model.Cronjob) dto.CleanLogConfig {
+	config := &dto.CleanLogConfig{}
+	_ = json.Unmarshal([]byte(cronJob.Config), config)
+	return *config
+}

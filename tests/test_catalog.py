@@ -24,6 +24,23 @@ class TestBuiltinCatalog(unittest.TestCase):
         self.assertEqual(catalog_data.route_count, len(catalog_data.routes))
 
 
+class TestSourceReference(unittest.TestCase):
+    @unittest.skipUnless(
+        (catalog.SOURCE_ROOT / "agent/router/ro_host.go").is_file(),
+        "仓库未附带 source/ 源码",
+    )
+    def test_bundled_source_resolves(self):
+        self.assertEqual(
+            catalog.source_reference("agent/router/ro_host.go"),
+            "source/agent/router/ro_host.go",
+        )
+
+    def test_unknown_or_runtime_source_is_empty(self):
+        self.assertEqual(catalog.source_reference(""), "")
+        self.assertEqual(catalog.source_reference("runtime-swagger"), "")
+        self.assertEqual(catalog.source_reference("agent/router/no_such_file.go"), "")
+
+
 class TestNormalizePath(unittest.TestCase):
     def test_normalizes_api_paths(self):
         self.assertEqual(normalize_path("core/auth/current"), "/api/v2/core/auth/current")

@@ -1,0 +1,535 @@
+package docker_guard
+
+import (
+	"errors"
+	"fmt"
+	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
+	firewallutil "github.com/1Panel-dev/1Panel/agent/utils/firewall"
+	"github.com/1Panel-dev/1Panel/agent/utils/firewall/lifecycle"
+	"github.com/1Panel-dev/1Panel/agent/utils/firewall/nftables_helper"
+)
+
+type Runner interface {
+	Run(executable string, args ...string) (string, error)
+	RunInput(executable, input string, args ...string) (string, error)
+	Exists(executable string) bool
+}
+
+type commandRunner struct{}
+
+func (commandRunner) Run(executable string, args ...string) (string, error) {
+	executable = dockerGuardExecutable(executable)
+	manager := cmd.NewCommandMgr(cmd.WithTimeout(60 * time.Second))
+	stdout, err := manager.RunWithOptionalSudoAndStdout(executable, args...)
+	if err != nil {
+		return stdout, fmt.Errorf("command=%s %s failed: %w", executable, strings.Join(args, " "), err)
+	}
+	return stdout, nil
+}
+
+func (commandRunner) RunInput(executable, input string, args ...string) (string, error) {
+	executable = dockerGuardExecutable(executable)
+	if executable == "nft" {
+		return "", nftables_helper.RunScript(input)
+	}
+	manager := cmd.NewCommandMgr(cmd.WithTimeout(60*time.Second), cmd.WithStdin(strings.NewReader(input)))
+	stdout, err := manager.RunWithOptionalSudoAndStdout(executable, args...)
+	return stdout, firewallutil.WrapBatchCommandError(executable+" "+strings.Join(args, " "), input, err)
+}
+
+func (commandRunner) Exists(executable string) bool {
+	resolved := dockerGuardExecutable(executable)
+	return resolved != "" && cmd.Which(resolved)
+}
+
+func dockerGuardExecutable(logical string) string {
+	commands, err := lifecycle.ResolveIptablesCommands()
+	if err != nil {
+		return logical
+	}
+	switch logical {
+	case "iptables":
+		return commands.IPv4
+	case "iptables-restore":
+		return commands.Restore4
+	case "ip6tables":
+		return commands.IPv6
+	case "ip6tables-restore":
+		return commands.Restore6
+	default:
+		return logical
+	}
+}
+
+type Iptables struct {
+	runner Runner
+}
+
+var mutationMu sync.Mutex
+
+func NewIptables() *Iptables { return &Iptables{runner: commandRunner{}} }
+
+func (m *Iptables) Initialize(policies []Policy, inventory PolicyInventory) error {
+	mutationMu.Lock()
+	defer mutationMu.Unlock()
+	if err := CheckIPv4Forwarding(); err != nil {
+		return err
+	}
+	if !m.runner.Exists("iptables-restore") {
+		return errors.New("iptables-restore is not installed")
+	}
+	if err := m.ensureFamily("iptables", true); err != nil {
+		return err
+	}
+	if m.runner.Exists("ip6tables") {
+		available, err := m.chainExists("ip6tables", DockerChain)
+		if err != nil {
+			return &FamilyError{Family: FamilyIPv6, Err: fmt.Errorf("inspect %s chain: %w", DockerChain, err)}
+		}
+		if available {
+			if !m.runner.Exists("ip6tables-restore") {
+				return &FamilyError{Family: FamilyIPv6, Err: errors.New("ip6tables-restore is not installed")}
+			}
+			if err := m.ensureFamily("ip6tables", false); err != nil {
+				return &FamilyError{Family: FamilyIPv6, Err: err}
+			}
+		}
+	}
+	return m.rebuildLocked(policies, inventory)
+}
+
+func (m *Iptables) Bind() error {
+	mutationMu.Lock()
+	defer mutationMu.Unlock()
+	if err := m.bindExistingFamily("iptables", true); err != nil {
+		return err
+	}
+	if m.runner.Exists("ip6tables") {
+		if err := m.bindExistingFamily("ip6tables", false); err != nil {
+			return &FamilyError{Family: FamilyIPv6, Err: err}
+		}
+	}
+	return nil
+}
+
+func (m *Iptables) ReplacePolicies(policies []Policy, inventory PolicyInventory) error {
+	mutationMu.Lock()
+	defer mutationMu.Unlock()
+	return m.rebuildLocked(policies, inventory)
+}
+
+func (m *Iptables) ListPolicies() (PolicyInventory, error) {
+	inventory := PolicyInventory{Policies: make([]Policy, 0), ManagedRuleOrders: make(map[string][]int64)}
+	for _, family := range []string{FamilyIPv4, FamilyIPv6} {
+		executable := executableForFamily(family)
+		if executable == "" || !m.runner.Exists(executable) {
+			continue
+		}
+		exists, err := m.chainExists(executable, Chain)
+		if err != nil {
+			return PolicyInventory{}, &FamilyError{Family: family, Err: fmt.Errorf("inspect %s chain: %w", Chain, err)}
+		}
+		if !exists {
+			continue
+		}
+		output, err := m.run(executable, "-S", Chain)
+		if err != nil {
+			return PolicyInventory{}, &FamilyError{Family: family, Err: fmt.Errorf("list %s chain: %w", Chain, err)}
+		}
+		parsed, err := parseDockerGuardPolicies(output, family)
+		if err != nil {
+			return PolicyInventory{}, &FamilyError{Family: family, Err: err}
+		}
+		inventory.Policies = append(inventory.Policies, parsed.Policies...)
+		inventory.ReadOnly = append(inventory.ReadOnly, parsed.ReadOnly...)
+		for key, orders := range parsed.ManagedRuleOrders {
+			inventory.ManagedRuleOrders[key] = append([]int64(nil), orders...)
+		}
+	}
+	return inventory, nil
+}
+
+func (m *Iptables) Unbind() error {
+	mutationMu.Lock()
+	defer mutationMu.Unlock()
+	if err := m.unbindFamily("iptables"); err != nil {
+		return err
+	}
+	if m.runner.Exists("ip6tables") {
+		if err := m.unbindFamily("ip6tables"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Iptables) Cleanup() error {
+	mutationMu.Lock()
+	defer mutationMu.Unlock()
+	for _, executable := range []string{"iptables", "ip6tables"} {
+		if !m.runner.Exists(executable) {
+			continue
+		}
+		output, err := m.run(executable, "-S")
+		if err != nil {
+			return err
+		}
+		rules := dockerGuardLifecycleRules(output, false, false)
+		if len(rules) == 0 {
+			continue
+		}
+		if err := m.restoreLifecycle(executable, rules); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Iptables) Initialized(family string) (bool, error) {
+	executable := executableForFamily(family)
+	if executable == "" || !m.runner.Exists(executable) {
+		return false, nil
+	}
+	return m.chainExists(executable, Chain)
+}
+
+func (m *Iptables) Status(family string) FamilyStatus {
+	executable := executableForFamily(family)
+	if executable == "" || !m.runner.Exists(executable) {
+		return FamilyStatus{State: StatusDisabled, Reason: ReasonCommandMissing}
+	}
+	chains, err := m.run(executable, "-S")
+	if err != nil {
+		return FamilyStatus{State: StatusNotEffective, Reason: ReasonInspectFailed}
+	}
+	if !chainDeclared(chains, DockerChain) {
+		return FamilyStatus{State: StatusDisabled, Reason: ReasonDockerChainMissing}
+	}
+	if !chainDeclared(chains, Chain) {
+		return FamilyStatus{State: StatusDisabled, Reason: ReasonGuardChainMissing}
+	}
+	status := FamilyStatus{State: StatusNotEffective, Initialized: true}
+	jumps := countJumps(chains)
+	if jumps == 0 {
+		status.Reason = ReasonJumpMissing
+		return status
+	}
+	if jumps > 1 {
+		status.Reason = ReasonJumpDuplicate
+		return status
+	}
+	if !hasFirstUniqueJump(chains) {
+		status.Reason = ReasonJumpNotFirst
+		return status
+	}
+	status.State = StatusEffective
+	status.Bound = true
+	status.Effective = true
+	return status
+}
+
+func (m *Iptables) bindExistingFamily(executable string, required bool) error {
+	if !m.runner.Exists(executable) {
+		if required {
+			return fmt.Errorf("%s is not installed", executable)
+		}
+		return nil
+	}
+	output, err := m.run(executable, "-S")
+	if err != nil {
+		return err
+	}
+	if !chainDeclared(output, DockerChain) {
+		if required {
+			return buserr.New("ErrDockerIptablesChainUnavailable")
+		}
+		return nil
+	}
+	if !chainDeclared(output, Chain) {
+		if required {
+			return fmt.Errorf("%s chain is not initialized for %s", Chain, executable)
+		}
+		return nil
+	}
+	return m.restoreLifecycle(executable, dockerGuardLifecycleRules(output, true, false))
+}
+
+func (m *Iptables) ensureFamily(executable string, required bool) error {
+	if !m.runner.Exists(executable) {
+		if required {
+			return fmt.Errorf("%s is not installed", executable)
+		}
+		return nil
+	}
+	output, err := m.run(executable, "-S")
+	if err != nil {
+		return err
+	}
+	if !chainDeclared(output, DockerChain) {
+		if required {
+			return buserr.New("ErrDockerIptablesChainUnavailable")
+		}
+		return nil
+	}
+	return m.restoreLifecycle(executable, dockerGuardLifecycleRules(output, true, !chainDeclared(output, Chain)))
+}
+
+func dockerGuardLifecycleRules(output string, bind, createOwned bool) [][]string {
+	rules := make([][]string, 0, countJumps(output)+3)
+	if createOwned {
+		rules = append(rules, []string{"-N", Chain})
+	}
+	for i := 0; i < countJumps(output); i++ {
+		rules = append(rules, []string{"-D", DockerChain, "-j", Chain})
+	}
+	if bind {
+		rules = append(rules, []string{"-I", DockerChain, "1", "-j", Chain})
+	} else if chainDeclared(output, Chain) {
+		rules = append(rules, []string{"-F", Chain}, []string{"-X", Chain})
+	}
+	return rules
+}
+
+func (m *Iptables) restoreLifecycle(executable string, rules [][]string) error {
+	if len(rules) == 0 {
+		return nil
+	}
+	restoreExecutable := executable + "-restore"
+	if !m.runner.Exists(restoreExecutable) {
+		return fmt.Errorf("%s is not installed", restoreExecutable)
+	}
+	script, err := buildRestoreScript(rules)
+	if err != nil {
+		return err
+	}
+	if _, err := m.runner.RunInput(restoreExecutable, script, "--noflush", "--wait"); err != nil {
+		return fmt.Errorf("batch update Docker guard lifecycle: %w", err)
+	}
+	return nil
+}
+
+func (m *Iptables) rebuildLocked(policies []Policy, inventory PolicyInventory) error {
+	for _, family := range []string{FamilyIPv4, FamilyIPv6} {
+		executable := executableForFamily(family)
+		if executable == "" || !m.runner.Exists(executable) {
+			continue
+		}
+		exists, err := m.chainExists(executable, Chain)
+		if err != nil {
+			return &FamilyError{Family: family, Err: fmt.Errorf("inspect %s chain: %w", Chain, err)}
+		}
+		if !exists {
+			continue
+		}
+		rules := [][]string{{"-F", Chain}, {"-A", Chain, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "RETURN"}}
+		rules = append(rules, orderedIPTablesRules(family, policies, inventory)...)
+		rules = append(rules, []string{"-A", Chain, "-j", "RETURN"})
+		script, err := buildRestoreScript(rules)
+		if err != nil {
+			return err
+		}
+		restoreExecutable := executable + "-restore"
+		if !m.runner.Exists(restoreExecutable) {
+			return &FamilyError{Family: family, Err: fmt.Errorf("%s is not installed", restoreExecutable)}
+		}
+		if _, err := m.runner.RunInput(restoreExecutable, script, "--noflush", "--wait"); err != nil {
+			return &FamilyError{Family: family, Err: fmt.Errorf("restore rules: %w", err)}
+		}
+	}
+	return nil
+}
+
+type orderedIPTablesRule struct {
+	order int64
+	index int
+	rules [][]string
+}
+
+func orderedIPTablesRules(family string, policies []Policy, inventory PolicyInventory) [][]string {
+	segments := make([]orderedIPTablesRule, 0, len(policies)+len(inventory.ReadOnly))
+	maxOrder := int64(0)
+	index := 0
+	for _, orders := range inventory.ManagedRuleOrders {
+		for _, order := range orders {
+			if order > maxOrder {
+				maxOrder = order
+			}
+		}
+	}
+	for _, item := range inventory.ReadOnly {
+		for _, native := range item.NativeRules {
+			if native.Family != family || len(native.Tokens) < 2 || native.Tokens[0] != "-A" || native.Tokens[1] != Chain {
+				continue
+			}
+			segments = append(segments, orderedIPTablesRule{order: native.Order, index: index, rules: [][]string{append([]string(nil), native.Tokens...)}})
+			index++
+			if native.Order > maxOrder {
+				maxOrder = native.Order
+			}
+		}
+	}
+	for _, policy := range policies {
+		if policy.Family != family {
+			continue
+		}
+		compiled := compilePolicy(policy)
+		orders := inventory.ManagedRuleOrders[policy.Family+"\x00"+policy.UUID]
+		for ruleIndex, rule := range compiled {
+			order := int64(0)
+			if ruleIndex < len(orders) {
+				order = orders[ruleIndex]
+			} else {
+				maxOrder++
+				order = maxOrder
+			}
+			segments = append(segments, orderedIPTablesRule{order: order, index: index, rules: [][]string{rule}})
+			index++
+		}
+	}
+	sort.SliceStable(segments, func(left, right int) bool {
+		if segments[left].order == segments[right].order {
+			return segments[left].index < segments[right].index
+		}
+		return segments[left].order < segments[right].order
+	})
+	rules := make([][]string, 0)
+	for _, segment := range segments {
+		rules = append(rules, segment.rules...)
+	}
+	return rules
+}
+
+func buildRestoreScript(rules [][]string) (string, error) {
+	var script strings.Builder
+	script.WriteString("*filter\n")
+	for _, rule := range rules {
+		for i, token := range rule {
+			if token == "" || strings.ContainsAny(token, "\r\n\x00") {
+				return "", fmt.Errorf("invalid iptables-restore token %q", token)
+			}
+			if i > 0 {
+				script.WriteByte(' ')
+			}
+			if strings.ContainsAny(token, " \t\\\"'") {
+				script.WriteString(strconv.Quote(token))
+			} else {
+				script.WriteString(token)
+			}
+		}
+		script.WriteByte('\n')
+	}
+	script.WriteString("COMMIT\n")
+	return script.String(), nil
+}
+
+func compilePolicy(policy Policy) [][]string {
+	base := []string{"-A", Chain, "-p", policy.Protocol, "-m", "conntrack"}
+	if !isWildcardHost(policy.Family, policy.HostIP) {
+		base = append(base, "--ctorigdst", policy.HostIP)
+	}
+	base = append(base, "--ctorigdstport", strconv.Itoa(int(policy.HostPort)))
+	comment := "1panel-docker:" + policy.UUID
+	if policy.Mode == ModeAll {
+		return [][]string{append(append([]string{}, base...), "-m", "comment", "--comment", comment, "-j", "DROP")}
+	}
+	target := "DROP"
+	capacity := len(policy.Sources)
+	if policy.Mode == ModeAllow {
+		target = "RETURN"
+		capacity++
+	}
+	rules := make([][]string, 0, capacity)
+	for _, source := range policy.Sources {
+		args := append([]string{}, base...)
+		args = append(args, "-s", source, "-m", "comment", "--comment", comment, "-j", target)
+		rules = append(rules, args)
+	}
+	if policy.Mode == ModeAllow {
+		rules = append(rules, append(append([]string{}, base...), "-m", "comment", "--comment", comment, "-j", "DROP"))
+	}
+	return rules
+}
+
+func (m *Iptables) unbindFamily(executable string) error {
+	if !m.runner.Exists(executable) {
+		return nil
+	}
+	if output, err := m.run(executable, "-S", DockerChain); err == nil {
+		rules := make([][]string, 0, countJumps(output))
+		for i := 0; i < countJumps(output); i++ {
+			rules = append(rules, []string{"-D", DockerChain, "-j", Chain})
+		}
+		return m.restoreLifecycle(executable, rules)
+	}
+	return nil
+}
+
+func (m *Iptables) chainExists(executable, chain string) (bool, error) {
+	output, err := m.run(executable, "-S")
+	if err != nil {
+		return false, err
+	}
+	return chainDeclared(output, chain), nil
+}
+
+func chainDeclared(output, chain string) bool {
+	needle := "-N " + chain
+	for _, line := range strings.Split(output, "\n") {
+		if strings.TrimSpace(line) == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Iptables) run(executable string, args ...string) (string, error) {
+	commandArgs := append([]string{"-w", "-t", "filter"}, args...)
+	return m.runner.Run(executable, commandArgs...)
+}
+
+func executableForFamily(family string) string {
+	switch family {
+	case FamilyIPv4:
+		return "iptables"
+	case FamilyIPv6:
+		return "ip6tables"
+	default:
+		return ""
+	}
+}
+
+func countJumps(output string) int {
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 4 && fields[0] == "-A" && fields[1] == DockerChain && fields[2] == "-j" && fields[3] == Chain {
+			count++
+		}
+	}
+	return count
+}
+
+func hasFirstUniqueJump(output string) bool {
+	firstRule := ""
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "-A "+DockerChain+" ") {
+			if firstRule == "" {
+				firstRule = line
+			}
+		}
+	}
+	return firstRule == "-A "+DockerChain+" -j "+Chain && countJumps(output) == 1
+}
+
+func isWildcardHost(family, hostIP string) bool {
+	return (family == FamilyIPv4 && (hostIP == "" || hostIP == "0.0.0.0")) ||
+		(family == FamilyIPv6 && (hostIP == "" || hostIP == "::"))
+}

@@ -1,0 +1,100 @@
+package service
+
+import (
+	"github.com/1Panel-dev/1Panel/agent/app/dto"
+	"github.com/1Panel-dev/1Panel/agent/app/dto/request"
+	"github.com/1Panel-dev/1Panel/agent/app/dto/response"
+	"github.com/1Panel-dev/1Panel/agent/app/model"
+	"github.com/1Panel-dev/1Panel/agent/app/repo"
+	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"github.com/1Panel-dev/1Panel/agent/utils/ssl"
+)
+
+type WebsiteAcmeAccountService struct {
+}
+
+type IWebsiteAcmeAccountService interface {
+	Page(search dto.PageInfo) (int64, []response.WebsiteAcmeAccountDTO, error)
+	Create(create request.WebsiteAcmeAccountCreate) (*response.WebsiteAcmeAccountDTO, error)
+	Delete(id uint) error
+	Update(update request.WebsiteAcmeAccountUpdate) (*response.WebsiteAcmeAccountDTO, error)
+}
+
+func NewIWebsiteAcmeAccountService() IWebsiteAcmeAccountService {
+	return &WebsiteAcmeAccountService{}
+}
+
+func (w WebsiteAcmeAccountService) Page(search dto.PageInfo) (int64, []response.WebsiteAcmeAccountDTO, error) {
+	total, accounts, err := websiteAcmeRepo.Page(search.Page, search.PageSize, repo.WithOrderDesc("created_at"))
+	var accountDTOs []response.WebsiteAcmeAccountDTO
+	for _, account := range accounts {
+		accountDTOs = append(accountDTOs, response.WebsiteAcmeAccountDTO{
+			WebsiteAcmeAccount: account,
+		})
+	}
+	return total, accountDTOs, err
+}
+
+func (w WebsiteAcmeAccountService) Create(create request.WebsiteAcmeAccountCreate) (*response.WebsiteAcmeAccountDTO, error) {
+	exist, _ := websiteAcmeRepo.GetFirst(websiteAcmeRepo.WithEmail(create.Email), websiteAcmeRepo.WithType(create.Type))
+	if exist != nil {
+		return nil, buserr.New("ErrEmailIsExist")
+	}
+	acmeAccount := &model.WebsiteAcmeAccount{
+		Email:    create.Email,
+		Type:     create.Type,
+		KeyType:  create.KeyType,
+		UseProxy: create.UseProxy,
+		UseEAB:   create.UseEAB,
+	}
+
+	if create.Type == "google" || create.Type == "freessl" || (create.Type == "custom" && create.UseEAB) {
+		if create.EabKid == "" || create.EabHmacKey == "" {
+			return nil, buserr.New("ErrEabKidOrEabHmacKeyCannotBlank")
+		}
+		acmeAccount.EabKid = create.EabKid
+		acmeAccount.EabHmacKey = create.EabHmacKey
+	}
+	if create.Type == "custom" && create.CaDirURL != "" {
+		acmeAccount.CaDirURL = create.CaDirURL
+	}
+
+	var client *ssl.AcmeClient
+	if err := withLegoLogger(nil, func() error {
+		var err error
+		client, err = ssl.NewRegisterClient(acmeAccount, getSystemProxy(acmeAccount.UseProxy))
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	privateKey, err := ssl.GetPrivateKey(client.User.GetPrivateKey(), ssl.KeyType(create.KeyType))
+	if err != nil {
+		return nil, err
+	}
+	acmeAccount.PrivateKey = string(privateKey)
+	acmeAccount.URL = client.User.Registration.Location
+
+	if err := websiteAcmeRepo.Create(*acmeAccount); err != nil {
+		return nil, err
+	}
+	return &response.WebsiteAcmeAccountDTO{WebsiteAcmeAccount: *acmeAccount}, nil
+}
+
+func (w WebsiteAcmeAccountService) Delete(id uint) error {
+	if ssls, _ := websiteSSLRepo.List(websiteSSLRepo.WithByAcmeAccountId(id)); len(ssls) > 0 {
+		return buserr.New("ErrAccountCannotDelete")
+	}
+	return websiteAcmeRepo.DeleteBy(repo.WithByID(id))
+}
+
+func (w WebsiteAcmeAccountService) Update(update request.WebsiteAcmeAccountUpdate) (*response.WebsiteAcmeAccountDTO, error) {
+	account, err := websiteAcmeRepo.GetFirst(repo.WithByID(update.ID))
+	if err != nil {
+		return nil, err
+	}
+	account.UseProxy = update.UseProxy
+	if err := websiteAcmeRepo.Save(*account); err != nil {
+		return nil, err
+	}
+	return &response.WebsiteAcmeAccountDTO{WebsiteAcmeAccount: *account}, nil
+}

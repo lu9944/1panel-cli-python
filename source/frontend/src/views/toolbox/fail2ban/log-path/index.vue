@@ -1,0 +1,91 @@
+<template>
+    <DrawerPro v-model="drawerVisible" :header="$t('toolbox.fail2ban.logPath')" @close="handleClose" size="small">
+        <el-form ref="formRef" label-position="top" :model="form" @submit.prevent v-loading="loading">
+            <el-form-item :label="$t('toolbox.fail2ban.logPath')" prop="logPath" :rules="Rules.requiredInput">
+                <el-input v-model="form.logPath">
+                    <template #prepend>
+                        <el-button v-permission v-node-admin icon="Folder" @click="fileRef.acceptParams({})" />
+                    </template>
+                </el-input>
+                <span class="input-help">{{ $t('toolbox.fail2ban.logPathHelper') }}</span>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <span class="dialog-footer">
+                <el-button @click="drawerVisible = false">{{ $t('commons.button.cancel') }}</el-button>
+                <el-button v-permission v-node-admin :disabled="loading" type="primary" @click="onSave(formRef)">
+                    {{ $t('commons.button.confirm') }}
+                </el-button>
+            </span>
+        </template>
+    </DrawerPro>
+    <FileList ref="fileRef" @choose="loadLogPath" />
+</template>
+<script lang="ts" setup>
+import { reactive, ref } from 'vue';
+import i18n from '@/lang';
+import { MsgSuccess } from '@/utils/message';
+import FileList from '@/components/file-list/index.vue';
+import { updateFail2ban } from '@/api/modules/toolbox';
+import { ElMessageBox, FormInstance } from 'element-plus';
+import { Rules } from '@/global/form-rules';
+
+const emit = defineEmits<{ (e: 'search'): void }>();
+
+interface DialogProps {
+    logPath: string;
+}
+const drawerVisible = ref();
+const loading = ref();
+const fileRef = ref();
+
+const form = reactive({
+    logPath: '',
+});
+
+const formRef = ref<FormInstance>();
+
+const acceptParams = (params: DialogProps): void => {
+    form.logPath = params.logPath;
+    drawerVisible.value = true;
+};
+
+const loadLogPath = async (path: string) => {
+    form.logPath = path;
+};
+
+const onSave = async (formEl: FormInstance | undefined) => {
+    if (!formEl) return;
+    formEl.validate(async (valid) => {
+        if (!valid) return;
+        ElMessageBox.confirm(
+            i18n.global.t('ssh.sshChangeHelper', [i18n.global.t('toolbox.fail2ban.logPath'), form.logPath]),
+            i18n.global.t('toolbox.fail2ban.fail2banChange'),
+            {
+                confirmButtonText: i18n.global.t('commons.button.confirm'),
+                cancelButtonText: i18n.global.t('commons.button.cancel'),
+                type: 'info',
+            },
+        ).then(async () => {
+            await updateFail2ban({ key: 'logpath', value: form.logPath })
+                .then(async () => {
+                    MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+                    loading.value = false;
+                    drawerVisible.value = false;
+                    emit('search');
+                })
+                .catch(() => {
+                    loading.value = false;
+                });
+        });
+    });
+};
+
+const handleClose = () => {
+    drawerVisible.value = false;
+};
+
+defineExpose({
+    acceptParams,
+});
+</script>

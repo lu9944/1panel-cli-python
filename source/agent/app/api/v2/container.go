@@ -1,0 +1,966 @@
+package v2
+
+import (
+	"net/http"
+	"net/url"
+	"path"
+	"strconv"
+	"strings"
+
+	"github.com/1Panel-dev/1Panel/agent/app/api/v2/helper"
+	"github.com/1Panel-dev/1Panel/agent/app/dto"
+	"github.com/gin-gonic/gin"
+	"github.com/pkg/errors"
+)
+
+// @Tags Container
+// @Summary Page containers
+// @Accept json
+// @Param request body dto.PageContainer true "request"
+// @Produce json
+// @Success 200 {object} dto.PageResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/search [post]
+func (b *BaseApi) SearchContainer(c *gin.Context) {
+	var req dto.PageContainer
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	total, list, err := containerService.Page(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, dto.PageResult{
+		Items: list,
+		Total: total,
+	})
+}
+
+// @Tags Container
+// @Summary Load container users
+// @Accept json
+// @Param request body dto.OperationWithName true "request"
+// @Produce json
+// @Success 200 {array} string
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/users [post]
+func (b *BaseApi) LoadContainerUsers(c *gin.Context) {
+	var req dto.OperationWithName
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	helper.SuccessWithData(c, containerService.LoadUsers(req))
+}
+
+// @Tags Container
+// @Summary List container files
+// @Accept json
+// @Param request body dto.ContainerFileReq true "request"
+// @Success 200 {array} dto.ContainerFileInfo
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/files/search [post]
+func (b *BaseApi) ListContainerFiles(c *gin.Context) {
+	var req dto.ContainerFileReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	files, err := containerService.ListContainerFiles(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, files)
+}
+
+// @Tags Container
+// @Summary Upload container file
+// @Accept multipart/form-data
+// @Param containerID formData string true "containerID"
+// @Param path formData string true "path"
+// @Param file formData file true "file"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/files/upload [post]
+// @x-panel-log {"bodyKeys":["containerID","path"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"容器 [containerID] 上传文件到 [path]","formatEN":"Upload file to [path] in container [containerID]"}
+func (b *BaseApi) UploadContainerFile(c *gin.Context) {
+	form, err := c.MultipartForm()
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	containerIDs := form.Value["containerID"]
+	paths := form.Value["path"]
+	uploadFiles := form.File["file"]
+	if len(containerIDs) == 0 || len(paths) == 0 || len(uploadFiles) == 0 {
+		helper.BadRequest(c, errors.New("invalid container file upload params"))
+		return
+	}
+	req := dto.ContainerFileReq{
+		ContainerID: containerIDs[0],
+		Path:        paths[0],
+	}
+	for _, uploadFile := range uploadFiles {
+		file, err := uploadFile.Open()
+		if err != nil {
+			helper.InternalServer(c, err)
+			return
+		}
+		err = containerService.UploadContainerFile(req, path.Base(uploadFile.Filename), uploadFile.Size, file)
+		_ = file.Close()
+		if err != nil {
+			helper.InternalServer(c, err)
+			return
+		}
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Get container file content
+// @Accept json
+// @Param request body dto.ContainerFileReq true "request"
+// @Success 200 {object} dto.ContainerFileContent
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/files/content [post]
+func (b *BaseApi) GetContainerFileContent(c *gin.Context) {
+	var req dto.ContainerFileReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	content, err := containerService.GetContainerFileContent(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, content)
+}
+
+// @Tags Container
+// @Summary Get container file size
+// @Accept json
+// @Param request body dto.ContainerFileReq true "request"
+// @Success 200 {int} size
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/files/size [post]
+func (b *BaseApi) GetContainerFileSize(c *gin.Context) {
+	var req dto.ContainerFileReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	size, err := containerService.GetContainerFileSize(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, size)
+}
+
+// @Tags Container
+// @Summary Delete container file
+// @Accept json
+// @Param request body dto.ContainerFileBatchDeleteReq true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/files/del [post]
+// @x-panel-log {"bodyKeys":["containerID","paths"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"删除容器 [containerID] 文件 [paths]","formatEN":"Delete files [paths] in container [containerID]"}
+func (b *BaseApi) DeleteContainerFile(c *gin.Context) {
+	var req dto.ContainerFileBatchDeleteReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := containerService.DeleteContainerFile(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Download container file
+// @Accept json
+// @Param request body dto.ContainerFileReq true "request"
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/files/download [post]
+// @x-panel-log {"bodyKeys":["containerID","path"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"下载容器 [containerID] 文件 [path]","formatEN":"Download file [path] from container [containerID]"}
+func (b *BaseApi) DownloadContainerFile(c *gin.Context) {
+	var req dto.ContainerFileReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	if req.ContainerID == "" || req.Path == "" {
+		helper.BadRequest(c, errors.New("invalid container file download params"))
+		return
+	}
+	reader, fileName, contentType, err := containerService.DownloadContainerFile(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	defer reader.Close()
+	c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(fileName))
+	c.DataFromReader(http.StatusOK, -1, contentType, reader, nil)
+}
+
+// @Tags Container
+// @Summary List containers
+// @Accept json
+// @Produce json
+// @Success 200 {array} dto.ContainerOptions
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/list [post]
+func (b *BaseApi) ListContainer(c *gin.Context) {
+	helper.SuccessWithData(c, containerService.List())
+}
+
+// @Tags Container
+// @Summary List containers by image
+// @Accept json
+// @Produce json
+// @Success 200 {array} dto.ContainerOptions
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/list/byimage [post]
+func (b *BaseApi) ListContainerByImage(c *gin.Context) {
+	var req dto.OperationWithName
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	helper.SuccessWithData(c, containerService.ListByImage(req.Name))
+}
+
+// @Tags Container
+// @Summary Load containers status
+// @Accept json
+// @Produce json
+// @Success 200 {object} dto.ContainerStatus
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/status [get]
+func (b *BaseApi) LoadContainerStatus(c *gin.Context) {
+	data, err := containerService.LoadStatus()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Container Compose
+// @Summary Page composes
+// @Accept json
+// @Param request body dto.SearchWithPage true "request"
+// @Success 200 {object} dto.PageResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/compose/search [post]
+func (b *BaseApi) SearchCompose(c *gin.Context) {
+	var req dto.SearchWithPage
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	total, list, err := containerService.PageCompose(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, dto.PageResult{
+		Items: list,
+		Total: total,
+	})
+}
+
+// @Tags Container Compose
+// @Summary Test compose
+// @Accept json
+// @Param request body dto.ComposeCreate true "request"
+// @Success 200 {boolean} isOK
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/compose/test [post]
+// @x-panel-log {"bodyKeys":["name"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"检测 compose [name] 格式","formatEN":"check compose [name]"}
+func (b *BaseApi) TestCompose(c *gin.Context) {
+	var req dto.ComposeCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	isOK, err := containerService.TestCompose(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, isOK)
+}
+
+// @Tags Container Compose
+// @Summary Create compose
+// @Accept json
+// @Param request body dto.ComposeCreate true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/compose [post]
+// @x-panel-log {"bodyKeys":["name"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"创建 compose [name]","formatEN":"create compose [name]"}
+func (b *BaseApi) CreateCompose(c *gin.Context) {
+	var req dto.ComposeCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.CreateCompose(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container Compose
+// @Summary Operate compose
+// @Accept json
+// @Param request body dto.ComposeOperation true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/compose/operate [post]
+// @x-panel-log {"bodyKeys":["name","operation"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"compose [operation] [name]","formatEN":"compose [operation] [name]"}
+func (b *BaseApi) OperatorCompose(c *gin.Context) {
+	var req dto.ComposeOperation
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.ComposeOperation(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Update container
+// @Accept json
+// @Param request body dto.ContainerOperate true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/update [post]
+// @x-panel-log {"bodyKeys":["name","image"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"更新容器 [name][image]","formatEN":"update container [name][image]"}
+func (b *BaseApi) ContainerUpdate(c *gin.Context) {
+	var req dto.ContainerOperate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.ContainerUpdate(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Load container info
+// @Accept json
+// @Param request body dto.OperationWithName true "request"
+// @Success 200 {object} dto.ContainerOperate
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/info [post]
+func (b *BaseApi) ContainerInfo(c *gin.Context) {
+	var req dto.OperationWithName
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	data, err := containerService.ContainerInfo(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Container
+// @Summary Load container limits
+// @Success 200 {object} dto.ResourceLimit
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/limit [get]
+func (b *BaseApi) LoadResourceLimit(c *gin.Context) {
+	data, err := containerService.LoadResourceLimit()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Container
+// @Summary Load container stats
+// @Success 200 {array} dto.ContainerListStats
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/list/stats [get]
+func (b *BaseApi) ContainerListStats(c *gin.Context) {
+	data, err := containerService.ContainerListStats()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Container
+// @Summary Load container stats size
+// @Accept json
+// @Param request body dto.OperationWithName true "request"
+// @Success 200 {object} dto.ContainerItemStats
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/item/stats [post]
+func (b *BaseApi) ContainerItemStats(c *gin.Context) {
+	var req dto.OperationWithName
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	data, err := containerService.ContainerItemStats(c.Request.Context(), req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Container
+// @Summary Create container
+// @Accept json
+// @Param request body dto.ContainerOperate true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers [post]
+// @x-panel-log {"bodyKeys":["name","image"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"创建容器 [name][image]","formatEN":"create container [name][image]"}
+func (b *BaseApi) ContainerCreate(c *gin.Context) {
+	var req dto.ContainerOperate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.ContainerCreate(req, true); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Upgrade container
+// @Accept json
+// @Param request body dto.ContainerUpgrade true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/upgrade [post]
+// @x-panel-log {"bodyKeys":["names","image"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"更新容器镜像 [names][image]","formatEN":"upgrade container image [names][image]"}
+func (b *BaseApi) ContainerUpgrade(c *gin.Context) {
+	var req dto.ContainerUpgrade
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.ContainerUpgrade(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Clean container
+// @Accept json
+// @Param request body dto.ContainerPrune true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/prune [post]
+// @x-panel-log {"bodyKeys":["pruneType"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"清理容器 [pruneType]","formatEN":"clean container [pruneType]"}
+func (b *BaseApi) ContainerPrune(c *gin.Context) {
+	var req dto.ContainerPrune
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.Prune(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Clean container log
+// @Accept json
+// @Param request body dto.OperationWithName true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/clean/log [post]
+// @x-panel-log {"bodyKeys":["name"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"清理容器 [name] 日志","formatEN":"clean container [name] logs"}
+func (b *BaseApi) CleanContainerLog(c *gin.Context) {
+	var req dto.OperationWithName
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.ContainerLogClean(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Clean compose log
+// @Accept json
+// @Param request body dto.ComposeLogClean true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/compose/clean/log [post]
+// @x-panel-log {"bodyKeys":["name"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"清理容器编排 [name] 日志","formatEN":"clean compose [name] logs"}
+func (b *BaseApi) CleanComposeLog(c *gin.Context) {
+	var req dto.ComposeLogClean
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.ComposeLogClean(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Rename Container
+// @Accept json
+// @Param request body dto.ContainerRename true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/rename [post]
+// @x-panel-log {"bodyKeys":["name","newName"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"容器重命名 [name] => [newName]","formatEN":"rename container [name] => [newName]"}
+func (b *BaseApi) ContainerRename(c *gin.Context) {
+	var req dto.ContainerRename
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.ContainerRename(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Commit Container
+// @Accept json
+// @Param request body dto.ContainerCommit true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/commit [post]
+func (b *BaseApi) ContainerCommit(c *gin.Context) {
+	var req dto.ContainerCommit
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.ContainerCommit(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Operate Container
+// @Accept json
+// @Param request body dto.ContainerOperation true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/operate [post]
+// @x-panel-log {"bodyKeys":["names","operation"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"容器 [names] 执行 [operation]","formatEN":"container [operation] [names]"}
+func (b *BaseApi) ContainerOperation(c *gin.Context) {
+	var req dto.ContainerOperation
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.ContainerOperation(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container
+// @Summary Container stats
+// @Param id path string true "容器id"
+// @Success 200 {object} dto.ContainerStats
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/stats/:id [get]
+func (b *BaseApi) ContainerStats(c *gin.Context) {
+	containerID, ok := c.Params.Get("id")
+	if !ok {
+		helper.BadRequest(c, errors.New("error container id in path"))
+		return
+	}
+
+	result, err := containerService.ContainerStats(containerID)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
+}
+
+// @Tags Container
+// @Summary Container inspect
+// @Accept json
+// @Param request body dto.InspectReq true "request"
+// @Success 200 {string} result
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/inspect [post]
+func (b *BaseApi) Inspect(c *gin.Context) {
+	var req dto.InspectReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	result, err := containerService.Inspect(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, result)
+}
+
+// @Tags Container
+// @Summary Download container logs
+// @Accept json
+// @Param request body dto.ContainerLog true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/download/log [post]
+func (b *BaseApi) DownloadContainerLogs(c *gin.Context) {
+	var req dto.ContainerLog
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	err := containerService.DownloadContainerLogs(req.ContainerType, req.Container, req.Since, strconv.Itoa(int(req.Tail)), req.Timestamp, c)
+	if err != nil {
+		helper.InternalServer(c, err)
+	}
+}
+
+// @Tags Container Network
+// @Summary Page networks
+// @Accept json
+// @Param request body dto.SearchWithPage true "request"
+// @Produce json
+// @Success 200 {object} dto.PageResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/network/search [post]
+func (b *BaseApi) SearchNetwork(c *gin.Context) {
+	var req dto.SearchWithPage
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	total, list, err := containerService.PageNetwork(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, dto.PageResult{
+		Items: list,
+		Total: total,
+	})
+}
+
+// @Tags Container Network
+// @Summary List networks
+// @Accept json
+// @Produce json
+// @Success 200 {array} dto.Options
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/network [get]
+func (b *BaseApi) ListNetwork(c *gin.Context) {
+	list, err := containerService.ListNetwork()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, list)
+}
+
+// @Tags Container Network
+// @Summary Delete network
+// @Accept json
+// @Param request body dto.BatchDelete true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/network/del [post]
+// @x-panel-log {"bodyKeys":["names"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"删除容器网络 [names]","formatEN":"delete container network [names]"}
+func (b *BaseApi) DeleteNetwork(c *gin.Context) {
+	var req dto.BatchDelete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.DeleteNetwork(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container Network
+// @Summary Create network
+// @Accept json
+// @Param request body dto.NetworkCreate true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/network [post]
+// @x-panel-log {"bodyKeys":["name"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"创建容器网络 name","formatEN":"create container network [name]"}
+func (b *BaseApi) CreateNetwork(c *gin.Context) {
+	var req dto.NetworkCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.CreateNetwork(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container Volume
+// @Summary Page volumes
+// @Accept json
+// @Param request body dto.SearchWithPage true "request"
+// @Produce json
+// @Success 200 {object} dto.PageResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/volume/search [post]
+func (b *BaseApi) SearchVolume(c *gin.Context) {
+	var req dto.SearchWithPage
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	total, list, err := containerService.PageVolume(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, dto.PageResult{
+		Items: list,
+		Total: total,
+	})
+}
+
+// @Tags Container Volume
+// @Summary List volumes
+// @Accept json
+// @Produce json
+// @Success 200 {array} dto.Options
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/volume [get]
+func (b *BaseApi) ListVolume(c *gin.Context) {
+	list, err := containerService.ListVolume()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, list)
+}
+
+// @Tags Container Volume
+// @Summary Delete volume
+// @Accept json
+// @Param request body dto.BatchDelete true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/volume/del [post]
+// @x-panel-log {"bodyKeys":["names"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"删除容器存储卷 [names]","formatEN":"delete container volume [names]"}
+func (b *BaseApi) DeleteVolume(c *gin.Context) {
+	var req dto.BatchDelete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.DeleteVolume(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container Volume
+// @Summary Create volume
+// @Accept json
+// @Param request body dto.VolumeCreate true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/volume [post]
+// @x-panel-log {"bodyKeys":["name"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"创建容器存储卷 [name]","formatEN":"create container volume [name]"}
+func (b *BaseApi) CreateVolume(c *gin.Context) {
+	var req dto.VolumeCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.CreateVolume(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container Compose
+// @Summary Update compose
+// @Accept json
+// @Param request body dto.ComposeUpdate true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/compose/update [post]
+// @x-panel-log {"bodyKeys":["name"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"更新 compose [name]","formatEN":"update compose information [name]"}
+func (b *BaseApi) ComposeUpdate(c *gin.Context) {
+	var req dto.ComposeUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+
+	if err := containerService.ComposeUpdate(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container Compose
+// @Summary Pin compose
+// @Accept json
+// @Param request body dto.ComposePin true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/compose/pin [post]
+func (b *BaseApi) ComposePin(c *gin.Context) {
+	var req dto.ComposePin
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := containerService.ComposePin(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags Container Compose
+// @Summary Load compose environment variables
+// @Accept json
+// @Param request body dto.FilePath true "request"
+// @Success 200 {array} string
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/compose/env [post]
+func (b *BaseApi) LoadComposeEnv(c *gin.Context) {
+	var req dto.FilePath
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	data, err := containerService.LoadComposeEnv(req.Path)
+	if err != nil {
+		helper.InternalServer(c, err)
+	}
+	helper.SuccessWithData(c, data)
+}
+
+// @Tags Container
+// @Summary Container logs
+// @Param container query string false "容器名称"
+// @Param since query string false "时间筛选"
+// @Param follow query string false "是否追踪"
+// @Param tail query string false "显示行号"
+// @Param timestamp query string false "是否显示时间"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /containers/search/log [get]
+func (b *BaseApi) ContainerStreamLogs(c *gin.Context) {
+	if !strings.Contains(strings.ToLower(c.GetHeader("Accept")), "text/event-stream") {
+		helper.Success(c)
+		return
+	}
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("Transfer-Encoding", "chunked")
+
+	since := c.Query("since")
+	follow := c.Query("follow") == "true"
+	tail := c.Query("tail")
+	timestamp := c.Query("timestamp") == "true"
+
+	container := c.Query("container")
+	compose := c.Query("compose")
+	streamLog := dto.StreamLog{
+		Compose:   compose,
+		Container: container,
+		Since:     since,
+		Follow:    follow,
+		Tail:      tail,
+		Timestamp: timestamp,
+		Type:      "container",
+	}
+	if compose != "" {
+		streamLog.Type = "compose"
+	}
+
+	containerService.StreamLogs(c, streamLog)
+}

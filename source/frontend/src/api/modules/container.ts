@@ -1,0 +1,279 @@
+import http from '@/api';
+import { ResPage, SearchWithPage } from '../interface';
+import { Container } from '../interface/container';
+import { TimeoutEnum } from '@/enums/http-enum';
+
+export const searchContainer = (params: Container.ContainerSearch, currentNode?: string) => {
+    return http.post<ResPage<Container.ContainerInfo>>(
+        `/containers/search`,
+        params,
+        TimeoutEnum.T_40S,
+        currentNode ? { CurrentNode: currentNode } : undefined,
+    );
+};
+export const listContainer = () => {
+    return http.post<Array<Container.ContainerOption>>(`/containers/list`, {});
+};
+export const listContainerByImage = (image: string) => {
+    return http.post<Array<Container.ContainerOption>>(`/containers/list/byimage`, { name: image });
+};
+export const loadContainerUsers = (name: string) => {
+    return http.post<Array<string>>(`/containers/users`, { name: name });
+};
+export const listContainerFiles = (params: Container.ContainerFileReq) => {
+    return http.post<Array<Container.ContainerFileInfo>>(`/containers/files/search`, params, TimeoutEnum.T_40S);
+};
+export const uploadContainerFile = (params: FormData) => {
+    return http.upload(`/containers/files/upload`, params, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: TimeoutEnum.T_5M,
+    });
+};
+export const getContainerFileContent = (params: Container.ContainerFileReq) => {
+    return http.post<Container.ContainerFileContent>(`/containers/files/content`, params, TimeoutEnum.T_40S);
+};
+export const getContainerFileSize = (params: Container.ContainerFileReq) => {
+    return http.post<number>(`/containers/files/size`, params, TimeoutEnum.T_40S);
+};
+export const deleteContainerFile = (params: { containerID: string; paths: string[] }) => {
+    return http.post(`/containers/files/del`, params, TimeoutEnum.T_40S);
+};
+export const downloadContainerFile = (params: { containerID: string; path: string }) => {
+    return http.download<BlobPart>(`/containers/files/download`, params, {
+        responseType: 'blob',
+        timeout: TimeoutEnum.T_40S,
+    });
+};
+export const loadContainerStatus = (currentNode?: string) => {
+    return http.get<Container.ContainerStatus>(
+        `/containers/status`,
+        {},
+        currentNode ? { headers: { CurrentNode: currentNode } } : {},
+    );
+};
+export const loadResourceLimit = () => {
+    return http.get<Container.ResourceLimit>(`/containers/limit`);
+};
+export const createContainer = (params: Container.ContainerHelper) => {
+    return http.post(`/containers`, params, TimeoutEnum.T_10M);
+};
+export const updateContainer = (params: Container.ContainerHelper) => {
+    return http.post(`/containers/update`, params, TimeoutEnum.T_10M);
+};
+export const upgradeContainer = (params: Container.ContainerUpgrade) => {
+    return http.post(`/containers/upgrade`, params, TimeoutEnum.T_10M);
+};
+export const commitContainer = (params: Container.ContainerCommit) => {
+    return http.post(`/containers/commit`, params);
+};
+export const loadContainerInfo = (name: string) => {
+    return http.post<Container.ContainerHelper>(`/containers/info`, { name: name });
+};
+export const cleanComposeLog = (composeName: string, composePath: string, operateNode?: string) => {
+    const params = operateNode ? `?operateNode=${operateNode}` : '';
+    return http.post(
+        `/containers/compose/clean/log${params}`,
+        { name: composeName, path: composePath },
+        TimeoutEnum.T_60S,
+    );
+};
+export const cleanContainerLog = (containerName: string, operateNode?: string) => {
+    const params = operateNode ? `?operateNode=${operateNode}` : '';
+    return http.post(`/containers/clean/log${params}`, { name: containerName }, TimeoutEnum.T_60S);
+};
+export const containerItemStats = (containerID: string, currentNode?: string) => {
+    const timeout = containerID === 'system' ? TimeoutEnum.T_5M : TimeoutEnum.T_60S;
+    return http.post<Container.ContainerItemStats>(
+        `/containers/item/stats`,
+        { name: containerID },
+        timeout,
+        currentNode ? { CurrentNode: currentNode } : undefined,
+    );
+};
+export const containerListStats = (currentNode?: string) => {
+    return http.get<Array<Container.ContainerListStats>>(
+        `/containers/list/stats`,
+        {},
+        currentNode ? { headers: { CurrentNode: currentNode } } : {},
+    );
+};
+export const containerStats = (id: string) => {
+    return http.get<Container.ContainerStats>(`/containers/stats/${id}`);
+};
+export const containerRename = (params: Container.ContainerRename) => {
+    return http.post(`/containers/rename`, params);
+};
+export const containerOperator = (params: Container.ContainerOperate) => {
+    return http.post(`/containers/operate`, params);
+};
+export const containerPrune = (params: Container.ContainerPrune) => {
+    return http.post(`/containers/prune`, params);
+};
+export const inspect = (params: Container.ContainerInspect) => {
+    return http.post<string>(`/containers/inspect`, params);
+};
+
+export const DownloadFile = (params: Container.ContainerLogInfo) => {
+    return http.download<BlobPart>('/containers/download/log', params, {
+        responseType: 'blob',
+        timeout: TimeoutEnum.T_5M,
+    });
+};
+
+// image
+export const searchImage = (params: Container.ImageSearch, currentNode?: string) => {
+    return http.post<ResPage<Container.ImageInfo>>(
+        `/containers/image/search`,
+        params,
+        TimeoutEnum.T_60S,
+        currentNode ? { CurrentNode: currentNode } : undefined,
+    );
+};
+export const listAllImage = () => {
+    return http.get<Array<Container.ImageInfo>>(`/containers/image/all`);
+};
+export const listImage = () => {
+    return http.get<Array<Container.Options>>(`/containers/image`);
+};
+export const imageBuild = (params: Container.ImageBuild) => {
+    return http.post<string>(`/containers/image/build`, params);
+};
+export const imagePull = (params: Container.ImagePull) => {
+    return http.post<string>(`/containers/image/pull`, params);
+};
+export const imagePush = (params: Container.ImagePush) => {
+    return http.post<string>(`/containers/image/push`, params);
+};
+export const imageLoad = (params: Container.ImageLoad) => {
+    return http.post(`/containers/image/load`, params, TimeoutEnum.T_10M);
+};
+export const imageSave = (params: Container.ImageSave) => {
+    return http.post(`/containers/image/save`, params, TimeoutEnum.T_10M);
+};
+export const imageTag = (params: Container.ImageTag) => {
+    return http.post(`/containers/image/tag`, params);
+};
+export const imageRemove = (params: Container.BatchDelete) => {
+    return http.post(`/containers/image/remove`, params);
+};
+
+// network
+export const searchNetwork = (params: SearchWithPage) => {
+    return http.post<ResPage<Container.NetworkInfo>>(`/containers/network/search`, params);
+};
+export const listNetwork = () => {
+    return http.get<Array<Container.Options>>(`/containers/network`);
+};
+export const deleteNetwork = (params: Container.BatchDelete) => {
+    return http.post(`/containers/network/del`, params);
+};
+export const createNetwork = (params: Container.NetworkCreate) => {
+    return http.post(`/containers/network`, params);
+};
+
+// volume
+export const searchVolume = (params: SearchWithPage) => {
+    return http.post<ResPage<Container.VolumeInfo>>(`/containers/volume/search`, params);
+};
+export const listVolume = () => {
+    return http.get<Array<Container.Options>>(`/containers/volume`);
+};
+export const deleteVolume = (params: Container.BatchDelete) => {
+    return http.post(`/containers/volume/del`, params);
+};
+export const createVolume = (params: Container.VolumeCreate) => {
+    return http.post(`/containers/volume`, params);
+};
+
+// repo
+export const checkRepoStatus = (id: number) => {
+    return http.post(`/containers/repo/status`, { id: id }, TimeoutEnum.T_40S);
+};
+export const searchImageRepo = (params: SearchWithPage) => {
+    return http.post<ResPage<Container.RepoInfo>>(`/containers/repo/search`, params);
+};
+export const listImageRepo = () => {
+    return http.get<Container.RepoOptions>(`/containers/repo`);
+};
+export const createImageRepo = (params: Container.RepoCreate) => {
+    return http.post(`/containers/repo`, params, TimeoutEnum.T_40S);
+};
+export const updateImageRepo = (params: Container.RepoUpdate) => {
+    return http.post(`/containers/repo/update`, params, TimeoutEnum.T_40S);
+};
+export const deleteImageRepo = (id: number) => {
+    return http.post(`/containers/repo/del`, { id: id }, TimeoutEnum.T_40S);
+};
+
+// composeTemplate
+export const searchComposeTemplate = (params: SearchWithPage) => {
+    return http.post<ResPage<Container.TemplateInfo>>(`/containers/template/search`, params);
+};
+export const listComposeTemplate = () => {
+    return http.get<Container.TemplateInfo>(`/containers/template`);
+};
+export const deleteComposeTemplate = (params: { ids: number[] }) => {
+    return http.post(`/containers/template/del`, params);
+};
+export const createComposeTemplate = (params: Container.TemplateCreate) => {
+    return http.post(`/containers/template`, params);
+};
+export const batchComposeTemplate = (templates: Array<Container.TemplateCreate>) => {
+    return http.post(`/containers/template/batch`, { templates: templates });
+};
+export const updateComposeTemplate = (params: Container.TemplateUpdate) => {
+    return http.post(`/containers/template/update`, params);
+};
+
+// compose
+export const searchCompose = (params: SearchWithPage) => {
+    return http.post<ResPage<Container.ComposeInfo>>(`/containers/compose/search`, params);
+};
+export const upCompose = (params: Container.ComposeCreate) => {
+    return http.post<string>(`/containers/compose`, params);
+};
+export const testCompose = (params: Container.ComposeCreate) => {
+    return http.post<boolean>(`/containers/compose/test`, params);
+};
+export const composeOperate = (params: Container.ComposeOperation) => {
+    return http.post(`/containers/compose/operate`, params);
+};
+export const composeUpdate = (params: Container.ComposeUpdate) => {
+    return http.post(`/containers/compose/update`, params, TimeoutEnum.T_10M);
+};
+export const composePin = (params: Container.ComposePin) => {
+    return http.post(`/containers/compose/pin`, params);
+};
+
+// docker
+export const dockerOperate = (operation: string) => {
+    return http.post(`/containers/docker/operate`, { operation: operation }, TimeoutEnum.T_3M);
+};
+export const loadComposeEnv = (path: string) => {
+    return http.post<string>(`/containers/compose/env`, { path: path });
+};
+export const loadDaemonJson = () => {
+    return http.get<Container.DaemonJsonConf>(`/containers/daemonjson`);
+};
+export const loadDaemonJsonFile = () => {
+    return http.get<string>(`/containers/daemonjson/file`);
+};
+export const loadDockerStatus = () => {
+    return http.get<Container.DockerStatus>(`/containers/docker/status`);
+};
+export const updateDaemonJson = (key: string, value: string) => {
+    return http.post(`/containers/daemonjson/update`, { key: key, value: value }, TimeoutEnum.T_3M);
+};
+export const updateLogOption = (maxSize: string, maxFile: string) => {
+    return http.post(`/containers/logoption/update`, { logMaxSize: maxSize, logMaxFile: maxFile }, TimeoutEnum.T_3M);
+};
+export const updateIpv6Option = (fixedCidrV6: string, ip6Tables: boolean, experimental: boolean) => {
+    return http.post(
+        `/containers/ipv6option/update`,
+        { fixedCidrV6: fixedCidrV6, ip6Tables: ip6Tables, experimental: experimental },
+        TimeoutEnum.T_3M,
+    );
+};
+export const updateDaemonJsonByfile = (params: Container.DaemonJsonUpdateByFile) => {
+    return http.post(`/containers/daemonjson/update/byfile`, params, TimeoutEnum.T_3M);
+};

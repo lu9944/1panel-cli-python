@@ -1,0 +1,190 @@
+<template>
+    <DrawerPro v-model="drawerVisible" :header="$t('commons.button.sync')" @close="handleClose" size="small">
+        <el-form ref="formRef" label-position="top" :model="form" :rules="rules" v-loading="loading">
+            <el-form-item :label="$t('setting.backupAccount')" prop="from">
+                <el-select @change="loadFiles()" v-model="form.backupAccountID" clearable>
+                    <div v-for="item in backupOptions" :key="item.id">
+                        <el-option v-if="item.type !== $t('setting.LOCAL')" :value="item.id" :label="item.name">
+                            {{ item.name }}
+                            <el-tag class="tagClass" type="primary">{{ item.type }}</el-tag>
+                        </el-option>
+                        <el-option v-else :value="item.id" :label="item.type" />
+                    </div>
+                </el-select>
+                <div v-if="form.backupAccountID === localAccountID">
+                    <span class="import-help">{{ $t('setting.importHelper') }}</span>
+                    <span @click="toFolder()" class="import-link-help">{{ backupPath }}</span>
+                </div>
+            </el-form-item>
+            <el-form-item :label="$t('commons.table.name')" prop="names">
+                <el-select v-model="form.names" multiple clearable>
+                    <el-option
+                        :disabled="checkDisable(item)"
+                        v-for="item in fileNames"
+                        :key="item"
+                        :value="item"
+                        :label="item"
+                    />
+                </el-select>
+            </el-form-item>
+            <el-form-item :label="$t('commons.table.description')" prop="description">
+                <el-input type="textarea" clearable v-model="form.description" />
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button :disabled="loading" @click="drawerVisible = false">
+                {{ $t('commons.button.cancel') }}
+            </el-button>
+            <el-button :disabled="loading" type="primary" @click="submitImport(formRef)">
+                {{ $t('commons.button.confirm') }}
+            </el-button>
+        </template>
+    </DrawerPro>
+</template>
+
+<script setup lang="ts">
+import { reactive, ref } from 'vue';
+import { FormInstance } from 'element-plus';
+import i18n from '@/lang';
+import { snapshotImport } from '@/api/modules/setting';
+import { listBackupOptions, getFilesFromBackup, getLocalBackupDir } from '@/api/modules/backup';
+import { Rules } from '@/global/form-rules';
+import { MsgError, MsgSuccess } from '@/utils/message';
+import { checkFile } from '@/api/modules/files';
+import { routerToFileWithPath } from '@/utils/router';
+import { useGlobalStore } from '@/composables/useGlobalStore';
+const { currentNode } = useGlobalStore();
+
+const drawerVisible = ref(false);
+const loading = ref();
+
+const formRef = ref();
+const backupOptions = ref();
+const fileNames = ref();
+const existNames = ref();
+const backupPath = ref('');
+const localAccountID = ref(0);
+
+const form = reactive({
+    backupAccountID: 0,
+    names: [],
+    description: '',
+});
+
+const rules = reactive({
+    backupAccountID: [Rules.requiredSelect],
+    names: [Rules.requiredSelect],
+});
+
+interface DialogProps {
+    names: Array<string>;
+}
+
+const acceptParams = (params: DialogProps): void => {
+    form.backupAccountID = undefined;
+    existNames.value = params.names;
+    form.names = [] as Array<string>;
+    loadBackups();
+    loadBackupDir();
+    drawerVisible.value = true;
+};
+const emit = defineEmits(['search']);
+
+const handleClose = () => {
+    drawerVisible.value = false;
+};
+
+const checkDisable = (val: string) => {
+    for (const item of existNames.value) {
+        if (val === item + '.tar.gz') {
+            return true;
+        }
+    }
+    return false;
+};
+const toFolder = async () => {
+    const res = await checkFile(backupPath.value, true);
+    if (res.data) {
+        routerToFileWithPath(backupPath.value);
+    } else {
+        MsgError(i18n.global.t('file.noSuchFile'));
+    }
+};
+
+const loadBackupDir = async () => {
+    const res = await getLocalBackupDir(currentNode.value);
+    backupPath.value = `${res.data}${res.data.endsWith('/') ? '' : '/'}system_snapshot`;
+};
+
+const submitImport = async (formEl: FormInstance | undefined) => {
+    loading.value = true;
+    if (!formEl) return;
+    formEl.validate(async (valid) => {
+        if (!valid) return;
+        await snapshotImport(form)
+            .then(() => {
+                emit('search');
+                loading.value = false;
+                drawerVisible.value = false;
+                MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+            })
+            .catch(() => {
+                loading.value = false;
+            });
+    });
+};
+
+const loadBackups = async () => {
+    loading.value = true;
+    await listBackupOptions()
+        .then((res) => {
+            loading.value = false;
+            backupOptions.value = [];
+            for (const item of res.data) {
+                if (item.type === 'LOCAL') {
+                    localAccountID.value = item.id;
+                }
+                backupOptions.value.push({
+                    id: item.id,
+                    type: i18n.global.t('setting.' + item.type),
+                    name: item.name,
+                });
+            }
+        })
+        .catch(() => {
+            loading.value = false;
+        });
+};
+
+const loadFiles = async () => {
+    form.names = [];
+    const res = await getFilesFromBackup(form.backupAccountID);
+    fileNames.value = res.data || [];
+};
+
+defineExpose({
+    acceptParams,
+});
+</script>
+
+<style lang="scss" scoped>
+.import-help {
+    font-size: 12px;
+    color: #8f959e;
+}
+.import-link-help {
+    color: $primary-color;
+    cursor: pointer;
+}
+
+.import-link-help:hover {
+    opacity: 0.6;
+}
+
+.tagClass {
+    float: right;
+    margin-right: 10px;
+    font-size: 12px;
+    margin-top: 5px;
+}
+</style>

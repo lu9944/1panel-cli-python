@@ -1,0 +1,614 @@
+package alert
+
+import (
+	"encoding/json"
+	"fmt"
+	"mime"
+	network "net"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/1Panel-dev/1Panel/agent/app/dto"
+	"github.com/1Panel-dev/1Panel/agent/app/model"
+	"github.com/1Panel-dev/1Panel/agent/app/repo"
+	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"github.com/1Panel-dev/1Panel/agent/constant"
+	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/i18n"
+	"github.com/1Panel-dev/1Panel/agent/utils/bark"
+	"github.com/1Panel-dev/1Panel/agent/utils/email"
+	"github.com/1Panel-dev/1Panel/agent/utils/psutil"
+	"github.com/jinzhu/copier"
+)
+
+var cronJobAlertTypes = []string{"shell", "app", "website", "database", "directory", "log", "snapshot", "curl", "cutWebsiteLog", "clean", "ntp"}
+
+func CreateTaskScanEmailAlertLog(alert dto.AlertDTO, create dto.AlertLogCreate, pushAlert dto.PushAlert, method string, transport *http.Transport, agentInfo *dto.AgentInfo, emailConfig model.AlertConfig) error {
+	params := CreateAlertParams(GetCronJobTypeName(pushAlert.Param))
+	alertDetail := ProcessAlertDetail(alert, pushAlert.TaskName, params, method)
+	alertRule := ProcessAlertRule(alert)
+	create.AlertRule = alertRule
+	create.AlertDetail = alertDetail
+	return CreateEmailAlertLog(create, alert, params, transport, agentInfo, emailConfig)
+}
+
+func CreateEmailAlertLog(create dto.AlertLogCreate, alert dto.AlertDTO, params []dto.Param, transport *http.Transport, agentInfo *dto.AgentInfo, emailConfig model.AlertConfig) error {
+	var alertLog model.AlertLog
+	alertRepo := repo.NewIAlertRepo()
+	config, err := alertRepo.GetConfig(alertRepo.WithByType(constant.CommonConfig))
+	if err != nil {
+		return err
+	}
+	var cfg dto.AlertCommonConfig
+	err = json.Unmarshal([]byte(config.Config), &cfg)
+	if err != nil {
+		return err
+	}
+	var emailInfo dto.AlertEmailConfig
+	err = json.Unmarshal([]byte(emailConfig.Config), &emailInfo)
+	if err != nil {
+		return err
+	}
+	if emailInfo.Host == "" {
+		create.Message = "email config is required"
+		create.Status = constant.AlertError
+		return SaveAlertLog(create, &alertLog)
+	}
+	if !global.IsMaster && cfg.IsOffline == constant.StatusEnable {
+		create.Status = constant.AlertPushing
+		return SaveAlertLog(create, &alertLog)
+	} else {
+		username := emailInfo.UserName
+		if username == "" {
+			username = emailInfo.Sender
+		}
+		encodedDisplayName := mime.BEncoding.Encode("UTF-8", emailInfo.DisplayName)
+		smtpConfig := email.SMTPConfig{
+			Host:       emailInfo.Host,
+			Port:       emailInfo.Port,
+			Sender:     emailInfo.Sender,
+			Username:   username,
+			Password:   emailInfo.Password,
+			From:       fmt.Sprintf(`"%s" <%s>`, encodedDisplayName, emailInfo.Sender),
+			Encryption: emailInfo.Encryption,
+			Recipient:  emailInfo.Recipient,
+		}
+		content := GetSendContent(alert.Type, params, agentInfo)
+		if content == "" {
+			content = i18n.GetMsgWithMap("CommonAlert", map[string]interface{}{"msg": alert.Title})
+		}
+		msg := email.EmailMessage{
+			Subject: i18n.GetMsgByKey("PanelAlertTitle"),
+			Body:    content,
+			IsHTML:  true,
+		}
+
+		if err = email.SendMail(smtpConfig, msg, transport); err != nil {
+			create.Message = err.Error()
+			create.Status = constant.AlertError
+			return SaveAlertLog(create, &alertLog)
+		}
+		create.Status = constant.AlertSuccess
+		return SaveAlertLog(create, &alertLog)
+	}
+}
+
+func CreateBarkAlertLog(create dto.AlertLogCreate, alert dto.AlertDTO, params []dto.Param, transport *http.Transport, agentInfo *dto.AgentInfo, barkConfig model.AlertConfig) error {
+	var alertLog model.AlertLog
+
+	var barkInfo dto.AlertWebhookConfig
+	err := json.Unmarshal([]byte(barkConfig.Config), &barkInfo)
+	if err != nil {
+		return err
+	}
+	if barkInfo.Url == "" {
+		create.Message = "bark config url is required"
+		create.Status = constant.AlertError
+		return SaveAlertLog(create, &alertLog)
+	}
+
+	content := GetSendContent(alert.Type, params, agentInfo)
+	if content == "" {
+		content = i18n.GetMsgWithMap("CommonAlert", map[string]interface{}{"msg": alert.Title})
+	}
+
+	if err = bark.SendMessage(barkInfo.Url, i18n.GetMsgByKey("PanelAlertTitle"), content, transport); err != nil {
+		create.Message = err.Error()
+		create.Status = constant.AlertError
+		return SaveAlertLog(create, &alertLog)
+	}
+	create.Status = constant.AlertSuccess
+	return SaveAlertLog(create, &alertLog)
+}
+
+func SaveAlertLog(create dto.AlertLogCreate, alertLog *model.AlertLog) error {
+	alertRepo := repo.NewIAlertRepo()
+	if err := copier.Copy(&alertLog, &create); err != nil {
+		return buserr.WithErr("ErrStructTransform", err)
+	}
+
+	if err := alertRepo.CreateLog(alertLog); err != nil {
+		global.LOG.Errorf("Error creating alert logs, err: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func CreateNewAlertTask(quota, alertType, quotaType, method string) {
+	alertRepo := repo.NewIAlertRepo()
+	taskBase := model.AlertTask{
+		Type:      alertType,
+		Quota:     quota,
+		QuotaType: quotaType,
+		Method:    method,
+	}
+	err := alertRepo.CreateAlertTask(&taskBase)
+	if err != nil {
+		global.LOG.Errorf("error creating alert tasks, err: %v", err)
+	}
+	global.LOG.Infof("%s alert %s push completed", alertType, method)
+}
+
+func AttachQueuedAlertTaskMetadata(rawDetail string, task dto.AlertTaskMetadata) (string, error) {
+	if err := validateQueuedAlertTaskMetadata(task); err != nil {
+		return "", err
+	}
+	var detail dto.AlertDetail
+	if err := json.Unmarshal([]byte(rawDetail), &detail); err != nil {
+		return "", fmt.Errorf("decode queued alert detail: %w", err)
+	}
+	detail.Task = &task
+	data, err := json.Marshal(detail)
+	if err != nil {
+		return "", fmt.Errorf("encode queued alert detail: %w", err)
+	}
+	return string(data), nil
+}
+
+func RecordQueuedAlertTask(logID uint, task dto.AlertTaskMetadata) (bool, error) {
+	if logID == 0 {
+		return false, fmt.Errorf("queued alert log ID is required")
+	}
+	if global.AlertDB == nil {
+		return false, fmt.Errorf("alert database is unavailable")
+	}
+	if err := validateQueuedAlertTaskMetadata(task); err != nil {
+		return false, err
+	}
+	alertRepo := repo.NewIAlertRepo()
+	log, err := alertRepo.GetLog(repo.WithByID(logID))
+	if err != nil {
+		return false, err
+	}
+	if log.Status != constant.AlertPushing {
+		if log.Status == constant.AlertSuccess {
+			if existing, taskErr := alertRepo.GetAlertTask(alertRepo.WithByDeliveryLogID(logID)); taskErr == nil && existing.DeliveryLogID != nil {
+				return false, nil
+			}
+		}
+		return false, fmt.Errorf("alert delivery log %d is not pending", logID)
+	}
+	storedTask, alertTask, err := queuedAlertTaskFromLog(log)
+	if err != nil {
+		return false, err
+	}
+	if storedTask != task {
+		return false, fmt.Errorf("queued alert task metadata changed before reservation")
+	}
+	return alertRepo.CreatePendingAlertTask(logID, task.AlertID, &alertTask)
+}
+
+func FinalizeQueuedAlertDelivery(logID uint, succeeded bool, message string) (bool, error) {
+	if logID == 0 {
+		return false, fmt.Errorf("queued alert log ID is required")
+	}
+	if global.AlertDB == nil {
+		return false, fmt.Errorf("alert database is unavailable")
+	}
+	var fallback *model.AlertTask
+	if succeeded {
+		alertRepo := repo.NewIAlertRepo()
+		log, err := alertRepo.GetLog(repo.WithByID(logID))
+		if err != nil {
+			return false, err
+		}
+		if log.Status != constant.AlertPushing {
+			return false, nil
+		}
+		_, task, err := queuedAlertTaskFromLog(log)
+		if err != nil {
+			return false, err
+		}
+		fallback = &task
+	}
+	return repo.NewIAlertRepo().FinalizePendingAlertTask(logID, succeeded, message, fallback)
+}
+
+func queuedAlertTaskFromLog(log model.AlertLog) (dto.AlertTaskMetadata, model.AlertTask, error) {
+	var detail dto.AlertDetail
+	if err := json.Unmarshal([]byte(log.AlertDetail), &detail); err != nil {
+		return dto.AlertTaskMetadata{}, model.AlertTask{}, fmt.Errorf("decode queued alert task metadata: %w", err)
+	}
+	if detail.Task == nil {
+		return dto.AlertTaskMetadata{}, model.AlertTask{}, fmt.Errorf("queued alert task metadata is missing")
+	}
+	if err := validateQueuedAlertTaskMetadata(*detail.Task); err != nil {
+		return dto.AlertTaskMetadata{}, model.AlertTask{}, err
+	}
+	if detail.Task.AlertID != log.AlertId || detail.Task.Type != log.Type || detail.Task.Method != log.Method {
+		return dto.AlertTaskMetadata{}, model.AlertTask{}, fmt.Errorf("queued alert task metadata does not match its log")
+	}
+	task := model.AlertTask{
+		Type:      detail.Task.Type,
+		Quota:     detail.Task.Quota,
+		QuotaType: detail.Task.QuotaType,
+		Method:    detail.Task.Method,
+	}
+	return *detail.Task, task, nil
+}
+
+func validateQueuedAlertTaskMetadata(task dto.AlertTaskMetadata) error {
+	if task.AlertID == 0 {
+		return fmt.Errorf("queued alert task alert ID is required")
+	}
+	if strings.TrimSpace(task.Type) == "" {
+		return fmt.Errorf("queued alert task type is required")
+	}
+	if strings.TrimSpace(task.Method) == "" {
+		return fmt.Errorf("queued alert task method is required")
+	}
+	return nil
+}
+
+func ProcessAlertDetail(alert dto.AlertDTO, project string, params []dto.Param, method string) string {
+	alertDetail := dto.AlertDetail{
+		Type:    GetCronJobType(alert.Type),
+		SubType: alert.Type,
+		Title:   alert.Title,
+		Method:  method,
+		Project: project,
+		Params:  params,
+	}
+	marshal, err := json.Marshal(alertDetail)
+	if err != nil {
+		global.LOG.Errorf("error processing alert detail, err: %v", err)
+		return ""
+	}
+	return string(marshal)
+}
+
+func ProcessAlertRule(alert dto.AlertDTO) string {
+	marshal, err := json.Marshal(alert)
+	if err != nil {
+		global.LOG.Errorf("error processing alert rule, err: %v", err)
+		return ""
+	}
+	return string(marshal)
+}
+
+func GetCronJobType(alertType string) string {
+	for _, at := range cronJobAlertTypes {
+		if at == alertType {
+			return "cronJob"
+		}
+	}
+	return alertType
+}
+
+func GetCronJobTypeName(cronJobType string) string {
+	module := cronJobType
+	switch cronJobType {
+	case "shell":
+		module = "Shell 脚本"
+	case "app":
+		module = "备份应用"
+	case "website":
+		module = "备份网站"
+	case "database":
+		module = "备份数据库"
+	case "log":
+		module = "备份日志"
+	case "directory":
+		module = "备份目录"
+	case "curl":
+		module = "访问 URL"
+	case "cutWebsiteLog":
+		module = "切割网站日志"
+	case "clean":
+		module = "缓存清理"
+	case "snapshot":
+		module = "系统快照"
+	case "ntp":
+		module = "同步服务器时间"
+	default:
+	}
+	return module
+}
+
+func CreateAlertParams(param string) []dto.Param {
+	return []dto.Param{
+		{
+			Index: "1",
+			Key:   "param",
+			Value: param,
+		},
+	}
+}
+
+var checkTaskMutex sync.Mutex
+
+func CheckSMSSendLimit(config model.AlertConfig, method string) bool {
+	if config.Type != constant.SMS {
+		return false
+	}
+	alertRepo := repo.NewIAlertRepo()
+	var cfg dto.AlertSmsConfig
+	cfg, err := ParseAlertSmsConfig(config.Config)
+	if err != nil {
+		return false
+	}
+	limitCount, err := strconv.ParseUint(cfg.AlertDailyNum, 10, 64)
+	if err != nil {
+		return false
+	}
+	checkTaskMutex.Lock()
+	defer checkTaskMutex.Unlock()
+	todayCount, err := alertRepo.GetLicensePushCount(method)
+	if err != nil {
+		global.LOG.Errorf("error getting license push count info, err: %v", err)
+		return false
+	}
+	if todayCount >= uint(limitCount) {
+		return false
+	}
+
+	return true
+}
+
+func IsAlertConfigEnabled(config model.AlertConfig) bool {
+	return config.Status == constant.AlertEnable
+}
+
+type Settings struct {
+	NoticeAlert   Category `json:"noticeAlert"`
+	ResourceAlert Category `json:"resourceAlert"`
+}
+
+type Category struct {
+	SendTimeRange string   `json:"sendTimeRange"`
+	Type          []string `json:"type"`
+}
+
+func CheckSendTimeRange(alertType string) bool {
+	alertRepo := repo.NewIAlertRepo()
+	config, err := alertRepo.GetConfig(alertRepo.WithByType(constant.CommonConfig))
+	if err != nil {
+		return false
+	}
+	var cfg dto.AlertCommonConfig
+	err = json.Unmarshal([]byte(config.Config), &cfg)
+	if err != nil {
+		return false
+	}
+
+	var timeRange string
+	if contains(cfg.AlertSendTimeRange.NoticeAlert.Type, alertType) {
+		timeRange = cfg.AlertSendTimeRange.NoticeAlert.SendTimeRange
+	} else if contains(cfg.AlertSendTimeRange.ResourceAlert.Type, alertType) {
+		timeRange = cfg.AlertSendTimeRange.ResourceAlert.SendTimeRange
+	} else {
+		global.LOG.Warnf("Alert type not found in sendTimeRange: %s", alertType)
+		return false
+	}
+
+	if !isWithinTimeRange(timeRange) {
+		return false
+	}
+	return true
+}
+
+func contains(arr []string, target string) bool {
+	for _, item := range arr {
+		if item == target {
+			return true
+		}
+	}
+	return false
+}
+
+func isWithinTimeRange(savedTimeString string) bool {
+	now := time.Now()
+	timeParts := strings.Split(savedTimeString, " - ")
+	if len(timeParts) != 2 {
+		global.LOG.Info("Time range string format error, should be: 'HH:MM:SS - HH:MM:SS'")
+		return false
+	}
+	startTime, err1 := time.Parse("15:04:05", strings.TrimSpace(timeParts[0]))
+	endTime, err2 := time.Parse("15:04:05", strings.TrimSpace(timeParts[1]))
+	if err1 != nil || err2 != nil {
+		global.LOG.Infof("Invalid time format in range: %s, errors: %v, %v", savedTimeString, err1, err2)
+		return false
+	}
+
+	skipTime := time.Date(now.Year(), now.Month(), now.Day(), startTime.Hour(), startTime.Minute(), startTime.Second(), 0, now.Location())
+	endSkipTime := time.Date(now.Year(), now.Month(), now.Day(), endTime.Hour(), endTime.Minute(), endTime.Second(), 0, now.Location())
+
+	if endSkipTime.Before(skipTime) {
+		return now.After(skipTime) || now.Before(endSkipTime)
+	}
+	return now.After(skipTime) && now.Before(endSkipTime)
+}
+
+func GetSendContent(alertType string, params []dto.Param, agentInfo *dto.AgentInfo) string {
+	switch GetCronJobType(alertType) {
+	case "ssl":
+		return i18n.GetMsgWithMap("SSLAlert", map[string]interface{}{"num": getValueByIndex(params, "1"), "day": getValueByIndex(params, "2"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "siteEndTime":
+		return i18n.GetMsgWithMap("WebSiteAlert", map[string]interface{}{"num": getValueByIndex(params, "1"), "day": getValueByIndex(params, "2"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "panelPwdEndTime":
+		return i18n.GetMsgWithMap("PanelPwdExpirationAlert", map[string]interface{}{"day": getValueByIndex(params, "1"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "licenseTime":
+		return i18n.GetMsgWithMap("LicenseExpirationAlert", map[string]interface{}{"day": getValueByIndex(params, "1"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "panelUpdate":
+		return i18n.GetMsgWithMap("PanelVersionAlert", map[string]interface{}{"node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "cpu":
+		return i18n.GetMsgWithMap("ResourceAlert", map[string]interface{}{"time": getValueByIndex(params, "1"), "name": getValueByIndex(params, "2"), "used": getValueByIndex(params, "3"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "memory":
+		return i18n.GetMsgWithMap("ResourceAlert", map[string]interface{}{"time": getValueByIndex(params, "1"), "name": getValueByIndex(params, "2"), "used": getValueByIndex(params, "3"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "load":
+		return i18n.GetMsgWithMap("ResourceAlert", map[string]interface{}{"time": getValueByIndex(params, "1"), "name": getValueByIndex(params, "2"), "used": getValueByIndex(params, "3"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "disk":
+		return i18n.GetMsgWithMap("DiskUsedAlert", map[string]interface{}{"name": getValueByIndex(params, "1"), "used": getValueByIndex(params, "2"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "cronJob":
+		return i18n.GetMsgWithMap("CronJobFailedAlert", map[string]interface{}{"name": getValueByIndex(params, "1"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "clams":
+		return i18n.GetMsgWithMap("ClamAlert", map[string]interface{}{"num": getValueByIndex(params, "1"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "panelLogin":
+		return i18n.GetMsgWithMap("SSHAndPanelLoginAlert", map[string]interface{}{"name": getValueByIndex(params, "1"), "loginIp": getValueByIndex(params, "2"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "sshLogin":
+		return i18n.GetMsgWithMap("SSHAndPanelLoginAlert", map[string]interface{}{"name": getValueByIndex(params, "1"), "loginIp": getValueByIndex(params, "2"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "panelIpLogin":
+		return i18n.GetMsgWithMap("SSHAndPanelLoginAlert", map[string]interface{}{"name": getValueByIndex(params, "1"), "loginIp": getValueByIndex(params, "2"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "sshIpLogin":
+		return i18n.GetMsgWithMap("SSHAndPanelLoginAlert", map[string]interface{}{"name": getValueByIndex(params, "1"), "loginIp": getValueByIndex(params, "2"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "nodeException":
+		return i18n.GetMsgWithMap("NodeExceptionAlert", map[string]interface{}{"num": getValueByIndex(params, "1"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	case "licenseException":
+		return i18n.GetMsgWithMap("LicenseExceptionAlert", map[string]interface{}{"num": getValueByIndex(params, "1"), "node": getNodeName(agentInfo), "ip": getNodeIp(agentInfo)})
+	default:
+		return ""
+	}
+}
+
+func getValueByIndex(params []dto.Param, index string) string {
+	for _, p := range params {
+		if p.Index == index {
+			return p.Value
+		}
+	}
+	return ""
+}
+
+func CountRecentFailedLoginLogs(minutes uint, failCount uint) (int, bool, error) {
+	now := time.Now()
+	startTime := now.Add(-time.Duration(minutes) * time.Minute)
+	db := global.CoreDB.Model(&model.LoginLog{})
+	var count int64
+	err := db.Where("created_at >= ? AND status = ?", startTime, constant.StatusFailed).
+		Count(&count).Error
+	if err != nil {
+		return 0, false, err
+	}
+	return int(count), int(count) >= int(failCount), nil
+}
+
+func FindRecentSuccessLoginsNotInWhitelist(minutes int, whitelist []string) ([]model.LoginLog, error) {
+	now := time.Now()
+	startTime := now.Add(-time.Duration(minutes) * time.Minute)
+
+	whitelistMap := make(map[string]struct{})
+	for _, ip := range whitelist {
+		whitelistMap[ip] = struct{}{}
+	}
+
+	var logs []model.LoginLog
+	err := global.CoreDB.Model(&model.LoginLog{}).
+		Where("created_at >= ? AND status = ?", startTime, constant.StatusSuccess).
+		Find(&logs).Error
+	if err != nil {
+		return nil, err
+	}
+
+	var abnormalLogs []model.LoginLog
+	for _, log := range logs {
+		if _, ok := whitelistMap[log.IP]; !ok {
+			abnormalLogs = append(abnormalLogs, log)
+		}
+	}
+	return abnormalLogs, nil
+}
+
+func getNodeName(agentInfo *dto.AgentInfo) string {
+	var nodeName string
+	if agentInfo != nil && agentInfo.NodeName != "" {
+		nodeName = agentInfo.NodeName
+	}
+
+	return formatWithFallback(nodeName, getFallbackHostname)
+}
+
+func getNodeIp(agentInfo *dto.AgentInfo) string {
+	var nodeIP string
+	if agentInfo != nil && agentInfo.NodeAddr != "" && agentInfo.NodeAddr != "127.0.0.1" {
+		nodeIP = agentInfo.NodeAddr
+	}
+
+	return formatWithFallback(nodeIP, getFallbackIP)
+}
+
+func formatWithFallback(value string, fallback func() string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = strings.TrimSpace(fallback())
+	}
+
+	if value == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("「%s」", value)
+}
+
+func getFallbackHostname() string {
+	hostInfo, err := psutil.HOST.GetHostInfo(false)
+	if err != nil {
+		return ""
+	}
+	return hostInfo.Hostname
+}
+
+func getFallbackIP() string {
+	if systemIP, err := repo.NewISettingRepo().GetValueByKey("SystemIP"); err == nil && systemIP != "" {
+		return systemIP
+	}
+	return loadOutboundIP()
+}
+
+func loadOutboundIP() string {
+	conn, err := network.Dial("udp", "8.8.8.8:80")
+
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	localAddr := conn.LocalAddr().(*network.UDPAddr)
+	return localAddr.IP.String()
+}
+
+func ParseAlertSmsConfig(configJSON string) (dto.AlertSmsConfig, error) {
+	var tempMap map[string]interface{}
+	err := json.Unmarshal([]byte(configJSON), &tempMap)
+	if err != nil {
+		return dto.AlertSmsConfig{}, err
+	}
+
+	var cfg dto.AlertSmsConfig
+	if phone, ok := tempMap["phone"].(string); ok {
+		cfg.Phone = phone
+	}
+
+	switch v := tempMap["alertDailyNum"].(type) {
+	case float64:
+		cfg.AlertDailyNum = strconv.FormatFloat(v, 'f', 0, 64)
+	case string:
+		cfg.AlertDailyNum = v
+	default:
+		cfg.AlertDailyNum = "50"
+	}
+
+	return cfg, nil
+}

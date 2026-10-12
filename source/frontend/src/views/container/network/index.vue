@@ -1,0 +1,240 @@
+<template>
+    <div v-loading="loading">
+        <docker-status
+            v-model:isActive="isActive"
+            v-model:isExist="isExist"
+            v-model:loading="loading"
+            @search="search"
+        />
+
+        <LayoutContent v-if="isExist" :title="$t('container.network', 2)" :class="{ mask: !isActive }">
+            <template #leftToolBar>
+                <el-button v-permission type="primary" @click="onCreate()">
+                    {{ $t('commons.button.create') }}
+                </el-button>
+                <el-button v-permission type="primary" plain @click="onClean()">
+                    {{ $t('container.networkPrune') }}
+                </el-button>
+                <el-button v-permission :disabled="selects.length === 0" @click="batchDelete(null)">
+                    {{ $t('commons.button.delete') }}
+                </el-button>
+            </template>
+            <template #rightToolBar>
+                <TableSearch @search="search()" v-model:searchName="searchName" />
+                <TableRefresh @search="search()" />
+                <TableSetting title="network-refresh" @search="search()" />
+            </template>
+            <template #main>
+                <ComplexTable
+                    :pagination-config="paginationConfig"
+                    v-model:selects="selects"
+                    :data="data"
+                    @search="search"
+                    :heightDiff="300"
+                >
+                    <el-table-column type="selection" :selectable="selectable" fix />
+                    <el-table-column
+                        :label="$t('commons.table.name')"
+                        width="130"
+                        prop="name"
+                        fix
+                        show-overflow-tooltip
+                    >
+                        <template #default="{ row }">
+                            <el-text type="primary" class="cursor-pointer" @click="onInspect(row.id)">
+                                {{ row.name }}
+                            </el-text>
+                        </template>
+                    </el-table-column>
+                    <el-table-column width="90">
+                        <template #default="{ row }">
+                            <el-tag round v-if="row.isSystem || row.name === '1panel-network'">system</el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column
+                        :label="$t('container.driver')"
+                        show-overflow-tooltip
+                        min-width="60"
+                        prop="driver"
+                    />
+                    <el-table-column :label="$t('container.subnet')" min-width="80" prop="subnet" fix />
+                    <el-table-column :label="$t('container.gateway')" min-width="80" prop="gateway" fix />
+                    <el-table-column :label="$t('container.tag')" min-width="140" fix>
+                        <template #default="{ row }">
+                            <div v-for="(item, index) in row.labels" :key="index">
+                                <div v-if="row.expand || (!row.expand && index < 3)">
+                                    <el-button class="mt-0.5" plain size="small">{{ item }}</el-button>
+                                </div>
+                            </div>
+                            <div v-if="!row.expand && row.labels.length > 3">
+                                <el-button link @click="row.expand = true">
+                                    {{ $t('commons.button.expand') }}...
+                                </el-button>
+                            </div>
+                        </template>
+                    </el-table-column>
+                    <el-table-column
+                        prop="createdAt"
+                        show-overflow-tooltip
+                        min-width="90"
+                        :label="$t('commons.table.date')"
+                        :formatter="dateFormat"
+                    />
+                    <fu-table-operations width="100" :buttons="buttons" :label="$t('commons.table.operate')" fix />
+                </ComplexTable>
+            </template>
+        </LayoutContent>
+
+        <OpDialog ref="opRef" @search="search" />
+        <DetailDrawer ref="detailDrawerRef" />
+        <CreateDialog @search="search" ref="dialogCreateRef" />
+        <TaskLog ref="taskLogRef" width="70%" @close="search" />
+    </div>
+</template>
+
+<script lang="ts" setup>
+import CreateDialog from '@/views/container/network/create/index.vue';
+import DetailDrawer from '@/views/container/network/detail/index.vue';
+import { reactive, ref } from 'vue';
+import { dateFormat } from '@/utils/date';
+import { newUUID } from '@/utils/id';
+import { deleteNetwork, searchNetwork, inspect, containerPrune } from '@/api/modules/container';
+import { Container } from '@/api/interface/container';
+import TaskLog from '@/components/log/task/index.vue';
+import i18n from '@/lang';
+import { ElMessageBox } from 'element-plus';
+import DockerStatus from '@/views/container/docker-status/index.vue';
+
+const loading = ref();
+const detailDrawerRef = ref();
+const taskLogRef = ref();
+
+const data = ref();
+const selects = ref<any>([]);
+const paginationConfig = reactive({
+    cacheSizeKey: 'container-network-page-size',
+    currentPage: 1,
+    pageSize: Number(localStorage.getItem('container-network-page-size')) || 20,
+    total: 0,
+});
+const searchName = ref();
+
+const opRef = ref();
+const isActive = ref(false);
+const isExist = ref(false);
+const dialogCreateRef = ref<DialogExpose>();
+
+interface DialogExpose {
+    acceptParams: () => void;
+}
+const onCreate = async () => {
+    dialogCreateRef.value!.acceptParams();
+};
+
+const onClean = () => {
+    ElMessageBox.confirm(i18n.global.t('container.networkPruneHelper'), i18n.global.t('container.networkPrune'), {
+        confirmButtonText: i18n.global.t('commons.button.confirm'),
+        cancelButtonText: i18n.global.t('commons.button.cancel'),
+        type: 'info',
+    }).then(async () => {
+        loading.value = true;
+        let params = {
+            taskID: newUUID(),
+            pruneType: 'network',
+            withTagAll: false,
+        };
+        await containerPrune(params)
+            .then(() => {
+                loading.value = false;
+                openTaskLog(params.taskID);
+            })
+            .catch(() => {
+                loading.value = false;
+            });
+    });
+};
+const openTaskLog = (taskID: string) => {
+    taskLogRef.value.openWithTaskID(taskID);
+};
+
+function selectable(row) {
+    return !row.isSystem;
+}
+
+const search = async () => {
+    if (!isActive.value || !isExist.value) {
+        return;
+    }
+    const params = {
+        info: searchName.value,
+        page: paginationConfig.currentPage,
+        pageSize: paginationConfig.pageSize,
+    };
+    loading.value = true;
+    await searchNetwork(params)
+        .then((res) => {
+            loading.value = false;
+            data.value = res.data.items || [];
+            for (const item of data.value) {
+                item.isSystem = isSystem(item.name);
+            }
+            paginationConfig.total = res.data.total;
+        })
+        .catch(() => {
+            loading.value = false;
+        });
+};
+
+const batchDelete = async (row: Container.NetworkInfo | null) => {
+    let names: Array<string> = [];
+    let hasPanelNetwork;
+    if (row === null) {
+        selects.value.forEach((item: Container.NetworkInfo) => {
+            if (item.name === '1panel-network') {
+                hasPanelNetwork = true;
+            }
+            names.push(item.name);
+        });
+    } else {
+        if (row.name === '1panel-network') {
+            hasPanelNetwork = true;
+        }
+        names.push(row.name);
+    }
+    opRef.value.acceptParams({
+        title: i18n.global.t('commons.button.delete'),
+        names: names,
+        msg: hasPanelNetwork
+            ? i18n.global.t('container.networkHelper')
+            : i18n.global.t('commons.msg.operatorHelper', [
+                  i18n.global.t('container.network'),
+                  i18n.global.t('commons.button.delete'),
+              ]),
+        api: deleteNetwork,
+        params: { names: names },
+    });
+};
+
+const onInspect = async (id: string) => {
+    const res = await inspect({ id: id, type: 'network', detail: '' });
+    let networkData = JSON.parse(res.data);
+    detailDrawerRef.value!.acceptParams({ data: networkData });
+};
+
+function isSystem(val: string) {
+    return val === 'bridge' || val === 'none' || val === 'host';
+}
+
+const buttons = [
+    {
+        label: i18n.global.t('commons.button.delete'),
+        permission: true,
+        click: (row: Container.NetworkInfo) => {
+            batchDelete(row);
+        },
+        disabled: (row: any) => {
+            return row.isSystem;
+        },
+    },
+];
+</script>

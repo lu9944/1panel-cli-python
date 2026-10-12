@@ -1,0 +1,131 @@
+import { Layout } from '@/routers/constant';
+
+const webSiteRouter = {
+    sort: 3,
+    path: '/websites',
+    name: 'Website-Menu',
+    component: Layout,
+    redirect: '/websites',
+    meta: {
+        icon: 'p-website',
+        title: 'menu.website',
+    },
+    children: [
+        {
+            path: '/websites',
+            name: 'Website',
+            component: () => import('@/views/website/website/index.vue'),
+            meta: {
+                icon: 'p-website',
+                title: 'menu.website',
+                permission: 'website_view',
+            },
+        },
+        {
+            path: '/websites/:id/config/:tab',
+            name: 'WebsiteConfig',
+            component: () => import('@/views/website/website/config/index.vue'),
+            hidden: true,
+            props: true,
+            meta: {
+                activeMenu: '/websites',
+                ignoreTab: true,
+                permission: 'website_view',
+            },
+        },
+        {
+            path: '/websites/ssl',
+            name: 'SSL',
+            component: () => import('@/views/website/ssl/index.vue'),
+            meta: {
+                icon: 'p-ssl-menu',
+                title: 'menu.ssl',
+                permission: 'website_cert_view',
+            },
+        },
+        {
+            path: '/websites/templates',
+            name: 'WebsiteTemplate',
+            component: () => import('@/views/website/template/index.vue'),
+            meta: {
+                icon: 'p-file-html',
+                title: 'menu.template',
+                permission: 'website_view',
+            },
+        },
+        {
+            path: '/websites/runtimes/php',
+            name: 'PHP',
+            component: () => import('@/views/website/runtime/php/index.vue'),
+            meta: {
+                icon: 'p-run-menu',
+                title: 'menu.runtime',
+                detail: 'PHP',
+                activeMenu: '/websites/runtimes/php',
+                permission: 'website_runtime_view',
+            },
+        },
+        {
+            path: '/websites/runtimes/node',
+            name: 'node',
+            hidden: true,
+            component: () => import('@/views/website/runtime/node/index.vue'),
+            meta: {
+                title: 'menu.runtime',
+                detail: 'Node',
+                activeMenu: '/websites/runtimes/php',
+                permission: 'website_runtime_view',
+            },
+        },
+        {
+            path: '/websites/runtimes/java',
+            name: 'java',
+            hidden: true,
+            component: () => import('@/views/website/runtime/java/index.vue'),
+            meta: {
+                title: 'menu.runtime',
+                detail: 'Java',
+                activeMenu: '/websites/runtimes/php',
+                permission: 'website_runtime_view',
+            },
+        },
+        {
+            path: '/websites/runtimes/go',
+            name: 'go',
+            hidden: true,
+            component: () => import('@/views/website/runtime/go/index.vue'),
+            meta: {
+                title: 'menu.runtime',
+                detail: 'Go',
+                activeMenu: '/websites/runtimes/php',
+                permission: 'website_runtime_view',
+            },
+        },
+        {
+            path: '/websites/runtimes/python',
+            name: 'python',
+            hidden: true,
+            component: () => import('@/views/website/runtime/python/index.vue'),
+            meta: {
+                title: 'menu.runtime',
+                detail: 'Python',
+                activeMenu: '/websites/runtimes/php',
+                permission: 'website_runtime_view',
+            },
+        },
+        {
+            path: '/websites/runtimes/dotnet',
+            name: 'dotNet',
+            hidden: true,
+            component: () => import('@/views/website/runtime/dotnet/index.vue'),
+            meta: {
+                title: 'menu.runtime',
+                detail: '.Net',
+                activeMenu: '/websites/runtimes/php',
+                permission: 'website_runtime_view',
+            },
+        },
+    ],
+};
+
+export default webSiteRouter;

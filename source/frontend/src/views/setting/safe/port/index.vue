@@ -1,0 +1,83 @@
+<template>
+    <DrawerPro v-model="drawerVisible" :header="$t('setting.panelPort')" @close="handleClose" size="small">
+        <el-form ref="formRef" label-position="top" :model="form" @submit.prevent v-loading="loading">
+            <el-form-item :label="$t('setting.panelPort')" prop="serverPort" :rules="Rules.port">
+                <el-input clearable v-model.number="form.serverPort" />
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="drawerVisible = false">{{ $t('commons.button.cancel') }}</el-button>
+            <el-button :disabled="loading" type="primary" @click="onSavePort(formRef)">
+                {{ $t('commons.button.confirm') }}
+            </el-button>
+        </template>
+    </DrawerPro>
+</template>
+<script lang="ts" setup>
+import { reactive, ref } from 'vue';
+import i18n from '@/lang';
+import { MsgSuccess } from '@/utils/message';
+import { updatePort } from '@/api/modules/setting';
+import { ElMessageBox, FormInstance } from 'element-plus';
+import { Rules } from '@/global/form-rules';
+import { useGlobalStore } from '@/composables/useGlobalStore';
+const { entrance, isLogin } = useGlobalStore();
+
+interface DialogProps {
+    serverPort: number;
+}
+const drawerVisible = ref();
+const loading = ref();
+
+const form = reactive({
+    serverPort: 9999,
+});
+
+const formRef = ref<FormInstance>();
+
+const acceptParams = (params: DialogProps): void => {
+    form.serverPort = params.serverPort;
+    drawerVisible.value = true;
+};
+
+const onSavePort = async (formEl: FormInstance | undefined) => {
+    if (!formEl) return;
+    formEl.validate(async (valid) => {
+        if (!valid) return;
+        ElMessageBox.confirm(i18n.global.t('setting.portChangeHelper'), i18n.global.t('setting.portChange'), {
+            confirmButtonText: i18n.global.t('commons.button.confirm'),
+            cancelButtonText: i18n.global.t('commons.button.cancel'),
+            type: 'info',
+        }).then(async () => {
+            loading.value = true;
+            let param = {
+                serverPort: form.serverPort,
+            };
+            await updatePort(param)
+                .then(() => {
+                    loading.value = false;
+                    MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+                    isLogin.value = false;
+                    let href = window.location.href;
+                    let ip = href.split('//')[1].split(':')[0];
+                    if (entrance.value) {
+                        window.open(`${href.split('//')[0]}//${ip}:${form.serverPort}/${entrance.value}`, '_self');
+                    } else {
+                        window.open(`${href.split('//')[0]}//${ip}:${form.serverPort}/login`, '_self');
+                    }
+                })
+                .catch(() => {
+                    loading.value = false;
+                });
+        });
+    });
+};
+
+const handleClose = () => {
+    drawerVisible.value = false;
+};
+
+defineExpose({
+    acceptParams,
+});
+</script>

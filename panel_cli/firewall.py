@@ -1,6 +1,13 @@
-"""防火墙管理:自动适配 v2.2.5 旧接口与新版统一规则接口,含 Docker 端口守护。
+"""防火墙管理:自动适配 1Panel v2.3.2+ 统一规则接口、旧统一接口与 v2.2.x 旧接口。
 
-对应 Rust 版 firewall.rs。
+接口演进:
+- v2.2.x(legacy):`/firewall/search|port|ip|forward|batch` 旧门面接口;
+- 中间版本(checked):`/firewall/rules*` + 创建前 `/rules/check` 规则检查(签名 checkFlag);
+- v2.3.2+(v231):`/firewall/rules*` 统一规则接口,写操作(规则创建/删除、转发、
+  Docker 端口策略)全部改为异步任务,接口返回 taskID 后由 CLI 轮询
+  `/logs/tasks/search` 并汇报结果;Docker 端口策略请求体改为 `policies` 结构。
+
+`api_kind()` 在运行时探测当前面板属于哪一种,并据此选择调用路径。
 """
 
 from __future__ import annotations
@@ -9,11 +16,19 @@ import builtins
 import json
 from dataclasses import dataclass
 
+from .apps import wait_task
 from .client import PanelClient
 from .errors import CliError
 from .session import load_session
 
 BASE = "api/v2/hosts/firewall"
+
+API_LEGACY = "legacy"
+API_CHECKED = "checked"
+API_V231 = "v231"
+
+# v2.3.2 防火墙写操作(创建/删除规则、转发、Docker 策略)为异步任务,轮询超时(秒)
+TASK_TIMEOUT = 60
 
 
 def check_code(resp: dict) -> None:
@@ -46,7 +61,13 @@ def client_for(profile: str) -> PanelClient:
     return PanelClient(session.panel_url, session.cookies, session.insecure)
 
 
+# ---------------------------------------------------------------------------
+# 接口类型探测
+# ---------------------------------------------------------------------------
+
+
 def supports_unified_api(client: PanelClient) -> bool:
+    """是否提供新版统一接口(GET /firewall/settings)。"""
     try:
         resp = client.get(f"{BASE}/settings")
     except CliError:
@@ -58,6 +79,45 @@ def supports_unified_api(client: PanelClient) -> bool:
     except ValueError:
         return False
     return value.get("code") == 200
+
+
+def supports_rule_check(client: PanelClient) -> bool:
+    """是否提供规则检查接口 POST /firewall/rules/check(仅中间版本)。"""
+    try:
+        resp = client.post_json(f"{BASE}/rules/check", {"items": []})
+    except CliError:
+        return False
+    return resp.status != 404
+
+
+def api_kind(client: PanelClient) -> str:
+    """返回当前面板的防火墙接口类型:legacy / checked / v231。"""
+    if not supports_unified_api(client):
+        return API_LEGACY
+    return API_CHECKED if supports_rule_check(client) else API_V231
+
+
+def unified_api_required(client: PanelClient) -> None:
+    if not supports_unified_api(client):
+        raise CliError(
+            "当前面板不支持统一防火墙接口(未检测到 /hosts/firewall/settings);"
+            "Docker 端口守护需要 1Panel v2.3.x 及以上版本"
+        )
+
+
+def run_async_task(client: PanelClient, data: dict, label: str) -> bool:
+    """v2.3.2 异步写操作:有 taskID 时轮询任务并汇报;返回是否等待过任务。"""
+    task_id = (data or {}).get("taskID") or ""
+    if not task_id:
+        return False
+    print(f"{label} 已提交,等待执行(taskID={task_id}) ...")
+    wait_task(client, task_id, TASK_TIMEOUT, action=label)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# 状态 / 启停
+# ---------------------------------------------------------------------------
 
 
 def firewall_base(client: PanelClient) -> dict:
@@ -117,6 +177,7 @@ def status(profile: str) -> None:
 
 def operate(profile: str, operation: str) -> None:
     client = client_for(profile)
+    kind = api_kind(client)
     op_map = {
         "start": "start",
         "stop": "stop",
@@ -127,19 +188,34 @@ def operate(profile: str, operation: str) -> None:
     if operation not in op_map:
         raise CliError(f"不支持的操作 {operation}")
     desc_map = {
+        "start": "防火墙启动",
+        "stop": "防火墙停止",
+        "restart": "防火墙重启",
+        "allow-ping": "允许 Ping",
+        "ban-ping": "禁止 Ping",
+    }
+    resp = post_json(
+        client,
+        f"{BASE}/operate",
+        {"operation": op_map[operation], "withDockerRestart": False},
+        "操作防火墙失败",
+    )
+    data = resp.get("data") or {}
+    if kind == API_V231 and run_async_task(client, data, desc_map[operation]):
+        return
+    done_map = {
         "start": "防火墙已启动",
         "stop": "防火墙已停止",
         "restart": "防火墙已重启",
         "allow-ping": "已允许 Ping",
         "ban-ping": "已禁止 Ping",
     }
-    post_json(
-        client,
-        f"{BASE}/operate",
-        {"operation": op_map[operation], "withDockerRestart": False},
-        "操作防火墙失败",
-    )
-    print(desc_map.get(operation, "操作完成"))
+    print(done_map[operation])
+
+
+# ---------------------------------------------------------------------------
+# 规则列表
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -153,7 +229,7 @@ def _items_of(resp: dict, context: str) -> list[dict]:
     data = resp.get("data") or {}
     items = data.get("items")
     if items is None:
-        # 面板在无规则时返回 items: null(Rust 基线此处会报错,Python 版按空列表处理)
+        # 面板在无规则时可能返回 items: null,按空列表处理
         return []
     if not isinstance(items, builtins.list):
         raise CliError(f"{context}: 响应 items 类型异常")
@@ -253,7 +329,7 @@ def unified_inventory(client: PanelClient, provider: str, info: str) -> list[dic
         "info": info,
         "all": True,
     }
-    resp = post_json(client, f"{BASE}/rules/search", body, "查询新版防火墙规则失败")
+    resp = post_json(client, f"{BASE}/rules/search", body, "查询统一防火墙规则失败")
     return (resp.get("data") or {}).get("items") or []
 
 
@@ -286,7 +362,7 @@ def unified_list(client: PanelClient, opts: ListOptions) -> None:
             client,
             f"{BASE}/forward/search",
             {"page": 1, "pageSize": 500, "info": opts.info, "status": "", "strategy": opts.strategy},
-            "查询新版端口转发失败",
+            "查询端口转发失败",
         )
         items = _items_of(resp, "解析端口转发规则失败")
         print_stable_items("forward", items)
@@ -318,7 +394,7 @@ def unified_list(client: PanelClient, opts: ListOptions) -> None:
                 f"{_f(rule, 'sourceAddress'):<24} {_f(rule, 'action'):<10} "
                 f"{item.get('state', '-') or '-':<12} {_f(rule, 'description')}"
             )
-    print(f"共 {len(filtered)} 条规则(新版统一规则 API,后端 {provider})")
+    print(f"共 {len(filtered)} 条规则(统一规则 API,后端 {provider})")
 
 
 def list(profile: str, opts: ListOptions) -> None:
@@ -332,6 +408,11 @@ def list(profile: str, opts: ListOptions) -> None:
         unified_list(client, normalized)
     else:
         stable_list(client, normalized)
+
+
+# ---------------------------------------------------------------------------
+# 规则构造
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -430,12 +511,18 @@ def ip_rules(provider: str, address: str, opts: IpOptions) -> list[dict]:
     ]
 
 
-def unified_create(client: PanelClient, rules: list[dict], label: str) -> None:
+# ---------------------------------------------------------------------------
+# 规则创建 / 删除(按接口类型分派)
+# ---------------------------------------------------------------------------
+
+
+def checked_create(client: PanelClient, rules: list[dict], label: str) -> None:
+    """中间版本:先 /rules/check 取得 checkFlag,再提交创建。"""
     check = post_json(
         client,
         f"{BASE}/rules/check",
         {"items": [{"rule": rule} for rule in rules]},
-        "检查新版防火墙规则失败",
+        "检查防火墙规则失败",
     )
     plans = (check.get("data") or {}).get("items") or []
     creates: list[dict] = []
@@ -464,13 +551,27 @@ def unified_create(client: PanelClient, rules: list[dict], label: str) -> None:
     if not creates:
         print(f"{label} 已存在,无需重复添加({existing} 条)")
         return
-    resp = post_json(client, f"{BASE}/rules", {"items": creates}, "创建新版防火墙规则失败")
+    resp = post_json(client, f"{BASE}/rules", {"items": creates}, "创建防火墙规则失败")
     data = resp.get("data") or {}
     failed = int(data.get("failed", 0) or 0)
     if failed > 0:
         raise CliError(f"有 {failed} 条规则创建失败: {data.get('errors')}")
     suffix = f", {existing} 条已存在" if existing else ""
     print(f"{label} 已添加: {int(data.get('succeeded', 0) or 0)} 条{suffix}")
+
+
+def v231_create(client: PanelClient, rules: list[dict], label: str) -> None:
+    """v2.3.2+:直接提交创建(服务端校验),等待异步任务结果。"""
+    items = [{"rule": rule, "sourceKind": "user"} for rule in rules]
+    resp = post_json(client, f"{BASE}/rules", {"items": items}, "创建防火墙规则失败")
+    run_async_task(client, resp.get("data") or {}, label)
+
+
+def unified_create(client: PanelClient, kind: str, rules: list[dict], label: str) -> None:
+    if kind == API_V231:
+        v231_create(client, rules, label)
+    else:
+        checked_create(client, rules, label)
 
 
 def stable_port(client: PanelClient, operation: str, port: str, opts: PortOptions) -> None:
@@ -501,15 +602,17 @@ def protocol_eq(actual: str, expected: str) -> bool:
     return any(part.lower() == actual.lower() for part in expected.split("/"))
 
 
-def unified_delete(client: PanelClient, uuids: list[str], label: str) -> None:
+def unified_delete(client: PanelClient, kind: str, uuids: list[str], label: str) -> None:
     if not uuids:
         raise CliError(
             f"未找到可删除的托管规则: {label};外部或受保护规则不能由 CLI 删除"
         )
     resp = post_json(
-        client, f"{BASE}/rules/delete", {"uuids": uuids}, "删除新版防火墙规则失败"
+        client, f"{BASE}/rules/delete", {"uuids": uuids}, "删除防火墙规则失败"
     )
     data = resp.get("data") or {}
+    if kind == API_V231 and run_async_task(client, data, label):
+        return
     failed = int(data.get("failed", 0) or 0)
     if failed > 0:
         raise CliError(f"有 {failed} 条规则删除失败: {data.get('errors')}")
@@ -518,20 +621,23 @@ def unified_delete(client: PanelClient, uuids: list[str], label: str) -> None:
 
 def port_add(profile: str, port: str, opts: PortOptions) -> None:
     client = client_for(profile)
-    if supports_unified_api(client):
-        provider = firewall_provider(client)
-        unified_create(
-            client,
-            port_rules(provider, port, opts),
-            f"端口规则 {port}/{opts.protocol}",
-        )
-    else:
+    kind = api_kind(client)
+    if kind == API_LEGACY:
         stable_port(client, "add", port, opts)
+        return
+    provider = firewall_provider(client)
+    unified_create(
+        client,
+        kind,
+        port_rules(provider, port, opts),
+        f"端口规则 {port}/{opts.protocol} 添加",
+    )
 
 
 def port_del(profile: str, port: str, opts: PortOptions) -> None:
     client = client_for(profile)
-    if not supports_unified_api(client):
+    kind = api_kind(client)
+    if kind == API_LEGACY:
         stable_port(client, "remove", port, opts)
         return
     provider = firewall_provider(client)
@@ -542,7 +648,9 @@ def port_del(profile: str, port: str, opts: PortOptions) -> None:
         for item in items
         if (item.get("rule") or {}) and _match_port(item, port, opts, wanted_action)
     ]
-    unified_delete(client, [u for u in uuids if u], f"端口规则 {port}/{opts.protocol}")
+    unified_delete(
+        client, kind, [u for u in uuids if u], f"端口规则 {port}/{opts.protocol} 删除"
+    )
 
 
 def _match_port(item: dict, port: str, opts: PortOptions, wanted_action: str) -> bool:
@@ -573,16 +681,20 @@ def stable_ip(client: PanelClient, operation: str, address: str, opts: IpOptions
 
 def ip_add(profile: str, address: str, opts: IpOptions) -> None:
     client = client_for(profile)
-    if supports_unified_api(client):
-        provider = firewall_provider(client)
-        unified_create(client, ip_rules(provider, address, opts), f"IP 规则 {address}")
-    else:
+    kind = api_kind(client)
+    if kind == API_LEGACY:
         stable_ip(client, "add", address, opts)
+        return
+    provider = firewall_provider(client)
+    unified_create(
+        client, kind, ip_rules(provider, address, opts), f"IP 规则 {address} 添加"
+    )
 
 
 def ip_del(profile: str, address: str, opts: IpOptions) -> None:
     client = client_for(profile)
-    if not supports_unified_api(client):
+    kind = api_kind(client)
+    if kind == API_LEGACY:
         stable_ip(client, "remove", address, opts)
         return
     provider = firewall_provider(client)
@@ -599,7 +711,12 @@ def ip_del(profile: str, address: str, opts: IpOptions) -> None:
             uuid = (item.get("desired") or {}).get("uuid")
             if uuid:
                 uuids.append(uuid)
-    unified_delete(client, uuids, f"IP 规则 {address}")
+    unified_delete(client, kind, uuids, f"IP 规则 {address} 删除")
+
+
+# ---------------------------------------------------------------------------
+# 端口转发
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -618,7 +735,7 @@ def parse_target(target: str) -> tuple[str, str]:
 
 
 def operate_forward(
-    client: PanelClient, unified: bool, operation: str, port: str, opts: ForwardOptions
+    client: PanelClient, kind: str, operation: str, port: str, opts: ForwardOptions
 ) -> None:
     target_ip, target_port = parse_target(opts.target)
     body = {
@@ -635,26 +752,31 @@ def operate_forward(
         ],
         "forceDelete": False,
     }
+    unified = kind != API_LEGACY
     path = f"{BASE}/forward/operate" if unified else f"{BASE}/forward"
-    post_json(client, path, body, "操作端口转发失败")
+    resp = post_json(client, path, body, "操作端口转发失败")
     action = "添加" if operation == "add" else "删除"
+    label = f"端口转发 {port}/{opts.protocol} {action}"
+    if kind == API_V231 and run_async_task(client, resp.get("data") or {}, label):
+        return
     print(f"端口转发已{action}: {port}/{opts.protocol} -> {target_ip}:{target_port}")
 
 
 def forward_add(profile: str, port: str, opts: ForwardOptions) -> None:
     client = client_for(profile)
-    operate_forward(client, supports_unified_api(client), "add", port, opts)
+    operate_forward(client, api_kind(client), "add", port, opts)
 
 
 def forward_del(profile: str, port: str, opts: ForwardOptions) -> None:
     client = client_for(profile)
-    operate_forward(client, supports_unified_api(client), "remove", port, opts)
+    operate_forward(client, api_kind(client), "remove", port, opts)
 
 
 def batch_add(profile: str, ports: str, opts: PortOptions) -> None:
     client = client_for(profile)
+    kind = api_kind(client)
     port_list = [p.strip() for p in ports.split(",") if p.strip()]
-    if supports_unified_api(client):
+    if kind != API_LEGACY:
         provider = firewall_provider(client)
         rules: list[dict] = []
         for port in port_list:
@@ -662,7 +784,7 @@ def batch_add(profile: str, ports: str, opts: PortOptions) -> None:
         if not rules:
             raise CliError("至少提供一个端口")
         unified_create(
-            client, rules, f"批量端口规则 {ports}/{opts.protocol}"
+            client, kind, rules, f"批量端口规则 {ports}/{opts.protocol} 添加"
         )
         return
     rules = [
@@ -685,15 +807,7 @@ def batch_add(profile: str, ports: str, opts: PortOptions) -> None:
     print(f"已批量添加端口规则: {ports}/{opts.protocol}")
 
 
-# ---------- Docker 端口守护(新版统一防火墙 API) ----------
-
-
-def unified_api_required(client: PanelClient) -> None:
-    if not supports_unified_api(client):
-        raise CliError(
-            "当前面板不支持新版统一防火墙 API(未检测到 /hosts/firewall/settings);"
-            "Docker 端口守护需要新版 1Panel"
-        )
+# ---------- Docker 端口守护(统一防火墙 API) ----------
 
 
 def docker_base(client: PanelClient) -> dict:
@@ -759,14 +873,34 @@ def docker_mode_zh(mode: str) -> str:
     return mapping.get(mode, mode)
 
 
+def docker_management_zh(target: str) -> str:
+    mapping = {
+        "container_guard": "Docker守护",
+        "host_firewall": "宿主机防火墙",
+        "needs_diagnosis": "需诊断",
+    }
+    return mapping.get(target, target or "-")
+
+
+def _display_width(text: str) -> int:
+    import unicodedata
+
+    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in text)
+
+
+def pad_display(text: str, width: int) -> str:
+    """按终端显示宽度对齐(中文按 2 列计)。"""
+    return text + " " * max(0, width - _display_width(text))
+
+
 def docker_ports(profile: str) -> None:
     client = client_for(profile)
     unified_api_required(client)
-    resp = response_json(
-        client.get(f"{BASE}/docker/endpoints"), "查询 Docker 已发布端口失败"
-    )
-    containers = resp.get("data") or []
+    resp = docker_base(client)
+    data = resp.get("data") or {}
+    containers = data.get("containers") or []
     total = 0
+    host_firewall_ports: list[str] = []
     for c in containers:
         name = c.get("name", "-") or "-"
         app = c.get("application", "") or ""
@@ -786,17 +920,42 @@ def docker_ports(profile: str) -> None:
             sources = sources or "-"
             uuid = e.get("policyUUID", "") or ""
             effective = "生效" if e.get("effective") is True else "未生效"
+            target = e.get("managementTarget", "") or ""
+            if target == "host_firewall":
+                host_firewall_ports.append(endpoint_line(e))
             uuid_suffix = f"uuid={uuid}" if uuid else ""
             print(
-                f"  {endpoint_line(e):<28} {docker_mode_zh(mode):<14} {effective:<8} {uuid_suffix}"
+                f"  {pad_display(endpoint_line(e), 28)} "
+                f"{pad_display(docker_mode_zh(mode), 14)} "
+                f"{pad_display(docker_management_zh(target), 14)} "
+                f"{pad_display(effective, 8)} {uuid_suffix}"
             )
             description = e.get("description", "") or ""
-            if sources != "-" or description:
+            reason = e.get("managementReason", "") or ""
+            if sources != "-" or description or reason:
                 if sources != "-":
                     print(f"    来源: {sources}")
                 if description:
                     print(f"    备注: {description}")
-    print(f"\n共 {total} 个已发布端口({len(containers)} 个容器)")
+                if reason:
+                    print(f"    诊断: {reason}")
+    orphans = data.get("orphanPolicies") or []
+    if orphans:
+        print("\n孤立策略(对应的已发布端口已不存在):")
+        for e in orphans:
+            print(
+                f"  {pad_display(endpoint_line(e), 28)} "
+                f"{pad_display(docker_mode_zh(e.get('mode', '-') or '-'), 14)} "
+                f"uuid={e.get('policyUUID', '') or ''}"
+            )
+    print(f"\n共 {total} 个已发布端口({len(containers)} 个容器), 孤立策略 {len(orphans)} 条")
+    if host_firewall_ports:
+        print(
+            "提示:以下端口流量由宿主机防火墙接管,Docker 端口守护策略对其无效,"
+            "请使用 firewall port/ip 规则管理:"
+        )
+        for line in host_firewall_ports:
+            print(f"  {line}")
 
 
 def docker_sync(profile: str) -> None:
@@ -813,13 +972,16 @@ def docker_operate(profile: str, operation: str) -> None:
     op = op_map[operation]
     client = client_for(profile)
     unified_api_required(client)
-    post_json(
+    resp = post_json(
         client,
         f"{BASE}/docker/operate",
         {"operation": op, "taskID": ""},
         "操作 Docker 端口守护失败",
     )
     done = {"initialize": "初始化", "bind": "绑定"}.get(op, "解绑")
+    data = resp.get("data") or {}
+    if run_async_task(client, data, f"Docker 端口守护{done}"):
+        return
     print(f"Docker 端口守护已{done}")
 
 
@@ -860,6 +1022,9 @@ def docker_published_endpoints(
                         "hostIP": endpoint_ip,
                         "hostPort": e.get("hostPort", 0) or 0,
                         "protocol": e.get("protocol", "tcp") or "tcp",
+                        "trafficPath": e.get("trafficPath", "") or "",
+                        "managementTarget": e.get("managementTarget", "") or "",
+                        "managementReason": e.get("managementReason", "") or "",
                     }
                 )
     if not endpoints:
@@ -869,13 +1034,141 @@ def docker_published_endpoints(
     return endpoints
 
 
+def container_guard_endpoints(endpoints: list[dict]) -> list[dict]:
+    """v2.3.2:流量由宿主机防火墙接管的端口不能用 Docker 端口守护策略。
+
+    返回可交由 Docker 守护管理的端口;被宿主机防火墙接管的端口跳过并给出提示
+    (可用 `firewall port/ip` 规则管理),无法判定流量路径的端口直接报错。
+    """
+    needs_diagnosis = [
+        f"{endpoint_line(e)}({e.get('managementReason') or '原因未知'})"
+        for e in endpoints
+        if (e.get("managementTarget") or "") == "needs_diagnosis"
+    ]
+    if needs_diagnosis:
+        raise CliError(
+            "以下端口无法判定流量路径,Docker 端口守护策略不可用: "
+            + ", ".join(needs_diagnosis)
+        )
+    guarded = [
+        e for e in endpoints if (e.get("managementTarget") or "") != "host_firewall"
+    ]
+    skipped = [
+        endpoint_line(e)
+        for e in endpoints
+        if (e.get("managementTarget") or "") == "host_firewall"
+    ]
+    if not guarded:
+        raise CliError(
+            "以下端口流量由宿主机防火墙接管,Docker 端口守护策略对其无效: "
+            + ", ".join(skipped)
+            + ";请改用 `firewall port add/del`、`firewall ip add/del` 管理"
+        )
+    if skipped:
+        print(
+            "提示:以下端口流量由宿主机防火墙接管,本次不写入 Docker 守护策略,"
+            "如需限制请使用 `firewall port add/del`、`firewall ip add/del`:"
+        )
+        for line in skipped:
+            print(f"  {line}")
+    return guarded
+
+
+def normalize_sources(sources: list[str]) -> list[str]:
+    result = []
+    for source in sources:
+        source = source.strip().strip("[]")
+        if source:
+            result.append(source)
+    return result
+
+
+def sources_for_family(sources: list[str], family: str) -> list[str]:
+    if family == "ipv6":
+        return [s for s in sources if ":" in s]
+    return [s for s in sources if ":" not in s]
+
+
+def v231_docker_policies(
+    client: PanelClient,
+    endpoints: list[dict],
+    mode: str,
+    source_list: list[str],
+    desc: str,
+) -> None:
+    policies = []
+    for endpoint in endpoints:
+        family = endpoint.get("family", "ipv4") or "ipv4"
+        if mode == "deny_all":
+            sources: list[str] = []
+        else:
+            sources = sources_for_family(source_list, family)
+            if not sources:
+                raise CliError(
+                    f"端口在 {family} 上有映射({endpoint_line(endpoint)}),但 --sources 中没有"
+                    f"{'IPv6' if family == 'ipv6' else 'IPv4'} 来源地址;"
+                    "请为每个已发布地址族都提供来源(或使用不带 --sources 的 deny 拒绝所有)"
+                )
+        policies.append(
+            {
+                "family": family,
+                "hostIP": endpoint.get("hostIP", "") or "",
+                "hostPort": endpoint.get("hostPort", 0) or 0,
+                "protocol": endpoint.get("protocol", "tcp") or "tcp",
+                "mode": mode,
+                "sources": sources,
+                "description": desc,
+            }
+        )
+    resp = post_json(
+        client,
+        f"{BASE}/docker/policies/batch",
+        {"policies": policies},
+        "更新 Docker 端口防护策略失败",
+    )
+    label = f"Docker 端口防护策略更新({docker_mode_zh(mode)})"
+    if run_async_task(client, resp.get("data") or {}, label):
+        if source_list:
+            print(f"来源: {', '.join(source_list)}")
+        return
+    print(f"已更新 {len(policies)} 条 Docker 端口防护策略: {docker_mode_zh(mode)}")
+    if source_list:
+        print(f"来源: {', '.join(source_list)}")
+
+
+def legacy_docker_apply(
+    client: PanelClient,
+    endpoints: list[dict],
+    mode: str,
+    source_list: list[str],
+    desc: str,
+) -> None:
+    body = {
+        "endpoints": endpoints,
+        "mode": mode,
+        "sources": source_list,
+        "description": desc,
+    }
+    post_json(
+        client,
+        f"{BASE}/docker/policies/batch",
+        body,
+        "更新 Docker 端口防护策略失败",
+    )
+    print(f"已更新 {len(endpoints)} 条 Docker 端口防护策略: {docker_mode_zh(mode)}")
+    if source_list:
+        print(f"来源: {', '.join(source_list)}")
+
+
 def docker_apply(
     profile: str, port: str, protocol: str, sources: str, desc: str, mode: str
 ) -> None:
     client = client_for(profile)
     unified_api_required(client)
-    endpoints = docker_published_endpoints(client, port, protocol)
-    source_list = [s.strip() for s in sources.split(",") if s.strip()]
+    endpoints = container_guard_endpoints(
+        docker_published_endpoints(client, port, protocol)
+    )
+    source_list = normalize_sources([s for s in sources.split(",") if s.strip()])
     if mode == "allow_sources":
         if not source_list:
             raise CliError("放行操作需要 --sources 指定允许的来源 IP")
@@ -886,21 +1179,10 @@ def docker_apply(
         real_mode = "deny_sources"
     else:
         real_mode = "deny_all"
-    body = {
-        "endpoints": endpoints,
-        "mode": real_mode,
-        "sources": source_list,
-        "description": desc,
-    }
-    post_json(
-        client,
-        f"{BASE}/docker/policies/batch",
-        body,
-        "更新 Docker 端口防护策略失败",
-    )
-    print(f"已更新 {len(endpoints)} 条 Docker 端口防护策略: {docker_mode_zh(real_mode)}")
-    if source_list:
-        print(f"来源: {', '.join(source_list)}")
+    if api_kind(client) == API_V231:
+        v231_docker_policies(client, endpoints, real_mode, source_list, desc)
+    else:
+        legacy_docker_apply(client, endpoints, real_mode, source_list, desc)
 
 
 def docker_policy_del(profile: str, uuid: str) -> None:
@@ -908,10 +1190,12 @@ def docker_policy_del(profile: str, uuid: str) -> None:
         raise CliError("请通过 --uuid 指定策略 UUID(firewall docker ports 中查看)")
     client = client_for(profile)
     unified_api_required(client)
-    post_json(
+    resp = post_json(
         client,
         f"{BASE}/docker/policies/delete/batch",
         {"uuids": [uuid]},
         "删除 Docker 端口防护策略失败",
     )
+    if run_async_task(client, resp.get("data") or {}, "Docker 端口防护策略删除"):
+        return
     print(f"已删除 Docker 端口防护策略: {uuid}")

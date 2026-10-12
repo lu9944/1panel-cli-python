@@ -1,0 +1,81 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+build/1panel-agent
+build/1panel-core
+
+# Mac
+.DS_Store
+
+# VS Code
+.vscode
+*.project
+*.factorypath
+__debug*
+
+# IntelliJ IDEA
+.idea/*
+!.idea/icon.png
+*.iws
+*.iml
+*.ipr
+
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories
+/pkg/
+backend/__debug_bin
+core/cmd/server/__debug_bin
+core/cmd/server/web/assets
+core/cmd/server/web/monacoeditorwork
+core/cmd/server/web/index.html
+frontend/auto-imports.d.ts
+frontend/components.d.ts
+frontend/src/xpack
+frontend/src/enterprise
+agent/xpack
+agent/enterprise
+agent/router/entry_xpack.go
+agent/router/entry_enterprise.go
+agent/server/init_xpack.go
+agent/server/init_enterprise.go
+agent/utils/xpack/xpack.go
+agent/utils/xpack/enterprise.go
+core/xpack
+core/enterprise
+core/router/entry_xpack.go
+core/router/entry_enterprise.go
+core/server/init_xpack.go
+core/server/init_enterprise.go
+core/utils/xpack/xpack.go
+core/utils/xpack/enterprise.go
+
+.history/
+dist/
+1pctl
+1panel.service
+install.sh
+quick_start.sh
+cmd/server/fileList.txt
+.fileList.txt
+1Panel.code-workspace
+
+core/.golangci.yml
+agent/.golangci.yml
+
+.opencode
+openspec
+CLAUDE.md
+AGENTS.md
+opencode.json
+superpowers
+.worktrees/
+.codex/

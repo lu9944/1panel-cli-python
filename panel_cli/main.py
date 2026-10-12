@@ -10,10 +10,10 @@ import os
 import sys
 
 from . import apps, catalog, commands, config, db, doctor
-from . import firewall, initcmd, redis, web, auth
+from . import firewall, initcmd, redis, web, auth, redact
 from .errors import CliError
 
-VERSION = "0.4.1"
+VERSION = "2.3.2"
 
 EPILOG = (
     "示例:\n"
@@ -43,6 +43,9 @@ def _common_args() -> argparse.ArgumentParser:
                         help="会话 profile 名称,可同时保存多个面板的登录凭据(默认 default)")
     common.add_argument("--node", metavar="NODE", default=argparse.SUPPRESS,
                         help="目标节点标识(多节点面板使用;默认 local,也可设置 PANEL_NODE)")
+    common.add_argument("--show-secrets", dest="show_secrets", action="store_true",
+                        default=argparse.SUPPRESS,
+                        help="不脱敏:按原样输出响应中的私钥/口令等敏感字段(默认脱敏为 ***REDACTED***)")
     return common
 
 
@@ -122,7 +125,7 @@ def _add_api(subparsers, common) -> None:
     p = subparsers.add_parser("api", parents=[common], help="使用已保存的凭据调用面板 API")
     sub = p.add_subparsers(dest="api_action", metavar="<ACTION>", required=True)
 
-    q = sub.add_parser("list", help="列出 API 路由(内置 v2.2.5 清单 + 当前面板 Swagger)")
+    q = sub.add_parser("list", help="列出 API 路由(内置 v2.3.2 清单 + 当前面板 Swagger)")
     q.add_argument("--filter", default="", help="按路径、处理器、摘要或标签过滤")
     q.set_defaults(func=lambda a: catalog.list_routes(a.profile, a.filter))
 
@@ -138,12 +141,16 @@ def _add_api(subparsers, common) -> None:
     q = sub.add_parser("post", help="POST 请求")
     q.add_argument("path")
     q.add_argument("-b", "--body", default=None, help="JSON 请求体")
-    q.set_defaults(func=lambda a: commands.api_call(a.profile, "POST", a.path, a.body))
+    q.add_argument("--body-file", dest="body_file", default=None, metavar="PATH",
+                   help="从文件读取 JSON 请求体(- 表示标准输入),避免敏感内容出现在命令行")
+    q.set_defaults(func=lambda a: commands.api_call(a.profile, "POST", a.path, a.body, a.body_file))
 
     q = sub.add_parser("put", help="PUT 请求")
     q.add_argument("path")
     q.add_argument("-b", "--body", default=None, help="JSON 请求体")
-    q.set_defaults(func=lambda a: commands.api_call(a.profile, "PUT", a.path, a.body))
+    q.add_argument("--body-file", dest="body_file", default=None, metavar="PATH",
+                   help="从文件读取 JSON 请求体(- 表示标准输入),避免敏感内容出现在命令行")
+    q.set_defaults(func=lambda a: commands.api_call(a.profile, "PUT", a.path, a.body, a.body_file))
 
     q = sub.add_parser("delete", help="DELETE 请求")
     q.add_argument("path")
@@ -179,15 +186,27 @@ def _add_apps(subparsers, common) -> None:
                    help="覆盖安装参数,格式 KEY=VALUE,可多次指定")
     q.add_argument("--wait", action="store_true", help="等待安装完成并显示进度")
     q.add_argument("--timeout", type=int, default=600, help="等待超时时间(秒,默认 600)")
+    q.add_argument("--no-pull", action="store_false", dest="pull_image", default=True,
+                   help="不联网拉取镜像,直接使用本地已有镜像(离线安装包场景)")
     q.set_defaults(
         func=lambda a: apps.install(
             a.profile, a.name,
-            apps.InstallOptions(version=a.version, params=a.param, wait=a.wait, timeout=a.timeout),
+            apps.InstallOptions(version=a.version, params=a.param, wait=a.wait,
+                                timeout=a.timeout, pull_image=a.pull_image),
         )
     )
 
     q = sub.add_parser("tags", help="列出所有应用分类标签")
     q.set_defaults(func=lambda a: apps.tags(a.profile))
+
+    q = sub.add_parser("sync-local", help="同步/注册本地应用商店(离线安装包场景)")
+    q.add_argument("--wait", action="store_true", help="等待同步任务完成")
+    q.add_argument("--timeout", type=int, default=60, help="等待超时时间(秒,默认 60)")
+    q.set_defaults(
+        func=lambda a: apps.sync_local(
+            a.profile, apps.SyncLocalOptions(wait=a.wait, timeout=a.timeout)
+        )
+    )
 
     q = sub.add_parser("info", help="查看已安装应用的详细信息(含数据库/Redis 连接信息)")
     q.add_argument("name", help="已安装应用的名称,如 mysql / redis")
@@ -217,15 +236,30 @@ def _add_web(subparsers, common) -> None:
     q = sub.add_parser("list", help="列出所有网站/域名")
     q.set_defaults(func=lambda a: web.list(a.profile))
 
-    q = sub.add_parser("create", help="新建网站")
-    q.add_argument("domain", help="域名,如 test3.bitzh.edu.cn")
+    q = sub.add_parser("create", help="新建网站(可一步完成反代 + HTTPS + SPA 回退)")
+    q.add_argument("domain", help="域名,如 test3.example.com")
     q.add_argument("--type", default="static",
                    help="网站类型: static / deployment / proxy / runtime / stream(默认 static)")
     q.add_argument("--alias", default=None, help="网站别名(默认取域名首段)")
     q.add_argument("--remark", default=None, help="备注")
+    q.add_argument("--proxy", default=None,
+                   help="反代后端地址(提供时自动使用 proxy 类型),如 http://127.0.0.1:3500")
+    q.add_argument("--ssl-id", dest="ssl_id", type=int, default=None,
+                   help="创建时直接启用 HTTPS,值为证书 ID(web ssl / 面板证书列表)")
+    q.add_argument("--http-config", dest="http_config", default=None,
+                   help="HTTP 处理方式: HTTPSOnly / HTTPToHTTPS / HTTPAlso(默认 HTTPToHTTPS)")
+    q.add_argument("--spa", action="store_true",
+                   help="启用 SPA 前端路由回退(React/Vue 刷新深层路由不再 404,仅反代网站)")
+    q.add_argument("--spa-api-prefixes", dest="spa_api_prefixes", default=None,
+                   help="SPA 回退排除的 API 路径前缀,逗号分隔(默认 api,auth,health,linear)")
     q.set_defaults(
         func=lambda a: web.create(
-            a.profile, a.domain, web.CreateOptions(type=a.type, alias=a.alias, remark=a.remark)
+            a.profile, a.domain,
+            web.CreateOptions(
+                type=a.type, alias=a.alias, remark=a.remark, proxy=a.proxy,
+                ssl_id=a.ssl_id, http_config=a.http_config,
+                spa=a.spa, spa_api_prefixes=a.spa_api_prefixes,
+            ),
         )
     )
 
@@ -257,6 +291,26 @@ def _add_web(subparsers, common) -> None:
             ),
         )
     )
+
+    q = sub.add_parser("spa", help="为网站启用/关闭 SPA 前端路由回退(刷新深层路由不再 404)")
+    q.add_argument("domain", help="域名,如 test.local")
+    q.add_argument("--proxy", default=None,
+                   help="后端地址(默认自动读取网站的反代目标),如 http://127.0.0.1:3500")
+    q.add_argument("--api-prefixes", dest="api_prefixes", default=None,
+                   help="回退排除的 API 路径前缀,逗号分隔(默认 api,auth,health,linear)")
+    q.add_argument("--remove", action="store_true", help="关闭 SPA 回退")
+    q.set_defaults(
+        func=lambda a: web.spa(a.profile, a.domain, a.proxy, a.api_prefixes, a.remove)
+    )
+
+    q = sub.add_parser("delete", help="删除网站")
+    q.add_argument("domain", help="域名,如 test.local")
+    q.add_argument("--force", action="store_true",
+                   help="遇到面板 record not found 已知问题时,临时改名应用 key 完成删除(需与面板同机)")
+    q.set_defaults(func=lambda a: web.delete(a.profile, a.domain, a.force))
+
+    q = sub.add_parser("repair", help="修复已知兼容问题(本地应用路径软链,面板报 500 时使用)")
+    q.set_defaults(func=lambda a: web.repair(a.profile))
 
     q = sub.add_parser("ssl", help="申请 SSL 证书(Let's Encrypt)")
     q.add_argument("domain", help="域名,如 test.local")
@@ -630,6 +684,10 @@ def main(argv: list[str] | None = None) -> int:
         env_path = config.load_env_file(getattr(args, "env", None))
         del env_path
         config.set_node_override(getattr(args, "node", None))
+        redact.configure(
+            show_secrets=bool(getattr(args, "show_secrets", False))
+            or bool(config.env_flag(config.ENV_SHOW_SECRETS))
+        )
         if not hasattr(args, "profile"):
             args.profile = "default"
         func = getattr(args, "func", None)

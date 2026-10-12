@@ -1,0 +1,60 @@
+package global
+
+type ServerConfig struct {
+	Base         Base      `mapstructure:"base"`
+	Log          LogConfig `mapstructure:"log"`
+	DockerConfig DockerConfig
+}
+
+type Base struct {
+	Port         string `mapstructure:"port"`
+	IsFxplay     bool   `mapstructure:"is_fxplay"`
+	IsEnterprise bool   `mapstructure:"is_enterprise"`
+	Edition      string `mapstructure:"edition"` // [ cn / intl]
+	Version      string `mapstructure:"version"`
+	EncryptKey   string `mapstructure:"encrypt_key"`
+	Mode         string `mapstructure:"mode"` // xpack [ Enable / Disable ]
+	IsDemo       bool   `mapstructure:"is_demo"`
+	InstallDir   string `mapstructure:"install_dir"`
+	IsOffline    bool   `mapstructure:"is_offline"`
+}
+
+type SystemDir struct {
+	BaseDir        string
+	DbDir          string
+	LogDir         string
+	TaskDir        string
+	DataDir        string
+	TmpDir         string
+	LocalBackupDir string
+
+	AppDir                string
+	ResourceDir           string
+	IconCacheDir          string
+	AppResourceDir        string
+	AppInstallDir         string
+	LocalAppResourceDir   string
+	LocalAppInstallDir    string
+	RemoteAppResourceDir  string
+	CustomAppResourceDir  string
+	OfflineAppResourceDir string
+	RuntimeDir            string
+	RecycleBinDir         string
+	SSLLogDir             string
+	McpDir                string
+	ConvertLogDir         string
+	TensorRTLLMDir        string
+	FirewallDir           string
+}
+
+type LogConfig struct {
+	Level     string `mapstructure:"level"`
+	TimeZone  string `mapstructure:"timeZone"`
+	LogName   string `mapstructure:"log_name"`
+	LogSuffix string `mapstructure:"log_suffix"`
+	MaxBackup int    `mapstructure:"max_backup"`
+}
+
+type DockerConfig struct {
+	Command string
+}

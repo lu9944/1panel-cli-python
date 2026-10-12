@@ -1,0 +1,1175 @@
+<template>
+    <DrawerPro v-model="open" :header="$t('commons.button.create')" size="60%" @close="handleClose">
+        <div v-loading="loading" :class="{ mask: !versionExist }">
+            <el-form
+                ref="websiteForm"
+                label-position="top"
+                :model="website"
+                label-width="125px"
+                :rules="rules"
+                :validate-on-rule-change="false"
+                v-loading="loading"
+            >
+                <el-form-item>
+                    <el-radio-group v-model="website.type" @change="changeType">
+                        <el-radio-button v-for="item in WebsiteTypes" :key="item.value" :value="item.value">
+                            {{ item.label }}
+                        </el-radio-button>
+                    </el-radio-group>
+                </el-form-item>
+                <SSLAlert :websiteType="website.type" class="mb-2" :versionNotMatch="versionNotMatch" />
+
+                <GroupSelect
+                    v-model="website.webSiteGroupId"
+                    :prop="'webSiteGroupId'"
+                    :groupType="'website'"
+                ></GroupSelect>
+                <div v-if="website.type === 'deployment'">
+                    <el-form-item prop="appType">
+                        <el-radio-group v-model="website.appType" @change="changeAppType(website.appType)">
+                            <el-radio :label="'installed'" :value="'installed'">
+                                {{ $t('website.appInstalled') }}
+                            </el-radio>
+                            <el-radio :label="'new'" :value="'new'">
+                                {{ $t('website.appNew') }}
+                            </el-radio>
+                        </el-radio-group>
+                    </el-form-item>
+                    <el-form-item
+                        v-if="website.appType == 'installed'"
+                        :label="$t('website.appInstalled')"
+                        prop="appInstallId"
+                    >
+                        <el-select v-model="website.appInstallId" class="p-w-300">
+                            <el-option
+                                v-for="(appInstall, index) in appInstalls"
+                                :key="index"
+                                :label="appInstall.name"
+                                :value="appInstall.id"
+                                :disabled="appInstall.status !== 'Running'"
+                            >
+                                <div class="flex justify-between items-center w-full">
+                                    <span>{{ appInstall.name }}</span>
+                                    <span><Status :key="appInstall.status" :status="appInstall.status"></Status></span>
+                                </div>
+                            </el-option>
+                        </el-select>
+                    </el-form-item>
+                    <div v-if="website.appType == 'new'">
+                        <el-form-item :label="$t('app.app')" prop="appinstall.appId">
+                            <el-select
+                                v-model="website.appinstall.appId"
+                                @change="changeApp()"
+                                class="p-w-300"
+                                filterable
+                            >
+                                <el-option
+                                    v-for="(app, index) in apps"
+                                    :key="index"
+                                    :label="app.name"
+                                    :value="app.id"
+                                    :disabled="isRestrictedDeploymentApp(app.key)"
+                                ></el-option>
+                            </el-select>
+                        </el-form-item>
+                        <AppInstallForm ref="installFormRef" v-model="website.appinstall" :loading="loading" />
+                    </div>
+                </div>
+                <div v-if="website.type === 'subsite'">
+                    <el-form-item :label="$t('website.parentWbeiste')" prop="parentWebsiteID">
+                        <el-select v-model="website.parentWebsiteID" @change="getDir(website.parentWebsiteID)">
+                            <el-option
+                                v-for="(site, index) in parentWebsites"
+                                :key="index"
+                                :label="site.primaryDomain"
+                                :value="site.id"
+                            ></el-option>
+                        </el-select>
+                    </el-form-item>
+                    <el-form-item :label="$t('website.runDir')" prop="siteDir">
+                        <el-select v-model="website.siteDir" filterable class="p-w-200">
+                            <el-option
+                                v-for="(item, index) in dirs"
+                                :label="item"
+                                :value="item"
+                                :key="index"
+                            ></el-option>
+                        </el-select>
+                    </el-form-item>
+                </div>
+                <div v-if="website.type === 'runtime'">
+                    <el-row :gutter="20">
+                        <el-col :span="8">
+                            <el-form-item :label="$t('commons.table.type')" prop="runtimeType">
+                                <el-select v-model="website.runtimeType" @change="changeRuntimeType()">
+                                    <el-option label="PHP" value="php"></el-option>
+                                    <el-option label="Node.js" value="node"></el-option>
+                                    <el-option label="Java" value="java"></el-option>
+                                    <el-option label="Go" value="go"></el-option>
+                                    <el-option label="Python" value="python"></el-option>
+                                    <el-option label=".NET" value="dotnet"></el-option>
+                                </el-select>
+                            </el-form-item>
+                        </el-col>
+                        <el-col :span="16">
+                            <el-form-item :label="$t('runtime.runtime')" prop="runtimeID">
+                                <el-select
+                                    v-model="website.runtimeID"
+                                    @change="changeRuntime(website.runtimeID)"
+                                    filterable
+                                >
+                                    <el-option
+                                        v-for="run in runtimes"
+                                        :key="run.name"
+                                        :label="run.name + ' [' + getRuntimeLabel(run.resource) + ']'"
+                                        :value="run.id"
+                                    >
+                                        <el-row>
+                                            <el-col :span="14">
+                                                <span class="runtimeName">
+                                                    {{ run.name }}
+                                                </span>
+                                            </el-col>
+                                            <el-col :span="10">
+                                                {{ ' [' + getRuntimeLabel(run.resource) + ']' }}
+                                            </el-col>
+                                        </el-row>
+                                    </el-option>
+                                </el-select>
+                            </el-form-item>
+                        </el-col>
+                    </el-row>
+                    <div v-if="website.runtimeType === 'php' && runtimeResource === 'local'">
+                        <el-form-item :label="$t('website.proxyType')" prop="proxyType">
+                            <el-select v-model="website.proxyType">
+                                <el-option :label="$t('website.tcp')" :value="'tcp'"></el-option>
+                                <el-option :label="$t('website.unix')" :value="'unix'"></el-option>
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item v-if="website.proxyType === 'tcp'" :label="$t('commons.table.port')" prop="port">
+                            <el-input v-model.number="website.port"></el-input>
+                        </el-form-item>
+                    </div>
+                    <el-form-item
+                        :label="$t('setting.proxyPort')"
+                        prop="port"
+                        v-if="website.runtimeType !== 'php' && runtimePorts.length > 1"
+                    >
+                        <el-select v-model="website.port">
+                            <el-option
+                                v-for="(port, index) in runtimePorts"
+                                :key="index"
+                                :label="port"
+                                :value="port"
+                            ></el-option>
+                        </el-select>
+                        <span class="input-help">{{ $t('website.runtimePortHelper') }}</span>
+                    </el-form-item>
+                    <el-text
+                        v-if="
+                            runtimes.length > 0 &&
+                            website.type === 'runtime' &&
+                            website.runtimeType !== 'php' &&
+                            website.port == 0
+                        "
+                        type="danger"
+                    >
+                        {{ $t('website.runtimePortWarn') }}
+                    </el-text>
+                </div>
+
+                <el-divider content-position="left" v-if="website.type !== 'stream'">
+                    <el-text type="info" size="small">{{ $t('website.domain') }}</el-text>
+                </el-divider>
+                <div v-if="website.type === 'stream'">
+                    <el-form-item :label="$t('website.streamPorts')" prop="streamPorts">
+                        <el-input
+                            v-model="website.streamPorts"
+                            :placeholder="$t('website.streamPortsHelper')"
+                        ></el-input>
+                    </el-form-item>
+                    <el-form-item prop="udp">
+                        <el-checkbox v-model="website.udp" :label="$t('website.udp')" size="large" />
+                    </el-form-item>
+                </div>
+                <div v-else>
+                    <DomainCreate
+                        v-model:form="website"
+                        @gengerate="websiteForm.clearValidate()"
+                        @domain-blur="handleFirstDomainBlur"
+                    ></DomainCreate>
+                </div>
+                <el-divider content-position="left">
+                    <el-text type="info" size="small">{{ $t('website.advancedSettings') }}</el-text>
+                </el-divider>
+                <el-form-item :label="$t('website.alias')" prop="alias" class="mt-2">
+                    <el-input v-model.trim="website.alias" :placeholder="$t('website.aliasHelper')"></el-input>
+                    <div>
+                        <span class="input-help">
+                            <span>{{ $t('website.staticPath') + staticPath + website.alias }}</span>
+                            <span v-if="website.type === 'static' && website.alias != ''">{{ '/index' }}</span>
+                        </span>
+                    </div>
+                </el-form-item>
+                <el-form-item prop="IPV6">
+                    <el-checkbox v-model="website.IPV6" :label="$t('website.ipv6')" size="large" />
+                </el-form-item>
+                <div v-if="website.type == 'stream'">
+                    <LoadBalanceForm ref="lbFormRef" v-model="steamConfig" :disabled="true" type="stream" />
+                </div>
+                <div v-else>
+                    <el-form-item prop="enableSSL">
+                        <el-checkbox v-model="website.enableSSL" :label="$t('website.enableHTTPS')" size="large" />
+                        <span class="input-help">{{ $t('website.enableSSLHelper') }}</span>
+                    </el-form-item>
+                    <div v-if="website.enableSSL">
+                        <el-form-item :label="$t('website.acmeAccountManage')" prop="acmeAccountID">
+                            <el-select
+                                v-model="website.acmeAccountID"
+                                :placeholder="$t('website.selectAcme')"
+                                @change="listSSLs"
+                            >
+                                <el-option :key="0" :label="$t('website.imported')" :value="0"></el-option>
+                                <el-option
+                                    v-for="(acme, index) in acmeAccounts"
+                                    :key="index"
+                                    :label="acme.email"
+                                    :value="acme.id"
+                                >
+                                    <span>
+                                        {{ acme.email }}
+                                        <el-tag class="ml-5">{{ getAccountName(acme.type) }}</el-tag>
+                                    </span>
+                                </el-option>
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item :label="$t('website.ssl')" prop="websiteSSLID" :hide-required-asterisk="true">
+                            <el-select
+                                v-model="website.websiteSSLID"
+                                :placeholder="$t('website.selectSSL')"
+                                @change="handleSSLSelectChange"
+                            >
+                                <el-option
+                                    v-for="(ssl, index) in ssls"
+                                    :key="index"
+                                    :label="ssl.primaryDomain"
+                                    :value="ssl.id"
+                                    :disabled="ssl.pem == ''"
+                                >
+                                    <span>{{ ssl.primaryDomain }}</span>
+                                    <el-tag class="tagClass" v-if="ssl.expireDate">
+                                        {{ dateFormatSimple(ssl.expireDate) }}
+                                    </el-tag>
+                                    <el-tag class="tagClass" v-if="ssl.organization">
+                                        {{ ssl.organization }}
+                                    </el-tag>
+                                </el-option>
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item :label="' '" v-if="websiteSSL && websiteSSL.id > 0">
+                            <WebsiteSSL :websiteSSL="websiteSSL" />
+                        </el-form-item>
+                    </div>
+                </div>
+                <el-form-item
+                    :label="$t('template.importButton')"
+                    prop="templateOutputID"
+                    v-if="website.type === 'static'"
+                >
+                    <el-select v-model="website.templateOutputID" clearable class="p-w-200">
+                        <el-option
+                            v-for="output in templateOutputs"
+                            :key="output.id"
+                            :label="output.name + ' (' + output.templateName + ')'"
+                            :value="output.id"
+                        />
+                    </el-select>
+                </el-form-item>
+                <el-form-item prop="enableFtp" v-if="website.type === 'static' || website.type === 'runtime'">
+                    <el-checkbox
+                        @change="random"
+                        v-model="website.enableFtp"
+                        :label="$t('commons.button.create') + ' FTP'"
+                        size="large"
+                    />
+                    <span class="input-help">{{ $t('website.ftpHelper') }}</span>
+                </el-form-item>
+                <el-row :gutter="20" v-if="website.enableFtp">
+                    <el-col :span="12">
+                        <el-form-item prop="ftpUser" :label="$t('website.ftpUser')">
+                            <el-input v-model="website.ftpUser" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item prop="ftpPassword" :label="$t('website.ftpPassword')">
+                            <el-input type="password" clearable v-model="website.ftpPassword" show-password>
+                                <template #append>
+                                    <el-button @click="random">{{ $t('commons.button.random') }}</el-button>
+                                </template>
+                            </el-input>
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+
+                <el-row :gutter="20" v-if="website.type === 'proxy'">
+                    <el-col :span="12">
+                        <el-form-item :label="$t('website.proxyAddress')" prop="proxyAddress">
+                            <el-input v-model="website.proxyAddress" :placeholder="$t('website.proxyHelper')">
+                                <template #prepend>
+                                    <el-select v-model="website.proxyProtocol" class="pre-select">
+                                        <el-option label="http" value="http://" />
+                                        <el-option label="https" value="https://" />
+                                        <el-option :label="$t('website.other')" value="" />
+                                    </el-select>
+                                </template>
+                            </el-input>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item :label="$t('app.app')">
+                            <el-select
+                                v-model="website.appInstallId"
+                                class="p-w-200"
+                                filterable
+                                @change="changeInstall"
+                            >
+                                <el-option
+                                    v-for="(appInstall, index) in appInstalls"
+                                    :key="index"
+                                    :label="appInstall.name"
+                                    :value="appInstall.id"
+                                ></el-option>
+                            </el-select>
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+
+                <el-form-item prop="createDb" v-if="website.type === 'runtime'">
+                    <el-checkbox
+                        @change="randomDbPassword"
+                        v-model="website.createDb"
+                        :label="$t('website.createDb')"
+                        size="large"
+                    />
+                </el-form-item>
+                <el-row :gutter="20" v-if="website.type === 'runtime' && website.createDb">
+                    <el-col :span="24">
+                        <el-form-item :label="$t('menu.database')" prop="dbHost">
+                            <el-row :gutter="20">
+                                <el-col :span="12">
+                                    <el-select
+                                        v-model="website.dbType"
+                                        class="p-w-200"
+                                        @change="getAppByService(website.dbType)"
+                                    >
+                                        <el-option label="MySQL" value="mysql" />
+                                        <el-option label="MariaDB" value="mariadb" />
+                                        <el-option label="PostgreSQL" value="postgresql" />
+                                    </el-select>
+                                </el-col>
+                                <el-col :span="12">
+                                    <el-select v-model="website.dbHost" class="p-w-200">
+                                        <el-option
+                                            v-for="(service, index) in dbServices"
+                                            :key="index"
+                                            :label="service.label"
+                                            :value="service.value"
+                                        ></el-option>
+                                    </el-select>
+                                </el-col>
+                            </el-row>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="24">
+                        <el-form-item :label="$t('commons.table.name')" prop="dbName">
+                            <el-input clearable v-model.trim="website.dbName" @input="website.dbUser = website.dbName">
+                                <template #append>
+                                    <el-select v-model="website.dbFormat" class="p-w-100">
+                                        <el-option label="utf8mb4" value="utf8mb4" />
+                                        <el-option label="utf-8" value="utf8" />
+                                        <el-option label="gbk" value="gbk" />
+                                        <el-option label="big5" value="big5" />
+                                    </el-select>
+                                </template>
+                            </el-input>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item :label="$t('commons.login.username')" prop="dbUser">
+                            <el-input clearable v-model.trim="website.dbUser" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item :label="$t('commons.login.password')" prop="dbPassword">
+                            <el-input type="dbPassword" clearable show-password v-model.trim="website.dbPassword">
+                                <template #append>
+                                    <el-button @click="randomDbPassword">{{ $t('commons.button.random') }}</el-button>
+                                </template>
+                            </el-input>
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+
+                <el-divider content-position="left">
+                    <el-text type="info" size="small">{{ $t('commons.table.description') }}</el-text>
+                </el-divider>
+                <el-form-item :label="$t('website.remark')" prop="remark">
+                    <el-input type="textarea" :rows="3" clearable v-model="website.remark" />
+                </el-form-item>
+            </el-form>
+        </div>
+        <template #footer>
+            <el-button @click="handleClose" :disabled="loading">{{ $t('commons.button.cancel') }}</el-button>
+            <el-button
+                type="primary"
+                @click="submit(websiteForm)"
+                :disabled="loading || (website.type == 'stream' && versionNotMatch)"
+            >
+                {{ $t('commons.button.confirm') }}
+            </el-button>
+        </template>
+        <Check ref="preCheckRef"></Check>
+        <el-card width="30%" v-if="!versionExist" class="mask-prompt">
+            <span>
+                {{ $t('runtime.openrestyWarn') }}
+            </span>
+        </el-card>
+        <TaskLog ref="taskLog" />
+    </DrawerPro>
+</template>
+
+<script lang="ts" setup>
+import AppInstallForm from '@/views/app-store/detail/form/index.vue';
+import SSLAlert from '@/views/website/website/create/site-alert/index.vue';
+import DomainCreate from '@/views/website/website/domain-create/index.vue';
+import TaskLog from '@/components/log/task/index.vue';
+import Check from '../check/index.vue';
+import GroupSelect from '@/views/website/website/components/group/index.vue';
+import WebsiteSSL from '@/views/website/website/components/website-ssl/index.vue';
+import LoadBalanceForm from '@/views/website/website/config/basic/load-balance/form/index.vue';
+
+import { App } from '@/api/interface/app';
+import { searchApp, getAppInstalled } from '@/api/modules/app';
+import {
+    createWebsite,
+    getWebsiteOptions,
+    listSSL,
+    preCheck,
+    searchAcmeAccount,
+    getDirConfig,
+    searchTemplateOutputs,
+} from '@/api/modules/website';
+import { Rules, checkNumberRange } from '@/global/form-rules';
+import i18n from '@/lang';
+import { ElForm, FormInstance } from 'element-plus';
+import { reactive, ref, watch } from 'vue';
+import { MsgError, MsgSuccess } from '@/utils/message';
+import { SearchRuntimes } from '@/api/modules/runtime';
+import { Runtime } from '@/api/interface/runtime';
+import { getRandomStr } from '@/utils/id';
+import { getRuntimeLabel } from '@/utils/app-store';
+import { dateFormatSimple } from '@/utils/date';
+import { getAppService } from '@/api/modules/app';
+import { v4 as uuidv4 } from 'uuid';
+import { getAccountName } from '@/utils/ssl';
+import { Website } from '@/api/interface/website';
+import { loadWebsiteDir } from '@/api/modules/setting';
+import { getWebsiteTypes } from '@/global/mimetype';
+import { compareVersion } from '@/utils/version';
+defineOptions({ name: 'CreateWebSite' });
+
+type SSLItem = Website.SSLDTO & {
+    organization?: string;
+    acmeAccount?: {
+        email?: string;
+    };
+};
+
+const websiteForm = ref<FormInstance>();
+
+const initData = () => ({
+    primaryDomain: '',
+    type: 'deployment',
+    alias: '',
+    remark: '',
+    appType: 'installed',
+    appInstallId: undefined,
+    webSiteGroupId: 0,
+    otherDomains: '',
+    proxy: '',
+    runtimeID: undefined,
+    appinstall: {
+        appId: 0,
+        name: '',
+        appDetailId: 0,
+        params: {},
+        version: '',
+        appkey: '',
+
+        advanced: false,
+        cpuQuota: 0,
+        memoryLimit: 0,
+        memoryUnit: 'MB',
+        containerName: '',
+        allowPort: false,
+
+        format: 'utf8mb4',
+        collation: '',
+    },
+    IPV6: false,
+    enableFtp: false,
+    ftpUser: '',
+    ftpPassword: '',
+    proxyType: 'tcp',
+    port: 9000,
+    proxyProtocol: 'http://',
+    proxyAddress: '',
+    runtimeType: 'php',
+    taskID: '',
+    createDb: false,
+    dbName: '',
+    dbPassword: '',
+    dbFormat: 'utf8mb4',
+    dbUser: '',
+    dbType: 'mysql',
+    dbHost: '',
+    enableSSL: false,
+    websiteSSLID: undefined,
+    acmeAccountID: undefined,
+    domains: [],
+    parentWebsiteID: undefined,
+    siteDir: '',
+    templateOutputID: undefined,
+
+    streamPorts: '',
+    udp: false,
+    name: '',
+    algorithm: '',
+    servers: [],
+});
+const website = ref(initData());
+const rules = ref<any>({
+    alias: [Rules.alias],
+    type: [Rules.requiredInput],
+    webSiteGroupId: [Rules.requiredSelectBusiness],
+    appInstallId: [Rules.requiredSelectBusiness],
+    appType: [Rules.requiredInput],
+    proxyAddress: [Rules.requiredInput],
+    runtimeID: [Rules.requiredSelectBusiness],
+    appinstall: {
+        name: [Rules.appName],
+        appId: [Rules.requiredSelectBusiness],
+        params: {},
+        cpuQuota: [Rules.requiredInput, checkNumberRange(0, 99999)],
+        memoryLimit: [Rules.requiredInput, checkNumberRange(0, 9999999999)],
+        containerName: [Rules.containerName],
+    },
+    ftpUser: [Rules.simpleName],
+    ftpPassword: [Rules.simplePassword],
+    proxyType: [Rules.requiredSelect],
+    port: [Rules.port],
+    runtimeType: [Rules.requiredInput],
+    dbName: [Rules.requiredInput, Rules.dbName],
+    dbUser: [Rules.requiredInput, Rules.name],
+    dbPassword: [Rules.requiredInput, Rules.paramComplexity],
+    dbHost: [Rules.requiredSelect],
+    websiteSSLID: [Rules.requiredSelect],
+    parentWebsiteID: [Rules.requiredSelect],
+    siteDir: [Rules.requiredSelect],
+    streamPorts: [Rules.requiredInput],
+});
+
+const open = ref(false);
+const loading = ref(false);
+const acmeAccounts = ref();
+const appInstalls = ref<App.AppInstalled[]>([]);
+const appReq = reactive({
+    type: 'website',
+    page: 1,
+    pageSize: 100,
+});
+const apps = ref<App.AppItem[]>([]);
+const preCheckRef = ref();
+const staticPath = ref('');
+const templateOutputs = ref<Website.TemplateOutputDTO[]>([]);
+const runtimeResource = ref('appstore');
+const initRuntimeReq = () => ({
+    page: 1,
+    pageSize: 100,
+    status: 'Running',
+    type: 'php',
+});
+const runtimeReq = ref<Runtime.RuntimeReq>(initRuntimeReq());
+const runtimes = ref<Runtime.RuntimeDTO[]>([]);
+const versionExist = ref(true);
+const em = defineEmits(['close']);
+const taskLog = ref();
+const dbServices = ref();
+const ssls = ref<SSLItem[]>([]);
+const websiteSSL = ref<SSLItem | undefined>(undefined);
+const userSelectedSSL = ref(false);
+const parentWebsites = ref();
+const dirs = ref([]);
+const runtimePorts = ref([]);
+const WebsiteTypes = getWebsiteTypes();
+const installFormRef = ref();
+const lbFormRef = ref();
+const versionNotMatch = ref();
+const initLbForm = () => ({
+    name: '',
+    type: 'stream',
+    algorithm: 'default',
+    servers: [
+        {
+            server: '',
+            weight: undefined,
+            maxFails: undefined,
+            maxConns: undefined,
+            failTimeout: undefined,
+            failTimeoutUnit: 's',
+            flag: '',
+        },
+    ],
+});
+const steamConfig = ref(initLbForm());
+
+const handleClose = () => {
+    open.value = false;
+    em('close', false);
+};
+
+const random = async () => {
+    website.value.ftpPassword = getRandomStr(16);
+};
+
+const randomDbPassword = async () => {
+    website.value.dbPassword = getRandomStr(16);
+};
+
+const changeType = (type: string) => {
+    localStorage.setItem('website-type', type);
+    switch (type) {
+        case 'deployment':
+            website.value.appType = 'installed';
+            searchAppInstalled('website');
+            break;
+        case 'runtime':
+            getRuntimes();
+            getAppByService(website.value.dbType);
+            break;
+        case 'proxy':
+            website.value.proxyAddress = '';
+            searchAppInstalled('proxy');
+            break;
+        case 'subsite':
+            listWebsites();
+            break;
+        default:
+            website.value.appInstallId = undefined;
+            break;
+    }
+    website.value.type = type;
+    versionExist.value = true;
+};
+
+const searchAppInstalled = (appType: string) => {
+    getAppInstalled({ type: appType, unused: true, all: true, page: 1, pageSize: 100 }).then((res) => {
+        appInstalls.value = res.data.items;
+        website.value.appInstallId = undefined;
+        if (
+            appType == 'website' &&
+            res.data.items &&
+            res.data.items.length > 0 &&
+            res.data.items[0].status === 'Running'
+        ) {
+            website.value.appInstallId = res.data.items[0].id;
+        }
+    });
+};
+
+const getAppByService = async (key: string) => {
+    const res = await getAppService(key);
+    dbServices.value = res.data;
+};
+
+const getProxyTargetFromApp = (app: Pick<App.AppInstalled, 'httpPort' | 'httpsPort'>) => {
+    if ((app.httpPort ?? 0) > 0) {
+        return {
+            protocol: 'http://',
+            address: `127.0.0.1:${app.httpPort}`,
+        };
+    }
+    if ((app.httpsPort ?? 0) > 0) {
+        return {
+            protocol: 'https://',
+            address: `127.0.0.1:${app.httpsPort}`,
+        };
+    }
+    return {
+        protocol: 'http://',
+        address: '',
+    };
+};
+
+const isRestrictedDeploymentApp = (appKey?: string) => {
+    return appKey === 'openclaw' || appKey === 'copaw' || appKey === 'hermes-agent';
+};
+
+const changeInstall = () => {
+    appInstalls.value.forEach((app) => {
+        if (app.id === website.value.appInstallId) {
+            const target = getProxyTargetFromApp(app);
+            website.value.proxyProtocol = target.protocol;
+            website.value.proxyAddress = target.address;
+        }
+    });
+};
+
+const searchAppList = () => {
+    searchApp(appReq).then((res) => {
+        apps.value = res.data.items;
+
+        const selectableApp = res.data.items.find((item) => !isRestrictedDeploymentApp(item.key));
+        if (selectableApp) {
+            website.value.appinstall.appId = selectableApp.id;
+            website.value.appinstall.appkey = selectableApp.key;
+            changeApp();
+        }
+    });
+};
+
+const changeApp = () => {
+    apps.value.forEach((app) => {
+        if (app.id === website.value.appinstall.appId) {
+            website.value.appinstall.appkey = app.key;
+            installFormRef.value.initForm(app.key);
+        }
+    });
+};
+
+const changeRuntimeType = () => {
+    runtimeReq.value.type = website.value.runtimeType;
+    website.value.appinstall.advanced = false;
+    website.value.runtimeID = undefined;
+    getRuntimes();
+};
+
+const changeRuntime = (runID: number) => {
+    website.value.port = 0;
+    runtimes.value.forEach((item) => {
+        if (item.id === runID) {
+            runtimeResource.value = item.resource;
+            if (runtimeResource.value == 'local') {
+                website.value.port = 9000;
+            } else {
+                runtimePorts.value = item.port.split(',').map((port: string) => parseInt(port.trim(), 10));
+                if (runtimePorts.value.length > 0) {
+                    website.value.port = runtimePorts.value[0];
+                }
+            }
+        }
+    });
+};
+
+const getRuntimes = async () => {
+    website.value.port = 0;
+    try {
+        const res = await SearchRuntimes(runtimeReq.value);
+        runtimes.value = res.data.items || [];
+        if (runtimes.value.length > 0) {
+            const first = runtimes.value[0];
+            website.value.runtimeID = first.id;
+            runtimeResource.value = first.resource;
+            if (first.port != '') {
+                runtimePorts.value = first.port.split(',').map((port: string) => parseInt(port.trim(), 10));
+                if (runtimePorts.value.length > 0) {
+                    website.value.port = runtimePorts.value[0];
+                }
+            }
+        }
+    } catch (error) {}
+};
+
+const acceptParams = async (openrestyVersion: string) => {
+    versionNotMatch.value = false;
+    if (!compareVersion(openrestyVersion, '1.27.1.2-3-3-focal')) {
+        versionNotMatch.value = true;
+    }
+    website.value = initData();
+    if (websiteForm.value) {
+        websiteForm.value.resetFields();
+    }
+    const websiteType = localStorage.getItem('website-type') || 'deployment';
+    website.value.type = websiteType;
+    const dirRes = await loadWebsiteDir();
+    staticPath.value = dirRes.data + '/sites/';
+    changeType(websiteType);
+
+    runtimeResource.value = 'appstore';
+    runtimeReq.value = initRuntimeReq();
+    listAcmeAccount();
+    listTemplateOutputs();
+
+    steamConfig.value = initLbForm();
+
+    open.value = true;
+};
+
+const changeAppType = (type: string) => {
+    if (type === 'installed') {
+        searchAppInstalled('website');
+    } else {
+        searchAppList();
+    }
+};
+
+const openTaskLog = (taskID: string) => {
+    taskLog.value.acceptParams(taskID);
+};
+
+const listAcmeAccount = () => {
+    searchAcmeAccount({ page: 1, pageSize: 100 }).then((res) => {
+        acmeAccounts.value = res.data.items || [];
+    });
+};
+
+const listTemplateOutputs = () => {
+    searchTemplateOutputs({ page: 1, pageSize: 1000, templateID: 0 }).then((res) => {
+        templateOutputs.value = res.data.items || [];
+    });
+};
+
+const changeSSl = (sslid?: number) => {
+    if (!sslid) {
+        websiteSSL.value = undefined;
+        return;
+    }
+    const selected = ssls.value.find((element) => element.id === sslid);
+    websiteSSL.value = selected;
+};
+
+const applySSLSelection = (sslId: number | undefined, markManual = false) => {
+    if (markManual) {
+        userSelectedSSL.value = true;
+    }
+    if (!sslId) {
+        website.value.websiteSSLID = undefined;
+        websiteSSL.value = undefined;
+        return;
+    }
+    website.value.websiteSSLID = sslId;
+    changeSSl(sslId);
+};
+
+const selectFirstAvailableSSL = () => {
+    const fallback = ssls.value.find((item) => item.pem !== '');
+    if (fallback) {
+        applySSLSelection(fallback.id);
+    }
+};
+
+const normalizeDomain = (domain?: string) => {
+    if (!domain) {
+        return '';
+    }
+    return domain.split(':')[0].trim().toLowerCase();
+};
+
+const wildcardMatches = (pattern: string, target: string) => {
+    if (!pattern.startsWith('*.')) {
+        return false;
+    }
+    const suffix = pattern.slice(1);
+    if (!suffix) {
+        return false;
+    }
+    if (!target.endsWith(suffix)) {
+        return false;
+    }
+    const suffixLabels = suffix.slice(1).split('.');
+    const targetLabels = target.split('.');
+    return targetLabels.length > suffixLabels.length;
+};
+
+const domainMatches = (pattern: string, target: string) => {
+    if (!pattern || !target) {
+        return false;
+    }
+    if (pattern === target) {
+        return true;
+    }
+    return wildcardMatches(pattern, target);
+};
+
+const getWebsiteDomains = (): string[] => {
+    const domains = new Set<string>();
+    const pushDomain = (value?: string) => {
+        const normalized = normalizeDomain(value);
+        if (normalized) {
+            domains.add(normalized);
+        }
+    };
+    pushDomain(website.value.primaryDomain);
+    if (Array.isArray(website.value.domains)) {
+        website.value.domains.forEach((item: any) => {
+            pushDomain(item?.domain);
+        });
+    }
+    return Array.from(domains);
+};
+
+const getCertificateDomains = (ssl: SSLItem): string[] => {
+    const domains = new Set<string>();
+    const tokens: string[] = [];
+    if (ssl.primaryDomain) {
+        tokens.push(ssl.primaryDomain);
+    }
+    if (ssl.domains) {
+        ssl.domains
+            .replace(/\n/g, ',')
+            .split(',')
+            .map((item) => item.trim())
+            .filter((item) => item !== '')
+            .forEach((item) => tokens.push(item));
+    }
+    tokens.forEach((token) => {
+        const normalized = normalizeDomain(token);
+        if (normalized) {
+            domains.add(normalized);
+        }
+    });
+    return Array.from(domains);
+};
+
+const tryAutoSelectSSL = (): boolean => {
+    if (!website.value.enableSSL) {
+        return false;
+    }
+    if (userSelectedSSL.value) {
+        return false;
+    }
+    if (!ssls.value.length) {
+        return false;
+    }
+
+    const siteDomains = getWebsiteDomains();
+    if (!siteDomains.length) {
+        return false;
+    }
+
+    const candidates = ssls.value
+        .filter((ssl) => ssl.pem !== '')
+        .map((ssl) => {
+            const certDomains = getCertificateDomains(ssl);
+            if (!certDomains.length) {
+                return { ssl, ratio: 0, matchCount: 0 };
+            }
+            const matchCount = certDomains.reduce((count, domain) => {
+                return count + (siteDomains.some((candidate) => domainMatches(domain, candidate)) ? 1 : 0);
+            }, 0);
+            const ratio = certDomains.length > 0 ? matchCount / certDomains.length : 0;
+            return { ssl, ratio, matchCount };
+        })
+        .filter((item) => item.matchCount > 0 && item.ratio > 0);
+
+    if (!candidates.length) {
+        return false;
+    }
+
+    candidates.sort((a, b) => {
+        if (b.ratio !== a.ratio) {
+            return b.ratio - a.ratio;
+        }
+        if (b.matchCount !== a.matchCount) {
+            return b.matchCount - a.matchCount;
+        }
+        return b.ssl.id - a.ssl.id;
+    });
+
+    const best = candidates[0];
+    if (!best) {
+        return false;
+    }
+    if (website.value.websiteSSLID !== best.ssl.id) {
+        applySSLSelection(best.ssl.id);
+    } else {
+        changeSSl(best.ssl.id);
+    }
+    return true;
+};
+
+const handleSSLSelectChange = (sslId: number | undefined) => {
+    applySSLSelection(sslId, true);
+};
+
+const listSSLs = () => {
+    listSSL({
+        acmeAccountID: String(website.value.acmeAccountID),
+    }).then((res) => {
+        ssls.value = res.data || [];
+        website.value.websiteSSLID = undefined;
+        websiteSSL.value = undefined;
+        userSelectedSSL.value = false;
+        const autoSelected = tryAutoSelectSSL();
+        if (!autoSelected) {
+            selectFirstAvailableSSL();
+        }
+    });
+};
+
+const submit = async (formEl: FormInstance | undefined) => {
+    if (!formEl) return;
+    await formEl.validate(async (valid) => {
+        if (!valid) {
+            return;
+        }
+        if (website.value.type == 'deployment' && website.value.appType === 'new') {
+            const isValid = await installFormRef.value?.validate();
+            if (!isValid) return;
+        }
+        if (website.value.type === 'runtime' && website.value.runtimeType !== 'php' && website.value.port == 0) {
+            MsgError(i18n.global.t('website.runtimePortWarn'));
+            return;
+        }
+        if (website.value.type == 'stream') {
+            const isValid = await lbFormRef.value?.validate();
+            if (!isValid) return;
+        }
+        loading.value = true;
+        try {
+            const res = await preCheck({});
+            if (res.data) {
+                preCheckRef.value.acceptParams({ items: res.data });
+            } else {
+                if (website.value.type === 'proxy') {
+                    website.value.proxy = website.value.proxyProtocol + website.value.proxyAddress;
+                }
+                if (!website.value.enableFtp) {
+                    website.value.ftpUser = '';
+                    website.value.ftpPassword = '';
+                }
+                if (website.value.type == 'stream') {
+                    website.value.name = steamConfig.value.name;
+                    website.value.algorithm = steamConfig.value.algorithm;
+                    website.value.servers = steamConfig.value.servers;
+                }
+                if (website.value.type !== 'static' || !website.value.templateOutputID) {
+                    website.value.templateOutputID = undefined;
+                }
+                const taskID = uuidv4();
+                website.value.taskID = taskID;
+                await createWebsite(website.value);
+                MsgSuccess(i18n.global.t('commons.msg.createSuccess'));
+                handleClose();
+                openTaskLog(taskID);
+            }
+        } catch (error) {
+        } finally {
+            loading.value = false;
+        }
+    });
+};
+
+watch(
+    () => website.value.domains,
+    () => {
+        if (website.value.domains.some((domain: any) => domain.ssl) && !website.value.enableSSL) {
+            website.value.enableSSL = true;
+        }
+        tryAutoSelectSSL();
+    },
+    { deep: true },
+);
+
+watch(
+    () => website.value.primaryDomain,
+    () => {
+        tryAutoSelectSSL();
+    },
+);
+
+watch(
+    () => website.value.enableSSL,
+    (enabled) => {
+        if (!enabled) {
+            website.value.domains.forEach((domain: any) => {
+                domain.ssl = false;
+            });
+            applySSLSelection(undefined);
+            userSelectedSSL.value = false;
+            return;
+        }
+        tryAutoSelectSSL();
+    },
+);
+
+watch(
+    () => website.value.alias,
+    (value) => {
+        if (website.value.type === 'stream') {
+            steamConfig.value.name = value;
+        }
+    },
+    { deep: true },
+);
+
+const handleFirstDomainBlur = (index: number) => {
+    if (index !== 0) {
+        return;
+    }
+    const firstDomain = website.value.domains?.[0]?.domain || '';
+    fillAliasFromDomainIfEmpty(firstDomain);
+};
+
+const fillAliasFromDomainIfEmpty = (value: string) => {
+    if (!value || website.value.alias.trim() !== '') {
+        return;
+    }
+    const domain = value.split(':')[0].trim();
+    if (!domain) {
+        return;
+    }
+    website.value.alias = domain;
+};
+
+const listWebsites = async () => {
+    try {
+        const res = await getWebsiteOptions({ types: ['static', 'runtime'] });
+        parentWebsites.value = res.data;
+        if (res.data.length > 0) {
+            website.value.parentWebsiteID = res.data[0].id;
+            getDir(res.data[0].id);
+        }
+    } catch (error) {}
+};
+
+const getDir = async (websiteID: number) => {
+    try {
+        const res = await getDirConfig({ id: websiteID });
+        dirs.value = res.data.dirs;
+        if (res.data.dirs.length > 0) {
+            website.value.siteDir = res.data.dirs[0];
+        }
+    } catch (error) {}
+};
+
+defineExpose({
+    acceptParams,
+});
+</script>
+
+<style lang="scss" scoped>
+.runtimeName {
+    width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+}
+.tagClass {
+    float: right;
+    margin-right: 10px;
+    font-size: 12px;
+    margin-top: 5px;
+}
+</style>

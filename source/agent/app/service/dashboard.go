@@ -1,0 +1,695 @@
+package service
+
+import (
+	"cmp"
+	"context"
+	"encoding/json"
+	"fmt"
+	network "net"
+	"os"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/1Panel-dev/1Panel/agent/app/dto"
+	"github.com/1Panel-dev/1Panel/agent/app/model"
+	"github.com/1Panel-dev/1Panel/agent/app/repo"
+	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"github.com/1Panel-dev/1Panel/agent/constant"
+	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/utils/ai_tools/accelerator"
+	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
+	"github.com/1Panel-dev/1Panel/agent/utils/common"
+	"github.com/1Panel-dev/1Panel/agent/utils/controller"
+	"github.com/1Panel-dev/1Panel/agent/utils/copier"
+	"github.com/1Panel-dev/1Panel/agent/utils/psutil"
+	"github.com/gin-gonic/gin"
+	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/shirou/gopsutil/v4/load"
+	"github.com/shirou/gopsutil/v4/mem"
+	"github.com/shirou/gopsutil/v4/net"
+)
+
+type DashboardService struct{}
+
+type IDashboardService interface {
+	LoadOsInfo() (*dto.OsInfo, error)
+	LoadBaseInfo(ioOption string, netOption string) (*dto.DashboardBase, error)
+	LoadCurrentInfoForNode() *dto.NodeCurrent
+	LoadCurrentInfo(ioOption string, netOption string) *dto.DashboardCurrent
+	LoadTopCPU() []dto.Process
+	LoadTopMem() []dto.Process
+
+	LoadQuickOptions() []dto.QuickJump
+	ChangeQuick(req dto.ChangeQuicks) error
+
+	LoadAppLauncher(ctx *gin.Context) ([]dto.AppLauncher, error)
+	ChangeShow(req dto.SettingUpdate) error
+	ListLauncherOption(filter string) ([]dto.LauncherOption, error)
+	Restart(operation string) error
+}
+
+func NewIDashboardService() IDashboardService {
+	return &DashboardService{}
+}
+
+func (u *DashboardService) Restart(operation string) error {
+	switch operation {
+	case "system":
+		{
+			go func() {
+				cmdMgr := cmd.NewCommandMgr()
+				err := cmdMgr.RunWithOptionalSudo("reboot")
+				if err != nil {
+					global.LOG.Errorf("handle reboot failed, %v", err)
+				}
+			}()
+			return nil
+		}
+	case "1panel-agent":
+		controller.RestartPanel(false, true, false)
+		return nil
+	case "1panel":
+		controller.RestartPanel(true, true, false)
+		return nil
+	default:
+		return fmt.Errorf("handle restart operation %s failed, err: nonsupport such operation", operation)
+	}
+}
+
+func (u *DashboardService) LoadOsInfo() (*dto.OsInfo, error) {
+	var baseInfo dto.OsInfo
+	hostInfo, err := psutil.HOST.GetHostInfo(false)
+	if err != nil {
+		return nil, err
+	}
+	baseInfo.OS = hostInfo.OS
+	baseInfo.Platform = hostInfo.Platform
+	baseInfo.PlatformFamily = hostInfo.PlatformFamily
+	baseInfo.KernelArch = hostInfo.KernelArch
+	baseInfo.KernelVersion = hostInfo.KernelVersion
+	baseInfo.PrettyDistro = psutil.HOST.GetDistro()
+
+	diskInfo, err := psutil.DISK.GetUsage(global.Dir.BaseDir, false)
+	if err == nil {
+		baseInfo.DiskSize = int64(diskInfo.Free)
+	}
+
+	if baseInfo.KernelArch == "armv7l" {
+		baseInfo.KernelArch = "armv7"
+	}
+	if baseInfo.KernelArch == "x86_64" {
+		baseInfo.KernelArch = "amd64"
+	}
+	return &baseInfo, nil
+}
+
+func (u *DashboardService) LoadCurrentInfoForNode() *dto.NodeCurrent {
+	var currentInfo dto.NodeCurrent
+
+	currentInfo.CPUTotal, _ = psutil.CPUInfo.GetLogicalCores(false)
+
+	cpuUsedPercent, perCore, cpuDetailedPercent := psutil.CPU.GetCPUUsage()
+	if len(perCore) == 0 {
+		currentInfo.CPUTotal = psutil.CPU.NumCPU()
+	} else {
+		currentInfo.CPUTotal = len(perCore)
+	}
+	currentInfo.CPUUsedPercent = cpuUsedPercent
+	currentInfo.CPUUsed = cpuUsedPercent * 0.01 * float64(currentInfo.CPUTotal)
+	currentInfo.CPUDetailedPercent = cpuDetailedPercent
+
+	loadInfo, _ := load.Avg()
+	currentInfo.Load1 = loadInfo.Load1
+	currentInfo.Load5 = loadInfo.Load5
+	currentInfo.Load15 = loadInfo.Load15
+	currentInfo.LoadUsagePercent = loadInfo.Load1 / (float64(currentInfo.CPUTotal*2) * 0.75) * 100
+
+	memoryInfo, _ := mem.VirtualMemory()
+	currentInfo.MemoryTotal = memoryInfo.Total
+	currentInfo.MemoryAvailable = memoryInfo.Available
+	currentInfo.MemoryUsed = memoryInfo.Used
+	currentInfo.MemoryUsedPercent = memoryInfo.UsedPercent
+
+	swapInfo, _ := mem.SwapMemory()
+	currentInfo.SwapMemoryTotal = swapInfo.Total
+	currentInfo.SwapMemoryAvailable = swapInfo.Free
+	currentInfo.SwapMemoryUsed = swapInfo.Used
+	currentInfo.SwapMemoryUsedPercent = swapInfo.UsedPercent
+
+	return &currentInfo
+}
+
+func (u *DashboardService) LoadBaseInfo(ioOption string, netOption string) (*dto.DashboardBase, error) {
+	var baseInfo dto.DashboardBase
+	hostInfo, err := psutil.HOST.GetHostInfo(true)
+	if err != nil {
+		return nil, err
+	}
+	ss, _ := json.Marshal(hostInfo)
+	baseInfo = dto.DashboardBase{
+		Hostname:             hostInfo.Hostname,
+		OS:                   hostInfo.OS,
+		Platform:             hostInfo.Platform,
+		PlatformFamily:       hostInfo.PlatformFamily,
+		PlatformVersion:      hostInfo.PlatformVersion,
+		PrettyDistro:         psutil.HOST.GetDistro(),
+		KernelArch:           hostInfo.KernelArch,
+		KernelVersion:        hostInfo.KernelVersion,
+		VirtualizationSystem: string(ss),
+		IpV4Addr:             loadOutboundIP(),
+		SystemProxy:          "noProxy",
+	}
+
+	if proxy := cmp.Or(os.Getenv("http_proxy"), os.Getenv("HTTP_PROXY")); proxy != "" {
+		baseInfo.SystemProxy = proxy
+	}
+
+	loadQuickJump(&baseInfo)
+
+	cpuInfo, err := psutil.CPUInfo.GetCPUInfo(false)
+	if err == nil && len(cpuInfo) > 0 {
+		baseInfo.CPUModelName = cpuInfo[0].ModelName
+	}
+
+	baseInfo.CPUCores, _ = psutil.CPUInfo.GetPhysicalCores(false)
+	baseInfo.CPULogicalCores, _ = psutil.CPUInfo.GetLogicalCores(false)
+	baseInfo.CPUMhz = cpuInfo[0].Mhz
+
+	baseInfo.CurrentInfo = *u.LoadCurrentInfo(ioOption, netOption)
+	return &baseInfo, nil
+}
+
+func (u *DashboardService) LoadCurrentInfo(ioOption string, netOption string) *dto.DashboardCurrent {
+	var currentInfo dto.DashboardCurrent
+	shotTime := time.Now()
+	hostInfo, err := psutil.HOST.GetHostInfo(false)
+	if err != nil {
+		global.LOG.Errorf("load host info failed: %v", err)
+		currentInfo.ShotTime = shotTime
+		return &currentInfo
+	}
+
+	uptime := hostInfo.Uptime
+	var bootTime uint64
+	if now := shotTime.Unix(); now > 0 {
+		nowUnix := uint64(now)
+		if hostInfo.BootTime > 0 && hostInfo.BootTime <= nowUnix {
+			bootTime = hostInfo.BootTime
+			uptime = nowUnix - bootTime
+		} else if uptime <= nowUnix {
+			bootTime = nowUnix - uptime
+		}
+	}
+	currentInfo.Uptime = uptime
+	currentInfo.RunningTime = loadRunningTime(uptime)
+	if bootTime > 0 {
+		currentInfo.TimeSinceUptime = time.Unix(int64(bootTime), 0).Format(constant.DateTimeLayout)
+	}
+	currentInfo.Procs = hostInfo.Procs
+	currentInfo.CPUTotal, _ = psutil.CPUInfo.GetLogicalCores(false)
+
+	cpuUsedPercent, perCore, cpuDetailedPercent := psutil.CPU.GetCPUUsage()
+	if len(perCore) == 0 {
+		currentInfo.CPUTotal = psutil.CPU.NumCPU()
+	} else {
+		currentInfo.CPUTotal = len(perCore)
+	}
+	currentInfo.CPUPercent = perCore
+	currentInfo.CPUUsedPercent = cpuUsedPercent
+	currentInfo.CPUUsed = cpuUsedPercent * 0.01 * float64(currentInfo.CPUTotal)
+	currentInfo.CPUDetailedPercent = cpuDetailedPercent
+
+	loadInfo, _ := load.Avg()
+	currentInfo.Load1 = loadInfo.Load1
+	currentInfo.Load5 = loadInfo.Load5
+	currentInfo.Load15 = loadInfo.Load15
+	currentInfo.LoadUsagePercent = loadInfo.Load1 / (float64(currentInfo.CPUTotal*2) * 0.75) * 100
+
+	memoryInfo, _ := mem.VirtualMemory()
+	currentInfo.MemoryTotal = memoryInfo.Total
+	currentInfo.MemoryUsed = memoryInfo.Used
+	currentInfo.MemoryFree = memoryInfo.Free
+	currentInfo.MemoryCache = memoryInfo.Cached + memoryInfo.Buffers
+	currentInfo.MemoryShard = memoryInfo.Shared
+	currentInfo.MemoryAvailable = memoryInfo.Available
+	currentInfo.MemoryUsedPercent = memoryInfo.UsedPercent
+
+	swapInfo, _ := mem.SwapMemory()
+	currentInfo.SwapMemoryTotal = swapInfo.Total
+	currentInfo.SwapMemoryAvailable = swapInfo.Free
+	currentInfo.SwapMemoryUsed = swapInfo.Used
+	currentInfo.SwapMemoryUsedPercent = swapInfo.UsedPercent
+
+	currentInfo.DiskData = loadDiskInfo()
+	currentInfo.GPUData, currentInfo.NPUData, currentInfo.XPUData = loadAcceleratorInfo()
+
+	if ioOption == "all" {
+		diskInfo, _ := disk.IOCounters()
+		state := sumDiskIOCounters(diskInfo)
+		currentInfo.IOReadBytes = state.ReadBytes
+		currentInfo.IOWriteBytes = state.WriteBytes
+		currentInfo.IOCount = state.ReadCount + state.WriteCount
+		currentInfo.IOReadTime = state.ReadTime
+		currentInfo.IOWriteTime = state.WriteTime
+	} else {
+		diskInfo, _ := disk.IOCounters(ioOption)
+		for _, state := range diskInfo {
+			currentInfo.IOReadBytes += state.ReadBytes
+			currentInfo.IOWriteBytes += state.WriteBytes
+			currentInfo.IOCount += (state.ReadCount + state.WriteCount)
+			currentInfo.IOReadTime += state.ReadTime
+			currentInfo.IOWriteTime += state.WriteTime
+		}
+	}
+
+	if netOption == "all" {
+		netInfo, _ := net.IOCounters(false)
+		if len(netInfo) != 0 {
+			currentInfo.NetBytesSent = netInfo[0].BytesSent
+			currentInfo.NetBytesRecv = netInfo[0].BytesRecv
+		}
+	} else {
+		netInfo, _ := net.IOCounters(true)
+		for _, state := range netInfo {
+			if state.Name == netOption {
+				currentInfo.NetBytesSent = state.BytesSent
+				currentInfo.NetBytesRecv = state.BytesRecv
+				break
+			}
+		}
+	}
+
+	currentInfo.ShotTime = shotTime
+	return &currentInfo
+}
+
+func loadRunningTime(uptime uint64) dto.RunningTime {
+	return dto.RunningTime{
+		Days:    uptime / 86400,
+		Hours:   (uptime % 86400) / 3600,
+		Minutes: (uptime % 3600) / 60,
+		Seconds: uptime % 60,
+	}
+}
+
+func (u *DashboardService) LoadTopCPU() []dto.Process {
+	return loadTopCPU()
+}
+
+func (u *DashboardService) LoadTopMem() []dto.Process {
+	return loadTopMem()
+}
+
+func (u *DashboardService) LoadAppLauncher(ctx *gin.Context) ([]dto.AppLauncher, error) {
+	var data []dto.AppLauncher
+	appInstalls, err := appInstallRepo.ListBy(context.Background())
+	if err != nil {
+		return data, err
+	}
+	apps, err := appRepo.GetBy()
+	if err != nil {
+		return data, err
+	}
+
+	showList, _ := launcherRepo.ListName()
+	defaultList, err := appRepo.GetTopRecommend()
+	if err != nil {
+		return data, nil
+	}
+	allList := common.RemoveRepeatStr(append(defaultList, showList...))
+	for _, showItem := range allList {
+		var itemData dto.AppLauncher
+		for _, app := range apps {
+			if showItem == app.Key {
+				itemData.Key = app.Key
+				itemData.Type = app.Type
+				itemData.Name = app.Name
+				itemData.Icon = app.Icon
+				itemData.Limit = app.Limit
+				itemData.Recommend = app.Recommend
+				itemData.Description = app.GetDescription(ctx)
+				break
+			}
+		}
+		if len(itemData.Icon) == 0 {
+			continue
+		}
+		for _, install := range appInstalls {
+			if install.App.Key == showItem {
+				itemData.IsInstall = true
+				itemData.Detail = append(itemData.Detail, dto.InstallDetail{
+					InstallID: install.ID,
+					DetailID:  install.AppDetailId,
+					Name:      install.Name,
+					Version:   install.Version,
+					Status:    install.Status,
+					Path:      install.GetPath(),
+					WebUI:     install.WebUI,
+					HttpPort:  install.HttpPort,
+					HttpsPort: install.HttpsPort,
+				})
+			}
+		}
+		if (ArryContains(showList, showItem) && len(itemData.Detail) != 0) ||
+			(ArryContains(defaultList, showItem) && len(itemData.Detail) == 0) {
+			data = append(data, itemData)
+		}
+	}
+
+	sort.Slice(data, func(i, j int) bool {
+		if data[i].IsInstall != data[j].IsInstall {
+			return data[i].IsInstall
+		}
+		return data[i].Recommend < data[j].Recommend
+	})
+	return data, nil
+}
+
+func (u *DashboardService) ChangeShow(req dto.SettingUpdate) error {
+	launcher, _ := launcherRepo.Get(repo.WithByKey(req.Key))
+	if req.Value == constant.StatusEnable && launcher.ID == 0 {
+		if err := launcherRepo.Create(&model.AppLauncher{Key: req.Key}); err != nil {
+			return err
+		}
+	}
+	if req.Value == constant.StatusDisable && launcher.ID != 0 {
+		if err := launcherRepo.Delete(repo.WithByKey(req.Key)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (u *DashboardService) LoadQuickOptions() []dto.QuickJump {
+	quicks := launcherRepo.ListQuickJump(true)
+	var list []dto.QuickJump
+	for _, quick := range quicks {
+		var item dto.QuickJump
+		_ = copier.Copy(&item, &quick)
+		list = append(list, item)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].Recommend < list[j].Recommend
+	})
+	return list
+}
+func (u *DashboardService) ChangeQuick(req dto.ChangeQuicks) error {
+	showCount := 0
+	var quicks []model.QuickJump
+	for _, item := range req.Quicks {
+		var quick model.QuickJump
+		if item.IsShow {
+			showCount++
+		}
+		if err := copier.Copy(&quick, &item); err != nil {
+			return err
+		}
+		quicks = append(quicks, quick)
+	}
+	if showCount == 0 {
+		return buserr.New("ErrMinQuickJump")
+	}
+	if showCount > 4 {
+		return buserr.New("ErrMaxQuickJump")
+	}
+
+	return launcherRepo.UpdateQuicks(quicks)
+}
+
+func (u *DashboardService) ListLauncherOption(filter string) ([]dto.LauncherOption, error) {
+	showList, _ := launcherRepo.ListName()
+	var data []dto.LauncherOption
+	optionMap := make(map[string]bool)
+	appInstalls, err := appInstallRepo.ListBy(context.Background())
+	if err != nil {
+		return data, err
+	}
+
+	for _, install := range appInstalls {
+		isShow := false
+		for _, item := range showList {
+			if install.App.Key == item {
+				isShow = true
+				break
+			}
+		}
+		optionMap[install.App.Key] = isShow
+	}
+	for key, val := range optionMap {
+		if len(filter) != 0 && !strings.Contains(key, filter) {
+			continue
+		}
+		data = append(data, dto.LauncherOption{Key: key, IsShow: val})
+	}
+	sort.Slice(data, func(i, j int) bool {
+		return data[i].Key < data[j].Key
+	})
+	return data, nil
+}
+
+type diskInfo struct {
+	Type   string
+	Mount  string
+	Device string
+}
+
+func loadDiskInfo() []dto.DiskInfo {
+	var datas []dto.DiskInfo
+	cmdMgr := cmd.NewCommandMgr(cmd.WithTimeout(2 * time.Second))
+	format := `NR>1 && !/tmpfs|snap\/core|udev/ {printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, $4, $5, $6, $7}`
+	stdout, err := cmdMgr.RunPipe(
+		cmd.PipeCommand{Name: "df", Args: []string{"-hT", "-P"}},
+		cmd.PipeCommand{Name: "awk", Args: []string{format}},
+	)
+	if err != nil {
+		global.LOG.Errorf("load disk info with df -hT -P failed, err: %v", err)
+		cmdMgr2 := cmd.NewCommandMgr(cmd.WithTimeout(1 * time.Second))
+		stdout, err = cmdMgr2.RunPipe(
+			cmd.PipeCommand{Name: "df", Args: []string{"-lhT", "-P"}},
+			cmd.PipeCommand{Name: "awk", Args: []string{format}},
+		)
+		if err != nil {
+			global.LOG.Errorf("load disk info with df -lhT -P failed, err: %v", err)
+			return datas
+		}
+	}
+	lines := strings.Split(stdout, "\n")
+
+	var mounts []diskInfo
+	var excludes = []string{"/mnt/cdrom", "/boot", "/boot/efi", "/dev", "/dev/shm", "/run/lock", "/run", "/run/shm", "/run/user"}
+	for _, line := range lines {
+		fields := strings.Split(line, "\t")
+		if len(fields) < 7 {
+			continue
+		}
+		if strings.HasPrefix(fields[6], "/snap") || len(strings.Split(fields[6], "/")) > 10 {
+			continue
+		}
+		if strings.TrimSpace(fields[1]) == "tmpfs" || strings.TrimSpace(fields[1]) == "overlay" {
+			continue
+		}
+		if strings.Contains(fields[2], "K") {
+			continue
+		}
+		if strings.Contains(fields[6], "docker") || strings.Contains(fields[6], "podman") || strings.Contains(fields[6], "containerd") || strings.HasPrefix(fields[6], "/var/lib/containers") {
+			continue
+		}
+		isExclude := false
+		for _, exclude := range excludes {
+			if exclude == fields[6] {
+				isExclude = true
+			}
+		}
+		if isExclude {
+			continue
+		}
+		mounts = append(mounts, diskInfo{Type: fields[1], Device: fields[0], Mount: strings.Join(fields[6:], " ")})
+	}
+
+	var (
+		wg sync.WaitGroup
+		mu sync.Mutex
+	)
+	wg.Add(len(mounts))
+	for i := 0; i < len(mounts); i++ {
+		go func(mount diskInfo) {
+			defer wg.Done()
+
+			var itemData dto.DiskInfo
+			itemData.Path = mount.Mount
+			itemData.Type = mount.Type
+			itemData.Device = mount.Device
+
+			type diskResult struct {
+				state *disk.UsageStat
+				err   error
+			}
+			resultCh := make(chan diskResult, 1)
+
+			go func() {
+				state, err := psutil.DISK.GetUsage(mount.Mount, false)
+				resultCh <- diskResult{state: state, err: err}
+			}()
+
+			select {
+			case <-time.After(5 * time.Second):
+				mu.Lock()
+				datas = append(datas, itemData)
+				mu.Unlock()
+				global.LOG.Errorf("load disk info from %s failed, err: timeout", mount.Mount)
+			case result := <-resultCh:
+				if result.err != nil {
+					mu.Lock()
+					datas = append(datas, itemData)
+					mu.Unlock()
+					global.LOG.Errorf("load disk info from %s failed, err: %v", mount.Mount, result.err)
+					return
+				}
+				itemData.Total = result.state.Total
+				itemData.Free = result.state.Free
+				itemData.Used = result.state.Used
+				itemData.UsedPercent = result.state.UsedPercent
+				itemData.InodesTotal = result.state.InodesTotal
+				itemData.InodesUsed = result.state.InodesUsed
+				itemData.InodesFree = result.state.InodesFree
+				itemData.InodesUsedPercent = result.state.InodesUsedPercent
+				mu.Lock()
+				datas = append(datas, itemData)
+				mu.Unlock()
+			}
+		}(mounts[i])
+	}
+	wg.Wait()
+
+	sort.Slice(datas, func(i, j int) bool {
+		return datas[i].Path < datas[j].Path
+	})
+	return datas
+}
+
+func loadAcceleratorInfo() ([]dto.GPUInfo, []dto.NPUInfo, []dto.XPUInfo) {
+	ok, client := accelerator.New()
+	if !ok {
+		return nil, nil, nil
+	}
+	snapshot, err := client.Collect(context.Background())
+	if err != nil || len(snapshot.Devices) == 0 {
+		return nil, nil, nil
+	}
+	if warning := snapshot.Warning(); warning != nil {
+		global.LOG.Warnf("load accelerator dashboard data partially failed, err: %v", warning)
+	}
+
+	var (
+		gpuData []dto.GPUInfo
+		npuData []dto.NPUInfo
+		xpuData []dto.XPUInfo
+	)
+	for _, device := range snapshot.Devices {
+		switch device.Kind {
+		case accelerator.KindGPU:
+			if device.GPU == nil {
+				continue
+			}
+			var dataItem dto.GPUInfo
+			if err := copier.Copy(&dataItem, device.GPU); err != nil {
+				continue
+			}
+			dataItem.PowerUsage = dataItem.PowerDraw + " / " + dataItem.MaxPowerLimit
+			dataItem.MemoryUsage = dataItem.MemUsed + " / " + dataItem.MemTotal
+			gpuData = append(gpuData, dataItem)
+		case accelerator.KindNPU:
+			if device.NPU == nil {
+				continue
+			}
+			var dataItem dto.NPUInfo
+			if err := copier.Copy(&dataItem, device.NPU); err != nil {
+				continue
+			}
+			npuData = append(npuData, dataItem)
+		case accelerator.KindXPU:
+			if device.XPU == nil {
+				continue
+			}
+			xpuData = append(xpuData, dto.XPUInfo{
+				DeviceID:      device.Index,
+				DeviceName:    device.Name,
+				PciBdfAddress: device.BusID,
+				Memory:        device.XPU.Basic.Memory,
+				Temperature:   device.Metrics.Temperature.Display,
+				GPUUtil:       device.Metrics.Utilization.Display,
+				MemoryUsed:    device.Metrics.MemoryUsed.Display,
+				Power:         device.Metrics.Power.Display,
+				MemoryUtil:    device.Metrics.MemoryUtil.Display,
+			})
+		}
+	}
+	return gpuData, npuData, xpuData
+}
+
+type AppLauncher struct {
+	Key string `json:"key"`
+}
+
+func ArryContains(arr []string, element string) bool {
+	for _, v := range arr {
+		if v == element {
+			return true
+		}
+	}
+	return false
+}
+
+func loadOutboundIP() string {
+	conn, err := network.Dial("udp", "8.8.8.8:80")
+
+	if err != nil {
+		return "IPNotFound"
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*network.UDPAddr)
+	return localAddr.IP.String()
+}
+
+func loadQuickJump(base *dto.DashboardBase) {
+	website, _ := websiteRepo.GetBy()
+	base.WebsiteNumber = len(website)
+
+	agents, _ := agentRepo.List()
+	base.AgentNumber = len(agents)
+
+	postgresqlDbs, _ := postgresqlRepo.List()
+	mysqlDbs, _ := mysqlRepo.List()
+	base.DatabaseNumber = len(mysqlDbs) + len(postgresqlDbs)
+
+	cronjobs, _ := cronjobRepo.List()
+	base.CronjobNumber = len(cronjobs)
+
+	appInstall, _ := appInstallRepo.ListBy(context.Background())
+	base.AppInstalledNumber = len(appInstall)
+
+	quicks := launcherRepo.ListQuickJump(false)
+	for i := 0; i < len(quicks); i++ {
+		switch quicks[i].Name {
+		case "Agent":
+			quicks[i].Detail = fmt.Sprintf("%d", base.AgentNumber)
+		case "Website":
+			quicks[i].Detail = fmt.Sprintf("%d", base.WebsiteNumber)
+		case "Database":
+			quicks[i].Detail = fmt.Sprintf("%d", base.DatabaseNumber)
+		case "Cronjob":
+			quicks[i].Detail = fmt.Sprintf("%d", base.CronjobNumber)
+		case "AppInstalled":
+			quicks[i].Detail = fmt.Sprintf("%d", base.AppInstalledNumber)
+		}
+		var item dto.QuickJump
+		_ = copier.Copy(&item, quicks[i])
+		base.QuickJumps = append(base.QuickJumps, item)
+	}
+	sort.Slice(base.QuickJumps, func(i, j int) bool {
+		return base.QuickJumps[i].Recommend < base.QuickJumps[j].Recommend
+	})
+}

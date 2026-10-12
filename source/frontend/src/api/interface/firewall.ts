@@ -1,0 +1,446 @@
+import { ReqPage } from '.';
+
+export namespace Firewall {
+    export type Provider = 'iptables' | 'nftables' | 'firewalld' | 'ufw';
+    export type BackendSubsystem = 'system' | 'forwarding' | 'docker';
+    export type BackendOperation = 'select' | 'initialize' | 'cleanup';
+    export interface BackendOption {
+        name: Provider;
+        installed: boolean;
+        active: boolean;
+        initialized: boolean;
+        bound: boolean;
+        supported: boolean;
+        supportReason?: string;
+        implementation?: string;
+        message?: string;
+        ipv4: BackendFamilyStatus;
+        ipv6: BackendFamilyStatus;
+    }
+    export interface BackendFamilyStatus {
+        available: boolean;
+        initialized: boolean;
+        bound: boolean;
+        reason?: string;
+        forwardPolicy?: 'ACCEPT' | 'DROP';
+        raInterfaces?: string[];
+    }
+    export interface BackendGroup {
+        selected: string;
+        current?: string;
+        options: BackendOption[];
+    }
+    export interface Settings {
+        system: BackendGroup;
+        forwarding: BackendGroup;
+        docker: BackendGroup;
+        pingStatus: string;
+        portWhiteList: PortWhitelist[];
+        panelPort: string;
+        sshPort: string;
+    }
+    export interface PortWhitelist {
+        port?: string;
+        protocol?: 'tcp' | 'udp';
+        type?: 'panel' | 'ssh';
+        sources: string[];
+    }
+    export interface PortWhitelistUpdate {
+        oldRule: PortWhitelist;
+        rule: PortWhitelist;
+    }
+
+    export interface BackendOperateRequest {
+        subsystem: BackendSubsystem;
+        backend: Provider;
+        operation: BackendOperation;
+    }
+    export interface FilterChainOperationResult {
+        taskID?: string;
+        queued?: boolean;
+    }
+    export interface FirewallBase {
+        lifecycleTaskID?: string;
+        name: string;
+        backend: string;
+        conflictBackend?: string;
+        isExist: boolean;
+        isActive: boolean;
+        isInit: boolean;
+        isBind: boolean;
+        version: string;
+        pingStatus: string;
+        message?: string;
+        reason?: string;
+        syncError?: string;
+        ipv4: BackendFamilyStatus;
+        ipv6: BackendFamilyStatus;
+    }
+    export interface ForwardRuleSearch extends ReqPage {
+        all?: boolean;
+        strategy: string;
+        info: string;
+    }
+    export interface RuleInfo extends ReqPage {
+        family: string;
+        address: string;
+        destination: string;
+        port: string;
+        srcPort: string;
+        destPort: string;
+        protocol: string;
+        strategy: string;
+        usedStatus: string;
+        description: string;
+        [key: string]: any;
+    }
+    export interface RuleForward {
+        operation: string;
+        family: 'ipv4' | 'ipv6';
+        protocol: string;
+        port: string;
+        targetIP: string;
+        targetPort: string;
+        interface: string;
+        isDesired?: boolean;
+        isRuntime?: boolean;
+        syncStatus?: 'converged' | 'missing' | 'runtime_only';
+    }
+    export type Family = 'ipv4' | 'ipv6' | 'inet';
+    export type Direction = 'input';
+    export type Action = 'accept' | 'drop' | 'reject';
+    export type NativeKind =
+        'rule' | 'zone_port' | 'rich_rule' | 'ufw_rule' | 'ufw_application' | 'opaque' | 'zone_service';
+    export type ParseStatus = 'supported' | 'partial' | 'opaque';
+    export type PersistenceStatus = 'converged' | 'runtime_only' | 'permanent_only';
+
+    export interface Scope {
+        provider: Provider;
+        family: Family;
+        table?: string;
+        zone?: string;
+        chain?: string;
+        direction: Direction;
+    }
+
+    export interface Rule {
+        uuid?: string;
+        scope: Scope;
+        nativeKind?: NativeKind;
+        protocol: string;
+        sourceAddress?: string;
+        sourcePort?: string;
+        destinationAddress?: string;
+        destinationPort?: string;
+        interface?: string;
+        connectionStates?: string[];
+        action: Action;
+        priority?: number;
+        orderIndex?: number;
+        orderBucket?: string;
+        description?: string;
+    }
+
+    export interface Locator {
+        provider: Provider;
+        scopeKey: string;
+        nativeId?: string;
+        canonical?: string;
+        position?: number;
+    }
+
+    export interface ObservedRule {
+        rule: Rule;
+        locator: Locator;
+        instanceKey?: string;
+        marker?: string;
+        parseStatus: ParseStatus;
+        uncertainFields?: string[];
+        raw?: string;
+        protected: boolean;
+        persistence?: PersistenceStatus;
+    }
+
+    export type RuleOrigin = 'created' | 'adopted';
+    export type InventoryState = 'managed' | 'adopted' | 'external' | 'drifted' | 'protected';
+    export type InventoryMatch = 'none' | 'exact' | 'changed' | 'missing' | 'ambiguous' | 'opaque';
+
+    export interface DesiredRule {
+        uuid: string;
+        rule: Rule;
+        ruleKey: string;
+        origin: RuleOrigin;
+        protected?: boolean;
+        expanded?: boolean;
+        marker?: string;
+        observedInstanceKey?: string;
+    }
+
+    export interface PositionRange {
+        min: number;
+        max: number;
+    }
+
+    export interface InventoryItem {
+        incompatible?: boolean;
+        error?: string;
+        rule: Rule;
+        observed?: ObservedRule;
+        desired?: DesiredRule;
+        state: InventoryState;
+        match: InventoryMatch;
+    }
+
+    export type ScopeNoticeCode =
+        | 'family_unavailable'
+        | 'default_scope_mismatch'
+        | 'managed_scope_inactive'
+        | 'unmanaged_active_scopes'
+        | 'runtime_permanent_mismatch'
+        | 'default_policy'
+        | 'managed_scope_missing';
+
+    export interface ScopeNotice {
+        code: ScopeNoticeCode;
+        values?: string[];
+    }
+
+    export interface Inventory {
+        ipv4Range: PositionRange;
+        ipv6Range: PositionRange;
+        total: number;
+        allTotal: number;
+        managedTotal: number;
+        items: InventoryItem[];
+        notices?: ScopeNotice[];
+    }
+
+    export interface ResetResponse {
+        removed: number;
+        disabled: boolean;
+    }
+
+    export interface ResetRequest {
+        provider?: Provider;
+        withDockerRestart?: boolean;
+    }
+
+    export interface InventoryRequest extends ReqPage {
+        refresh?: boolean;
+        scopes: Scope[];
+        all?: boolean;
+        info: string;
+        families?: Array<'ipv4' | 'ipv6'>;
+        actions?: Array<'accept' | 'deny'>;
+        states?: InventoryState[];
+        excludeChains?: string[];
+    }
+
+    export interface NativeDetailRequest {
+        provider: 'firewalld' | 'ufw';
+        nativeKind: 'zone_service' | 'ufw_application';
+        name: string;
+        permanent: boolean;
+    }
+
+    export interface AdoptRequest {
+        scope: Scope;
+        instanceKey?: string;
+        rule?: Rule;
+        marker?: string;
+    }
+
+    export interface CreateItem {
+        rule: Rule;
+        sourceKind?: 'user' | 'panel' | 'security' | 'imported';
+        sourceID?: string;
+    }
+
+    export interface CreateRequest {
+        items: CreateItem[];
+    }
+
+    export interface CreateResponse {
+        taskID?: string;
+        queued?: boolean;
+        succeeded: number;
+        failed: number;
+        skipped: number;
+        errors?: CreateFailure[];
+    }
+
+    export interface CreateFailure {
+        index: number;
+        status: 'failed' | 'skipped';
+        rule: Rule;
+        error?: string;
+    }
+
+    export interface RuleSyncRequest {
+        subsystem: BackendSubsystem;
+        sourceProvider?: Provider;
+        targetProvider: Provider;
+        resetSource?: boolean;
+        taskID?: string;
+    }
+
+    export type RuleSyncStatus = 'ready' | 'existing' | 'remove' | 'blocked';
+
+    export interface RuleSyncItem {
+        sourceUUID: string;
+        rule?: Rule;
+        forwardRule?: RuleForward;
+        dockerRule?: DockerGuardEndpoint;
+        status: RuleSyncStatus;
+        reasonCode?: string;
+        reason?: string;
+    }
+
+    export interface RuleSyncPreview {
+        subsystem: BackendSubsystem;
+        sourceProvider?: Provider;
+        targetProvider: Provider;
+        total: number;
+        ready: number;
+        existing: number;
+        removed: number;
+        blocked: number;
+        items: RuleSyncItem[];
+    }
+
+    export interface RuleSyncResult {
+        subsystem: BackendSubsystem;
+        sourceProvider?: Provider;
+        targetProvider: Provider;
+        total: number;
+        succeeded: number;
+        skipped: number;
+        removed: number;
+        failed: number;
+        errors?: RuleSyncFailure[];
+        taskID?: string;
+        queued?: boolean;
+    }
+
+    export interface RuleSyncTask {
+        taskID?: string;
+        executing: boolean;
+    }
+
+    export interface RuleSyncFailure {
+        sourceUUID: string;
+        rule?: Rule;
+        forwardRule?: RuleForward;
+        dockerRule?: DockerGuardEndpoint;
+        error: string;
+    }
+
+    export interface DeleteRequest {
+        uuids: string[];
+        beforeRules?: { scope: Scope; instanceKey: string }[];
+    }
+
+    export interface DeleteResponse {
+        taskID?: string;
+        queued?: boolean;
+        succeeded: number;
+        failed: number;
+        errors?: DeleteFailure[];
+    }
+
+    export interface DeleteFailure {
+        index: number;
+        uuid: string;
+        error: string;
+    }
+
+    export type UpdateRequest =
+        | { rule: Rule; description?: never; orderIndex?: never; priority?: never }
+        | { rule?: never; description: string; orderIndex?: never; priority?: never }
+        | { rule?: never; description?: string; orderIndex: number; priority?: never }
+        | { rule?: never; description?: string; orderIndex?: never; priority: number };
+
+    export interface DockerGuardBase {
+        name: string;
+        version: string;
+        isExist: boolean;
+        initialized: boolean;
+        bound: boolean;
+        ipv4: DockerGuardFamilyStatus;
+        ipv6: DockerGuardFamilyStatus;
+        backend: string;
+        message?: string;
+    }
+    export interface DockerGuardFamilyStatus {
+        state: 'effective' | 'disabled' | 'not_effective';
+        reason?:
+            | 'command_missing'
+            | 'docker_chain_missing'
+            | 'guard_chain_missing'
+            | 'jump_missing'
+            | 'jump_not_first'
+            | 'jump_duplicate'
+            | 'inspect_failed';
+        initialized: boolean;
+        bound: boolean;
+        effective: boolean;
+    }
+    export interface DockerGuardEndpoint {
+        family: 'ipv4' | 'ipv6';
+        hostIP: string;
+        hostPort: number;
+        protocol: 'tcp' | 'udp';
+        containerID?: string;
+        containerName?: string;
+        containerState?: 'created' | 'running' | 'paused' | 'restarting' | 'removing' | 'exited' | 'dead';
+        containerPort?: number;
+        compose?: string;
+        application?: string;
+        policyUUID?: string;
+        mode?: 'deny_sources' | 'allow_sources' | 'deny_all';
+        nativeAction?: string;
+        readOnly?: boolean;
+        sources: string[];
+        effective: boolean;
+        description?: string;
+        trafficPath: 'forward' | 'input' | 'unknown';
+        managementTarget?: 'container_guard' | 'host_firewall' | 'needs_diagnosis';
+        managementReason?: 'nat_inspect_failed' | 'nat_chain_unreachable' | 'proxy_inspect_failed' | 'no_matching_path';
+    }
+    export interface DockerGuardPortGroup {
+        key: string;
+        label: string;
+        endpoint: DockerGuardEndpoint;
+        endpoints: DockerGuardEndpoint[];
+    }
+    export interface DockerGuardContainer {
+        key: string;
+        name: string;
+        compose?: string;
+        application?: string;
+        endpoints: DockerGuardEndpoint[];
+        portGroups: DockerGuardPortGroup[];
+    }
+    export interface DockerGuardList {
+        base: DockerGuardBase;
+        containers: DockerGuardContainer[];
+        orphanPolicies: DockerGuardEndpoint[];
+    }
+    export interface DockerGuardEndpointIdentity {
+        family: 'ipv4' | 'ipv6';
+        hostIP: string;
+        hostPort: number;
+        protocol: 'tcp' | 'udp';
+    }
+    export interface DockerGuardPolicy extends DockerGuardEndpointIdentity {
+        mode: 'deny_sources' | 'allow_sources' | 'deny_all';
+        sources: string[];
+        description: string;
+    }
+    export interface DockerGuardPolicyBatch {
+        policies: DockerGuardPolicy[];
+    }
+    export interface DockerGuardPolicyBatchDelete {
+        uuids: string[];
+    }
+}

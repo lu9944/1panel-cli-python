@@ -8,6 +8,7 @@ from __future__ import annotations
 from .client import PanelClient
 from .errors import CliError
 from .session import load_session
+from . import apps
 
 
 def check_code(resp: dict) -> None:
@@ -39,7 +40,7 @@ def list(profile: str) -> None:
     items = (resp.get("data") or {}).get("items") or []
     print(f"{'ID':<8} {'名称':<16} {'状态':<12} {'版本':<10}")
     for it in items:
-        if it.get("appKey") != "redis":
+        if it.get("appKey") not in ("redis", "localredis"):
             continue
         print(
             f"{it.get('id', 0):<8} {it.get('name', ''):<16} "
@@ -63,6 +64,7 @@ def fmt_bytes(value: str) -> str:
 
 def info(profile: str, name: str) -> None:
     client = client_for(profile)
+    name = apps.resolve_instance_name(client, name)
     body = {"type": "redis", "name": name}
     resp = _parse(client.post_json("api/v2/databases/redis/status", body), "查询 Redis 状态失败")
     check_code(resp)
@@ -106,6 +108,7 @@ def info(profile: str, name: str) -> None:
 
 def config(profile: str, name: str, set_values: list[tuple[str, str]]) -> None:
     client = client_for(profile)
+    name = apps.resolve_instance_name(client, name)
     body = {"type": "redis", "name": name}
     resp = _parse(client.post_json("api/v2/databases/redis/conf", body), "查询 Redis 配置失败")
     check_code(resp)

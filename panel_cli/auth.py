@@ -143,7 +143,7 @@ def fetch_captcha(client: PanelClient) -> dict:
 
 
 def captcha_id_of(cap: dict) -> str:
-    """面板 v2.2.5 返回的字段是 `captchaID`(大写 ID);兼容 `captchaId` 拼写。"""
+    """面板返回的字段是 `captchaID`(大写 ID);兼容 `captchaId` 拼写。"""
     value = cap.get("captchaID")
     if value is None:
         value = cap.get("captchaId")

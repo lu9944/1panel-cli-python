@@ -1,0 +1,155 @@
+<template>
+    <DrawerPro v-model="open" :header="$t('ssl.selfSigned')" size="large" @close="handleClose">
+        <template #content>
+            <ComplexTable :data="data" :pagination-config="paginationConfig" @search="search()" v-loading="loading">
+                <template #toolbar>
+                    <el-button v-permission type="primary" @click="openCreate">
+                        {{ $t('commons.button.create') }}
+                    </el-button>
+                </template>
+                <el-table-column :label="$t('commons.table.name')" show-overflow-tooltip prop="name"></el-table-column>
+                <el-table-column :label="$t('website.keyType')" show-overflow-tooltip prop="keyType">
+                    <template #default="{ row }">
+                        {{ getKeyName(row.keyType) }}
+                    </template>
+                </el-table-column>
+                <el-table-column
+                    prop="createdAt"
+                    :label="$t('commons.table.date')"
+                    :formatter="dateFormat"
+                    show-overflow-tooltip
+                />
+                <fu-table-operations
+                    :ellipsis="3"
+                    :buttons="buttons"
+                    :label="$t('commons.table.operate')"
+                    fix
+                    width="250px"
+                />
+            </ComplexTable>
+            <Create ref="createRef" @close="search()" />
+            <Obtain ref="obtainRef" @close="search()" />
+            <Detail ref="detailRef" />
+        </template>
+    </DrawerPro>
+    <OpDialog ref="opRef" @search="search" />
+</template>
+
+<script lang="ts" setup>
+import { Website } from '@/api/interface/website';
+import { deleteCA, searchCAs, downloadCAFile } from '@/api/modules/website';
+import i18n from '@/lang';
+import { reactive, ref } from 'vue';
+import Create from './create/index.vue';
+import Detail from './detail/index.vue';
+import { getKeyName } from '@/utils/ssl';
+import { dateFormat } from '@/utils/date';
+import Obtain from './obtain/index.vue';
+
+const open = ref(false);
+const loading = ref(false);
+const data = ref();
+const createRef = ref();
+const paginationConfig = reactive({
+    cacheSizeKey: 'ca-page-size',
+    currentPage: 1,
+    pageSize: Number(localStorage.getItem('ca-page-size')) || 20,
+    total: 0,
+});
+const opRef = ref();
+const obtainRef = ref();
+const em = defineEmits(['close']);
+const detailRef = ref();
+
+const buttons = [
+    {
+        label: i18n.global.t('ssl.selfSign'),
+        permission: true,
+        click: function (row: Website.CA) {
+            obtain(row);
+        },
+    },
+    {
+        label: i18n.global.t('ssl.detail'),
+        click: function (row: Website.CA) {
+            detailRef.value.acceptParams(row.id);
+        },
+    },
+    {
+        label: i18n.global.t('commons.button.download'),
+        click: function (row: Website.CA) {
+            onDownload(row);
+        },
+    },
+    {
+        label: i18n.global.t('commons.button.delete'),
+        permission: true,
+        click: function (row: Website.CA) {
+            deleteca(row);
+        },
+    },
+];
+
+const acceptParams = () => {
+    search();
+    open.value = true;
+};
+
+const obtain = (row: any) => {
+    obtainRef.value.acceptParams(row.id);
+};
+
+const search = async () => {
+    const req = {
+        page: paginationConfig.currentPage,
+        pageSize: paginationConfig.pageSize,
+    };
+    await searchCAs(req).then((res) => {
+        data.value = res.data.items;
+        paginationConfig.total = res.data.total;
+    });
+};
+
+const openCreate = () => {
+    createRef.value.acceptParams();
+};
+
+const handleClose = () => {
+    em('close', false);
+    open.value = false;
+};
+
+const deleteca = async (row: any) => {
+    opRef.value.acceptParams({
+        title: i18n.global.t('commons.button.delete'),
+        names: [row.name],
+        msg: i18n.global.t('commons.msg.operatorHelper', [
+            i18n.global.t('ssl.ca'),
+            i18n.global.t('commons.button.delete'),
+        ]),
+        api: deleteCA,
+        params: { id: row.id },
+    });
+};
+
+const onDownload = (row: Website.CA) => {
+    loading.value = true;
+    downloadCAFile({ id: row.id })
+        .then((res) => {
+            const downloadUrl = window.URL.createObjectURL(new Blob([res]));
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = downloadUrl;
+            a.download = row.name + '.zip';
+            const event = new MouseEvent('click');
+            a.dispatchEvent(event);
+        })
+        .finally(() => {
+            loading.value = false;
+        });
+};
+
+defineExpose({
+    acceptParams,
+});
+</script>

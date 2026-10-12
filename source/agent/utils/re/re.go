@@ -1,0 +1,146 @@
+package re
+
+import (
+	"fmt"
+	"regexp"
+)
+
+const (
+	NumberAlphaPattern                 = `(\d+)([A-Za-z]+)`
+	ComposeDisallowedCharsPattern      = `[^a-z0-9_-]+`
+	ComposeNamePattern                 = `^[a-z0-9][a-z0-9_-]{0,255}$`
+	ComposeEnvVarPattern               = `\$\{([^}]+)\}`
+	DiskKeyValuePattern                = `([A-Za-z0-9_]+)=("([^"\\]|\\.)*"|[^ \t]+)`
+	ValidatorNamePattern               = `^[a-zA-Z\p{Han}]{1}[a-zA-Z0-9_\p{Han}]{0,30}$`
+	ValidatorIPPattern                 = `^((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})(\.((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})){3}$`
+	DomainPattern                      = `^([\w\p{Han}\-\*]{1,100}\.){1,10}([\w\p{Han}\-]{1,24}|[\w\p{Han}\-]{1,24}\.[\w\p{Han}\-]{1,24})(:\d{1,5})?$`
+	NginxServerNamePattern             = `^(?:\*|[\w\p{Han}-]{1,63})(?:\.(?:\*|[\w\p{Han}-]{1,63}))*$`
+	ProxyCacheZonePattern              = `keys_zone=proxy_cache_zone_of_[\w.]+:(\d+)([kmgt]?)`
+	ProxyCacheMaxSizePattern           = `max_size=([0-9.]+)([kmgt]?)`
+	ProxyCacheMaxSizeValidationPattern = `max_size=\d+(\.\d+)?[kmgt]?`
+	ProxyCacheInactivePattern          = `inactive=(\d+)([smhd])`
+	NumberWordPattern                  = `^(\d+)(\w+)$`
+	TrailingDigitsPattern              = `_(\d+)$`
+	AlertIPPattern                     = `from\s+([0-9.]+)\s+port\s+(\d+)`
+	CosDualStackPattern                = `.*cos-dualstack\..*`
+	VersionPattern                     = `v(\d+\.\d+\.\d+)`
+	PhpAssignmentPattern               = `^\s*([a-z_]+)\s*=\s*(.*)$`
+	DurationWithOptionalUnitPattern    = `^(\d+)([smhdw]?)$`
+	MysqlGroupPattern                  = `\[*\]`
+	AnsiEscapePattern                  = "\x1b\\[[0-9;?]*[A-Za-z]|\x1b=|\x1b>"
+	AnsiControlSeqPattern              = `\x1b\[[0-9;?]*[ -/]*[@-~]`
+	RecycleBinFilePattern              = `_1p_file_1p_(.+)_p_(\d+)_(\d+)`
+	OrderByValidationPattern           = `^[a-zA-Z_][a-zA-Z0-9_]*$`
+	SQLIdentifierPattern               = `^[A-Za-z_][A-Za-z0-9_]*$`
+	NginxHostPattern                   = `^[a-zA-Z0-9.-]+(:[0-9]+)?$`
+	NginxPathPattern                   = `^/[a-zA-Z0-9._/\-]*$`
+	SSHSyslogLinePattern               = `^([A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+\S+\s+(sshd(?:-session)?)(?:\[(\d+)\])?:\s+(.*)$`
+	SSHRFC3339LinePattern              = `^(\d{4}-\d{2}-\d{2}T\S+)\s+\S+\s+(sshd(?:-session)?)(?:\[(\d+)\])?:\s+(.*)$`
+	SSHDateTimeLinePattern             = `^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+\S+\s+(sshd(?:-session)?)(?:\[(\d+)\])?:\s+(.*)$`
+	SSHAcceptedPattern                 = `^Accepted (\S+) for (.+?) from ([0-9a-fA-F:.]+) port (\d+)`
+	SSHFailedPattern                   = `^Failed (\S+) for (?:(invalid user) )?(.+?) from ([0-9a-fA-F:.]+) port (\d+)`
+	SSHInvalidUserPattern              = `^Invalid user (.+?) from ([0-9a-fA-F:.]+)(?: port (\d+))?`
+	SSHClosedPattern                   = `^Connection closed by (?:(?:authenticating|invalid) user (.+?) )?([0-9a-fA-F:.]+) port (\d+)`
+	SSHDisconnectedPattern             = `^Disconnected from (?:(?:authenticating|invalid) user (.+?) )?([0-9a-fA-F:.]+) port (\d+)`
+	SSHDisconnectPattern               = `^Received disconnect from ([0-9a-fA-F:.]+) port (\d+)`
+	SSHMaxAuthPattern                  = `^error: maximum authentication attempts exceeded for (?:(?:invalid user) )?(.+?) from ([0-9a-fA-F:.]+) port (\d+)`
+	SSHNotAllowedPattern               = `^User (.+?) from ([0-9a-fA-F:.]+) not allowed`
+	SyslogPRIPattern                   = `^<(\d{1,3})>(?:\d\s+)?`
+	SyslogRFC3164Pattern               = `^([A-Z][a-z]{2}\s{1,2}\d{1,2}\s\d{2}:\d{2}:\d{2})\s+(.*)$`
+	SyslogRFC3339Pattern               = `^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\s+(.*)$`
+	SyslogServicePattern               = `^(?:\S+\s+)?([[:alnum:]_.@/-]+)(?:\[\d+\])?:\s*(.*)$`
+	NginxModulePackagePattern          = `^[a-zA-Z0-9][a-zA-Z0-9+.-]*$`
+	NginxModuleArtifactPattern         = `^[a-zA-Z0-9_./+-]+\.so$`
+	NginxModuleChecksumPattern         = `^[a-fA-F0-9]{64}$`
+	AcceleratorMetricValuePattern      = `^\s*([+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))\s*(.*?)\s*$`
+	AscendVersionPattern               = `(?i)\bVersion:\s*([^\s|]+)`
+	AscendMemoryPattern                = `([0-9]+(?:\.[0-9]+)?)\s*/\s*([0-9]+(?:\.[0-9]+)?)`
+)
+
+var regexMap = make(map[string]*regexp.Regexp)
+
+func Init() {
+	patterns := []string{
+		NumberAlphaPattern,
+		ComposeDisallowedCharsPattern,
+		ComposeNamePattern,
+		ComposeEnvVarPattern,
+		DiskKeyValuePattern,
+		ValidatorNamePattern,
+		ValidatorIPPattern,
+		DomainPattern,
+		NginxServerNamePattern,
+		ProxyCacheZonePattern,
+		ProxyCacheMaxSizePattern,
+		ProxyCacheMaxSizeValidationPattern,
+		ProxyCacheInactivePattern,
+		NumberWordPattern,
+		TrailingDigitsPattern,
+		AlertIPPattern,
+		CosDualStackPattern,
+		VersionPattern,
+		PhpAssignmentPattern,
+		DurationWithOptionalUnitPattern,
+		MysqlGroupPattern,
+		AnsiEscapePattern,
+		AnsiControlSeqPattern,
+		RecycleBinFilePattern,
+		OrderByValidationPattern,
+		SQLIdentifierPattern,
+		NginxHostPattern,
+		NginxPathPattern,
+		SSHSyslogLinePattern,
+		SSHRFC3339LinePattern,
+		SSHDateTimeLinePattern,
+		SSHAcceptedPattern,
+		SSHFailedPattern,
+		SSHInvalidUserPattern,
+		SSHClosedPattern,
+		SSHDisconnectedPattern,
+		SSHDisconnectPattern,
+		SSHMaxAuthPattern,
+		SSHNotAllowedPattern,
+		SyslogPRIPattern,
+		SyslogRFC3164Pattern,
+		SyslogRFC3339Pattern,
+		SyslogServicePattern,
+		NginxModulePackagePattern,
+		NginxModuleArtifactPattern,
+		NginxModuleChecksumPattern,
+		AcceleratorMetricValuePattern,
+		AscendVersionPattern,
+		AscendMemoryPattern,
+	}
+
+	for _, pattern := range patterns {
+		regexMap[pattern] = regexp.MustCompile(pattern)
+	}
+}
+
+func GetRegex(pattern string) *regexp.Regexp {
+	regex, exists := regexMap[pattern]
+	if !exists {
+		panic(fmt.Sprintf("regex pattern not found: %s", pattern))
+	}
+	return regex
+}
+
+func RegisterRegex(pattern string) {
+	regexMap[pattern] = regexp.MustCompile(pattern)
+}
+
+func StripAnsiControlSeq(value string) string {
+	return GetRegex(AnsiControlSeqPattern).ReplaceAllString(value, "")
+}
+
+func IsValidNginxModulePackage(value string) bool {
+	return GetRegex(NginxModulePackagePattern).MatchString(value)
+}
+
+func IsValidNginxModuleArtifact(value string) bool {
+	return GetRegex(NginxModuleArtifactPattern).MatchString(value)
+}
+
+func IsValidNginxModuleChecksum(value string) bool {
+	return GetRegex(NginxModuleChecksumPattern).MatchString(value)
+}

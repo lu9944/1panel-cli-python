@@ -1,0 +1,73 @@
+package migration
+
+import (
+	"github.com/1Panel-dev/1Panel/core/global"
+	"github.com/1Panel-dev/1Panel/core/init/migration/migrations"
+
+	"github.com/go-gormigrate/gormigrate/v2"
+)
+
+func Init() {
+	m := gormigrate.New(global.DB, gormigrate.DefaultOptions, coreMigrations())
+	if err := m.Migrate(); err != nil {
+		global.LOG.Error(err)
+		panic(err)
+	}
+	global.LOG.Info("Migration run successfully")
+}
+
+func coreMigrations() []*gormigrate.Migration {
+	return []*gormigrate.Migration{
+		migrations.AddTable,
+		migrations.InitSetting,
+		migrations.InitOneDrive,
+		migrations.InitHost,
+		migrations.InitTerminalSetting,
+		migrations.AddTaskDB,
+		migrations.AddPasskeySetting,
+		migrations.AddPasskeyTrustedProxySetting,
+		migrations.AddXpackHideMenu,
+		migrations.UpdateXpackHideMenu,
+		migrations.UpdateOnedrive,
+		migrations.AddClusterMenu,
+		migrations.DeleteXpackHideMenu,
+		migrations.AddCronjobGroup,
+		migrations.AddDiskMenu,
+		migrations.AddAgentsMenu,
+		migrations.AddSimpleNodeGroup,
+		migrations.AddUpgradeBackupCopies,
+		migrations.AddScriptSync,
+		migrations.UpdateXpackHideMenuSort,
+		migrations.AdjustXpackNode,
+		migrations.UpdateAiAgentsMenu,
+		migrations.AddDashboardCarouselSetting,
+		migrations.AddEditionSetting,
+		migrations.UpdateAiLocalModelMenuTitle,
+		migrations.UpdateAiAgentsHideMenuTitle,
+		migrations.UpdateAiModelMenuStructure,
+		migrations.AddDocSourceSetting,
+		migrations.AddAppStoreInstallAllowPortSetting,
+		migrations.AddAppStoreUpgradeDeleteImageSetting,
+		migrations.AddUserManagementMenu,
+		migrations.AddOpsReportMenu,
+		migrations.AddAIBenchmarkMenu,
+		migrations.AddAIProxyMenu,
+		migrations.AddSkillsHubMenu,
+		migrations.UpdateXpackSyncMenu,
+		migrations.AddVirtualMachineMenu,
+		migrations.UpdateXpackMenuSort,
+		migrations.AddOperationLogUser,
+		migrations.AddLoginLogUser,
+		migrations.AddAlertAuditUser,
+		migrations.AddMenuAccordionSetting,
+		migrations.AddAPITrustedProxiesSetting,
+		migrations.AddAllowIPTrustedProxiesSetting,
+		migrations.AddWebsiteTemplateMenu,
+		migrations.RepairXpackAppMenus,
+		migrations.UpdateFirewallMenuPath,
+		migrations.RemoveUpageHideMenu,
+		migrations.MoveVirtualMachineMenuToXpack,
+		migrations.AddAPIKeys,
+		migrations.AddOperationLogAPIKey,
+	}
+}

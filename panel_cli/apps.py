@@ -46,6 +46,13 @@ class InstallOptions:
     params: list[tuple[str, str]] = field(default_factory=list)
     wait: bool = False
     timeout: int = 600
+    pull_image: bool = True  # 离线包场景用 --no-pull 跳过联网拉取,直接用本地镜像
+
+
+@dataclass
+class SyncLocalOptions:
+    wait: bool = False
+    timeout: int = 60
 
 
 @dataclass
@@ -171,16 +178,62 @@ def check_code(resp: dict) -> None:
 
 
 def find_installed(client: PanelClient, name: str) -> dict:
-    body = {"page": 1, "pageSize": 100, "name": name, "type": "", "tags": []}
-    resp = _parse_json(
-        client.post_json("api/v2/apps/installed/search", body), "查询已安装应用失败"
-    )
-    check_code(resp)
-    items = (resp.get("data") or {}).get("items") or []
+    target = normalize_app_key(name)
+    # 服务端按 name 模糊过滤:历史/规范两种写法(如 localmysql 与 mysql)只查一种可能查空,
+    # 因此依次尝试原写法与规范化写法,再做客户端匹配。
+    queries = [name]
+    if target and target != name:
+        queries.append(target)
+    items: list[dict] = []
+    for query in queries:
+        body = {"page": 1, "pageSize": 100, "name": query, "type": "", "tags": []}
+        resp = _parse_json(
+            client.post_json("api/v2/apps/installed/search", body), "查询已安装应用失败"
+        )
+        check_code(resp)
+        items = (resp.get("data") or {}).get("items") or []
+        if items:
+            break
     for it in items:
-        if it.get("name", "") == name:
+        candidates = (it.get("name"), it.get("appKey"), it.get("appName"))
+        if any(normalize_app_key(str(c or "")) == target for c in candidates):
             return it
     raise CliError(f"未安装应用 {name},可先运行 apps install {name} 进行安装")
+
+
+def resolve_instance_name(client: PanelClient, instance: str) -> str:
+    """解析数据库/Redis 实例名:兼容本地应用的 `local` 前缀写法。
+
+    实例名即应用安装名。离线/本地商店的应用名可能是 `localmysql`/`mysql` 两种形态,
+    传入其一自动匹配实际安装名;未安装或查询失败时原样返回,不影响远程实例。
+    """
+    name = (instance or "").strip()
+    if not name:
+        return name
+    try:
+        body = {"page": 1, "pageSize": 200, "name": "", "type": "", "tags": []}
+        resp = _parse_json(
+            client.post_json("api/v2/apps/installed/search", body), "查询已安装应用失败"
+        )
+        check_code(resp)
+        items = (resp.get("data") or {}).get("items") or []
+    except CliError:
+        return name
+    names = {str(it.get("name") or "") for it in items if it.get("name")}
+    if name in names:
+        return name
+    candidates = []
+    if name.lower().startswith("local"):
+        candidates.append(name[5:])
+    else:
+        candidates.append("local" + name)
+    lower_map = {n.lower(): n for n in names}
+    for cand in candidates:
+        hit = lower_map.get(cand.lower())
+        if hit:
+            return hit
+    hit = lower_map.get(name.lower())
+    return hit or name
 
 
 def get_install_info(client: PanelClient, install_id: int) -> dict:
@@ -214,9 +267,25 @@ def info(profile: str, name: str) -> None:
     if detail.get("composePath"):
         print(f"compose: {detail.get('composePath')}")
 
-    app_key = detail.get("appKey", "")
+    app_key = normalize_app_key(detail.get("appKey", ""))
+    raw_key = detail.get("appKey", "") or ""
     if app_key in DB_APP_KEYS:
-        conn = get_conn_info(client, app_key, name)
+        # 本地应用(appKey 带 local 前缀)用原始 key 查 conninfo 才能命中安装记录;
+        # 服务端对 local key 不填 root 密码,再从安装详情的 env 回退补齐
+        conn = {}
+        for candidate in (raw_key, app_key):
+            if not candidate:
+                continue
+            info_conn = get_conn_info(client, candidate, detail.get("name") or name)
+            if info_conn.get("containerName") or int(info_conn.get("port", 0) or 0) > 0:
+                conn = info_conn
+                break
+        env_map = detail.get("env") or {}
+        if not conn.get("password"):
+            for env_field in ("PANEL_DB_ROOT_PASSWORD", "PANEL_REDIS_ROOT_PASSWORD"):
+                if env_map.get(env_field):
+                    conn["password"] = env_map[env_field]
+                    break
         if conn.get("containerName") or int(conn.get("port", 0) or 0) > 0:
             host = session.panel_url.split("://", 1)[-1].split(":", 1)[0] or "127.0.0.1"
             username = conn.get("username", "") or ""
@@ -250,13 +319,41 @@ def fmt_value(value) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def get_app(client: PanelClient, key: str) -> dict:
-    resp = _parse_json(client.get(f"api/v2/apps/{key}"), "解析应用信息失败")
-    check_code(resp)
+def normalize_app_key(raw: str) -> str:
+    """归一化应用 key/名称:去掉本地应用前缀(localmysql -> mysql),忽略大小写。"""
+    value = (raw or "").strip().lower()
+    if value.startswith("local"):
+        value = value[5:]
+    return value
+
+
+def _get_app_once(client: PanelClient, key: str) -> dict | None:
+    try:
+        resp = _parse_json(client.get(f"api/v2/apps/{key}"), "解析应用信息失败")
+    except CliError:
+        return None
+    if resp.get("code") != 200:
+        return None
     app = resp.get("data") or {}
-    if not app.get("id"):
-        raise CliError(f"未找到应用: {key}")
-    return app
+    return app if app.get("id") else None
+
+
+def get_app(client: PanelClient, key: str) -> dict:
+    """查询应用定义,自动兼容本地应用与远程应用两种 key 写法。
+
+    1Panel 离线/内置应用商店中的应用 key 带 `local` 前缀(如 localopenresty),
+    而官方商店为 openresty;这里两种写法都会尝试。
+    """
+    candidates = [key]
+    if key.lower().startswith("local"):
+        candidates.append(key[5:])
+    else:
+        candidates.append("local" + key)
+    for candidate in candidates:
+        app = _get_app_once(client, candidate)
+        if app:
+            return app
+    raise CliError(f"未找到应用: {key}")
 
 
 def get_app_detail(client: PanelClient, app_id: int, version: str) -> dict:
@@ -290,6 +387,9 @@ def new_uuid() -> str:
 def install(profile: str, name: str, opts: InstallOptions) -> None:
     client, _ = _client_for(profile)
     app = get_app(client, name)
+    install_name = app.get("key") or name
+    if install_name != name:
+        print(f"应用 {name} 对应商店 key: {install_name}")
     if app.get("installed"):
         raise CliError(f"应用 {name} 已安装")
     versions = app.get("versions") or []
@@ -311,11 +411,11 @@ def install(profile: str, name: str, opts: InstallOptions) -> None:
     body = {
         "appDetailId": detail["id"],
         "params": params,
-        "name": name,
+        "name": install_name,
         "taskID": task_id,
         "advanced": True,
         "allowPort": True,
-        "pullImage": True,
+        "pullImage": opts.pull_image,
         "cpuQuota": 0,
         "memoryLimit": 0,
         "memoryUnit": "M",
@@ -328,6 +428,8 @@ def install(profile: str, name: str, opts: InstallOptions) -> None:
 
     print(f"开始安装 {name} (版本 {version}) ...")
     resp = _parse_json(client.post_json("api/v2/apps/install", body), "解析安装响应失败")
+    if resp.get("code") != 200 and "名称已存在" in str(resp.get("message", "")):
+        raise CliError(f"应用 {name} 已安装(名称已存在)")
     check_code(resp)
 
     print(f"安装任务已提交, taskID={task_id}")
@@ -337,7 +439,28 @@ def install(profile: str, name: str, opts: InstallOptions) -> None:
         print('可通过面板"已安装应用"页面查看安装进度')
 
 
-def wait_task(client: PanelClient, task_id: str, timeout: int) -> None:
+def sync_local(profile: str, opts: SyncLocalOptions) -> None:
+    """触发面板同步本地应用商店(离线安装包场景)。
+
+    对应 `POST /api/v2/apps/sync/local`:面板扫描 `resource/apps/local/` 注册本地
+    应用(来源 resource=local;key 为应用自身规范 key,如 `mysql` / `redis` / `openresty`,
+    历史版本可能带 `local` 前缀,CLI 两种写法均兼容)。
+    """
+    client, _ = _client_for(profile)
+    task_id = new_uuid()
+    resp = _parse_json(
+        client.post_json("api/v2/apps/sync/local", {"taskID": task_id}),
+        "同步本地应用失败",
+    )
+    check_code(resp)
+    print("已触发本地应用同步")
+    if opts.wait:
+        wait_task(client, task_id, opts.timeout, action="同步")
+    else:
+        print("可通过 apps list 查看本地应用(如 mysql / redis / openresty)")
+
+
+def wait_task(client: PanelClient, task_id: str, timeout: int, action: str = "安装") -> None:
     timeout = timeout if timeout > 0 else 600
     deadline = time.monotonic() + timeout
     while True:
@@ -355,17 +478,17 @@ def wait_task(client: PanelClient, task_id: str, timeout: int) -> None:
             status = task.get("status", "")
             step = task.get("currentStep", "")
             if status == "Success":
-                print("\n安装成功!")
+                print(f"\n{action}成功!")
                 return
             if status in ("Failed", "Error"):
                 err = task.get("errorMsg") or "未知错误"
-                print(f"\n安装失败: {err}")
-                raise CliError(f"安装失败: {err}")
-            print(f"\r安装进行中... 状态: {status} {step:<40}", end="")
+                print(f"\n{action}失败: {err}")
+                raise CliError(f"{action}失败: {err}")
+            print(f"\r{action}进行中... 状态: {status} {step:<40}", end="")
             sys.stdout.flush()
         if time.monotonic() >= deadline:
-            print(f"\n等待安装超时(超过 {timeout} 秒),请到面板查看安装进度")
-            raise CliError("等待安装超时")
+            print(f"\n等待{action}超时(超过 {timeout} 秒),请到面板查看进度")
+            raise CliError(f"等待{action}超时")
         time.sleep(2)
 
 
@@ -414,7 +537,8 @@ def password(profile: str, name: str, value: str) -> None:
         raise CliError("密码不能为空")
     client, _ = _client_for(profile)
     installed = find_installed(client, name)
-    app_key = installed.get("appKey", "")
+    app_key = normalize_app_key(installed.get("appKey", ""))
+    install_name = installed.get("name") or name
 
     encoded = base64.b64encode(value.encode("utf-8")).decode("ascii")
     if app_key in ("mysql", "mariadb"):
@@ -422,7 +546,7 @@ def password(profile: str, name: str, value: str) -> None:
             "id": 0,
             "from": "local",
             "type": app_key,
-            "database": name,
+            "database": install_name,
             "value": encoded,
         }
         resp = _parse_json(
@@ -434,7 +558,7 @@ def password(profile: str, name: str, value: str) -> None:
     elif app_key == "redis":
         resp = _parse_json(
             client.post_json(
-                "api/v2/databases/redis/password", {"database": name, "value": encoded}
+                "api/v2/databases/redis/password", {"database": install_name, "value": encoded}
             ),
             "解析修改密码响应失败",
         )

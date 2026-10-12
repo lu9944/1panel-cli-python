@@ -1,0 +1,1060 @@
+package service
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"path"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/1Panel-dev/1Panel/agent/app/dto"
+	"github.com/1Panel-dev/1Panel/agent/app/dto/request"
+	"github.com/1Panel-dev/1Panel/agent/app/dto/response"
+	"github.com/1Panel-dev/1Panel/agent/app/model"
+	"github.com/1Panel-dev/1Panel/agent/app/repo"
+	"github.com/1Panel-dev/1Panel/agent/app/task"
+	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"github.com/1Panel-dev/1Panel/agent/constant"
+	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/i18n"
+	"github.com/1Panel-dev/1Panel/agent/utils/appicon"
+	"github.com/1Panel-dev/1Panel/agent/utils/common"
+	"github.com/1Panel-dev/1Panel/agent/utils/docker"
+	"github.com/1Panel-dev/1Panel/agent/utils/files"
+	"github.com/1Panel-dev/1Panel/agent/utils/req_helper"
+	"github.com/1Panel-dev/1Panel/agent/utils/xpack"
+	"gopkg.in/yaml.v3"
+)
+
+var (
+	appStoreSyncMu  sync.Mutex
+	appStoreSyncing bool
+)
+
+type AppService struct {
+}
+
+type IAppService interface {
+	PageApp(ctx *gin.Context, req request.AppSearch) (*response.AppRes, error)
+	GetAppTags(ctx *gin.Context) ([]response.TagDTO, error)
+	GetApp(ctx *gin.Context, key string) (*response.AppDTO, error)
+	GetAppDetail(appId uint, version, appType string) (response.AppDetailDTO, error)
+	Install(req request.AppInstallCreate, executeScript bool) (*model.AppInstall, error)
+	SyncAppListFromRemote(taskID string) error
+	GetAppUpdate() (*response.AppUpdateRes, error)
+	GetAppDetailByID(id uint) (*response.AppDetailDTO, error)
+	SyncAppListFromLocal(taskID string)
+	GetAppIcon(key string) ([]byte, string, string, error)
+	GetAppDetailByKey(appKey, version string) (response.AppDetailSimpleDTO, error)
+}
+
+type appInstallHooks struct {
+	AfterCopyData func(appInstall *model.AppInstall) error
+}
+
+func NewIAppService() IAppService {
+	return &AppService{}
+}
+
+func (a AppService) PageApp(ctx *gin.Context, req request.AppSearch) (*response.AppRes, error) {
+	var opts []repo.DBOption
+	opts = append(opts, appRepo.OrderByRecommend())
+	if req.Name != "" {
+		opts = append(opts, appRepo.WithByLikeName(strings.TrimSpace(req.Name)))
+	}
+	if req.Type != "" {
+		opts = append(opts, appRepo.WithType(req.Type))
+	}
+	if req.Recommend {
+		opts = append(opts, appRepo.GetRecommend())
+	}
+	if req.Resource != "" && req.Resource != "all" {
+		opts = append(opts, appRepo.WithResource(req.Resource))
+	}
+
+	if req.ShowCurrentArch {
+		info, err := NewIDashboardService().LoadOsInfo()
+		if err != nil {
+			return nil, err
+		}
+		kernelArch := info.KernelArch
+		if kernelArch == "aarch64" {
+			kernelArch = "arm64"
+		}
+		opts = append(opts, appRepo.WithArch(kernelArch))
+	}
+	if len(req.Tags) != 0 {
+		tags, err := tagRepo.GetByKeys(req.Tags)
+		if err != nil {
+			return nil, err
+		}
+		var tagIds []uint
+		for _, t := range tags {
+			tagIds = append(tagIds, t.ID)
+		}
+		appTags, err := appTagRepo.GetByTagIds(tagIds)
+		if err != nil {
+			return nil, err
+		}
+		var appIds []uint
+		for _, t := range appTags {
+			appIds = append(appIds, t.AppId)
+		}
+		opts = append(opts, repo.WithByIDs(appIds))
+	}
+	res := &response.AppRes{}
+
+	total, apps, err := appRepo.Page(req.Page, req.PageSize, opts...)
+	if err != nil {
+		return nil, err
+	}
+	appDTOs := make([]*response.AppItem, 0)
+	info := &dto.SettingInfo{}
+	if req.Type == "php" {
+		info, _ = NewISettingService().GetSettingInfo()
+	}
+	lang := strings.ToLower(common.GetLang(ctx))
+	for _, ap := range apps {
+		if req.Type == "php" {
+			if !global.CONF.Base.IsOffline && (ap.RequiredPanelVersion == 0 || !common.CompareAppVersion(common.GetSystemVersion(info.SystemVersion), fmt.Sprintf("%f", ap.RequiredPanelVersion))) {
+				continue
+			}
+		}
+		appDTO := &response.AppItem{
+			ID:                  ap.ID,
+			Name:                ap.Name,
+			Key:                 ap.Key,
+			Limit:               ap.Limit,
+			GpuSupport:          ap.GpuSupport,
+			Recommend:           ap.Recommend,
+			Description:         ap.GetDescription(ctx),
+			Type:                ap.Type,
+			BatchInstallSupport: ap.BatchInstallSupport,
+		}
+		appDTOs = append(appDTOs, appDTO)
+		tags, err := getAppTags(ap.ID, lang)
+		if err != nil {
+			continue
+		}
+		for _, tag := range tags {
+			appDTO.Tags = append(appDTO.Tags, tag.Name)
+		}
+		if ap.Type == constant.RuntimePHP || ap.Type == constant.RuntimeGo || ap.Type == constant.RuntimeNode || ap.Type == constant.RuntimePython || ap.Type == constant.RuntimeJava || ap.Type == constant.RuntimeDotNet {
+			details, _ := appDetailRepo.GetBy(appDetailRepo.WithAppId(ap.ID))
+			var ids []uint
+			if len(details) == 0 {
+				continue
+			}
+			for _, d := range details {
+				ids = append(ids, d.ID)
+			}
+			runtimes, _ := runtimeRepo.List(runtimeRepo.WithDetailIdsIn(ids))
+			appDTO.Installed = len(runtimes) > 0
+		} else {
+			installs, _ := appInstallRepo.ListBy(context.Background(), appInstallRepo.WithAppId(ap.ID))
+			appDTO.Installed = len(installs) > 0
+		}
+	}
+	res.Items = appDTOs
+	res.Total = total
+
+	return res, nil
+}
+
+func (a AppService) GetAppTags(ctx *gin.Context) ([]response.TagDTO, error) {
+	tags, err := tagRepo.All()
+	if err != nil {
+		return nil, err
+	}
+	var res []response.TagDTO
+	lang := strings.ToLower(common.GetLang(ctx))
+	for _, tag := range tags {
+		tagDTO := response.TagDTO{
+			ID:  tag.ID,
+			Key: tag.Key,
+		}
+		var translations = make(map[string]string)
+		_ = json.Unmarshal([]byte(tag.Translations), &translations)
+		if name, ok := translations[lang]; ok {
+			tagDTO.Name = name
+		}
+		res = append(res, tagDTO)
+	}
+	return res, nil
+}
+
+func (a AppService) GetApp(ctx *gin.Context, key string) (*response.AppDTO, error) {
+	var appDTO response.AppDTO
+	if key == "postgres" {
+		key = "postgresql"
+	}
+	app, err := appRepo.GetFirst(appRepo.WithKey(key))
+	if err != nil {
+		return nil, err
+	}
+	appDTO.App = app
+	appDTO.App.Description = app.GetDescription(ctx)
+	details, err := appDetailRepo.GetBy(appDetailRepo.WithAppId(app.ID))
+	if err != nil {
+		return nil, err
+	}
+	appDTO.Versions = getAppVersions(key, details)
+	tags, err := getAppTags(app.ID, strings.ToLower(common.GetLang(ctx)))
+	if err != nil {
+		return nil, err
+	}
+	appDTO.Tags = tags
+	return &appDTO, nil
+}
+
+func (a AppService) GetAppDetailByKey(appKey, version string) (response.AppDetailSimpleDTO, error) {
+	var appDetailDTO response.AppDetailSimpleDTO
+	app, err := appRepo.GetFirst(appRepo.WithKey(appKey))
+	if err != nil {
+		return appDetailDTO, err
+	}
+	if err = checkVllmVersionAccess(app.Key, version); err != nil {
+		return appDetailDTO, err
+	}
+	appDetail, err := appDetailRepo.GetFirst(appDetailRepo.WithAppId(app.ID), appDetailRepo.WithVersion(version))
+	if err != nil {
+		return appDetailDTO, err
+	}
+	appDetailDTO.ID = appDetail.ID
+	return appDetailDTO, nil
+}
+
+func (a AppService) GetAppDetail(appID uint, version, appType string) (response.AppDetailDTO, error) {
+	var (
+		appDetailDTO response.AppDetailDTO
+		opts         []repo.DBOption
+	)
+	opts = append(opts, appDetailRepo.WithAppId(appID), appDetailRepo.WithVersion(version))
+	detail, err := appDetailRepo.GetFirst(opts...)
+	if err != nil {
+		return appDetailDTO, err
+	}
+	app, err := appRepo.GetFirst(repo.WithByID(detail.AppId))
+	if err != nil {
+		return appDetailDTO, err
+	}
+	if err = checkVllmVersionAccess(app.Key, detail.Version); err != nil {
+		return appDetailDTO, err
+	}
+	appDetailDTO.AppDetail = detail
+	appDetailDTO.Enable = true
+
+	if appType == "runtime" {
+		fileOp := files.NewFileOp()
+
+		versionPath := filepath.Join(app.GetAppResourcePath(), detail.Version)
+		if !fileOp.Stat(versionPath) || detail.Update {
+			if err = downloadApp(app, detail, nil, nil); err != nil && !fileOp.Stat(versionPath) {
+				return appDetailDTO, err
+			}
+		}
+		switch app.Type {
+		case constant.RuntimePHP:
+			paramsPath := filepath.Join(versionPath, "data.yml")
+			if !fileOp.Stat(paramsPath) {
+				return appDetailDTO, buserr.WithDetail("ErrFileNotExist", paramsPath, nil)
+			}
+			param, err := fileOp.GetContent(paramsPath)
+			if err != nil {
+				return appDetailDTO, err
+			}
+			paramMap := make(map[string]interface{})
+			if err = yaml.Unmarshal(param, &paramMap); err != nil {
+				return appDetailDTO, err
+			}
+			appDetailDTO.Params = paramMap["additionalProperties"]
+			composePath := filepath.Join(versionPath, "docker-compose.yml")
+			if !fileOp.Stat(composePath) {
+				return appDetailDTO, buserr.WithDetail("ErrFileNotExist", composePath, nil)
+			}
+			compose, err := fileOp.GetContent(composePath)
+			if err != nil {
+				return appDetailDTO, err
+			}
+			composeMap := make(map[string]interface{})
+			if err := yaml.Unmarshal(compose, &composeMap); err != nil {
+				return appDetailDTO, err
+			}
+			if service, ok := composeMap["services"]; ok {
+				servicesMap := service.(map[string]interface{})
+				for k := range servicesMap {
+					appDetailDTO.Image = k
+				}
+			}
+		}
+	} else {
+		paramMap := make(map[string]interface{})
+		if err := json.Unmarshal([]byte(detail.Params), &paramMap); err != nil {
+			return appDetailDTO, err
+		}
+		appDetailDTO.Params = paramMap
+	}
+
+	if appDetailDTO.DockerCompose == "" {
+		filename := filepath.Base(appDetailDTO.DownloadUrl)
+		dockerComposeUrl := fmt.Sprintf("%s%s", strings.TrimSuffix(appDetailDTO.DownloadUrl, filename), "docker-compose.yml")
+		statusCode, composeRes, err := req_helper.HandleRequest(dockerComposeUrl, http.MethodGet, constant.TimeOut20s)
+		if statusCode == http.StatusNotFound {
+			return appDetailDTO, buserr.New("ErrAppVersionUnavailable")
+		}
+		if err != nil {
+			return appDetailDTO, buserr.WithDetail("ErrGetCompose", err.Error(), err)
+		}
+		if statusCode > 200 {
+			return appDetailDTO, buserr.WithDetail("ErrGetCompose", string(composeRes), err)
+		}
+		detail.DockerCompose = string(composeRes)
+		_ = appDetailRepo.Update(context.Background(), detail)
+		appDetailDTO.DockerCompose = string(composeRes)
+	}
+
+	appDetailDTO.HostMode = isHostModel(appDetailDTO.DockerCompose)
+
+	if err := checkLimit(app); err != nil {
+		appDetailDTO.Enable = false
+	}
+	appDetailDTO.Architectures = app.Architectures
+	appDetailDTO.MemoryRequired = app.MemoryRequired
+	appDetailDTO.GpuSupport = app.GpuSupport
+	return appDetailDTO, nil
+}
+func (a AppService) GetAppDetailByID(id uint) (*response.AppDetailDTO, error) {
+	res := &response.AppDetailDTO{}
+	appDetail, err := appDetailRepo.GetFirst(repo.WithByID(id))
+	if err != nil {
+		return nil, err
+	}
+	res.AppDetail = appDetail
+	paramMap := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(appDetail.Params), &paramMap); err != nil {
+		return nil, err
+	}
+	res.Params = paramMap
+	res.HostMode = isHostModel(appDetail.DockerCompose)
+	return res, nil
+}
+
+func (a AppService) Install(req request.AppInstallCreate, executeScript bool) (appInstall *model.AppInstall, err error) {
+	return a.installWithHooks(req, executeScript, nil)
+}
+
+func (a AppService) installWithHooks(req request.AppInstallCreate, executeScript bool, hooks *appInstallHooks) (appInstall *model.AppInstall, err error) {
+	if err = docker.CreateDefaultDockerNetwork(); err != nil {
+		err = buserr.WithDetail("Err1PanelNetworkFailed", err.Error(), nil)
+		return
+	}
+	if list, _ := appInstallRepo.ListBy(context.Background(), repo.WithByLowerName(req.Name)); len(list) > 0 {
+		err = buserr.New("ErrAppNameExist")
+		return
+	}
+	var (
+		httpPort  int
+		httpsPort int
+		appDetail model.AppDetail
+		app       model.App
+	)
+	appDetail, err = appDetailRepo.GetFirst(repo.WithByID(req.AppDetailId))
+	if err != nil {
+		return
+	}
+	app, err = appRepo.GetFirst(repo.WithByID(appDetail.AppId))
+	if err != nil {
+		return
+	}
+	if err = checkVllmVersionAccess(app.Key, appDetail.Version); err != nil {
+		return
+	}
+	if DatabaseKeys[app.Key] > 0 {
+		if existDatabases, _ := databaseRepo.GetList(repo.WithByName(req.Name)); len(existDatabases) > 0 {
+			err = buserr.New("ErrRemoteExist")
+			return
+		}
+	}
+	if hostName, ok := req.Params["PANEL_DB_HOST"]; ok {
+		database, _ := databaseRepo.Get(repo.WithByName(hostName.(string)))
+		if database.AppInstallID > 0 {
+			databaseInstall, _ := appInstallRepo.GetFirst(repo.WithByID(database.AppInstallID))
+			if databaseInstall.Status != constant.StatusRunning {
+				return nil, buserr.WithName("ErrAppIsDown", databaseInstall.Name)
+			}
+		}
+	}
+	for key := range req.Params {
+		if !strings.Contains(key, "PANEL_APP_PORT") {
+			continue
+		}
+		var port int
+		port, err = checkPort(key, req.Params)
+		if err != nil {
+			return
+		}
+		if key == "PANEL_APP_PORT_HTTP" {
+			httpPort = port
+		}
+		if key == "PANEL_APP_PORT_HTTPS" {
+			httpsPort = port
+		}
+	}
+
+	if err = checkRequiredAndLimit(app); err != nil {
+		return
+	}
+
+	appInstall = &model.AppInstall{
+		Name:        req.Name,
+		AppId:       appDetail.AppId,
+		AppDetailId: appDetail.ID,
+		Version:     appDetail.Version,
+		Status:      constant.StatusInstalling,
+		HttpPort:    httpPort,
+		HttpsPort:   httpsPort,
+		App:         app,
+	}
+	composeMap := make(map[string]interface{})
+	var composeRes []byte
+	if req.EditCompose {
+		if err = yaml.Unmarshal([]byte(req.DockerCompose), &composeMap); err != nil {
+			return
+		}
+	} else {
+		if appDetail.DockerCompose == "" {
+			dockerComposeUrl := fmt.Sprintf("%s/%s/1panel/%s/%s/docker-compose.yml", global.AppRepoURL(), global.CONF.Base.Mode, app.Key, appDetail.Version)
+			var statusCode int
+			statusCode, composeRes, err = req_helper.HandleRequest(dockerComposeUrl, http.MethodGet, constant.TimeOut20s)
+			if statusCode == http.StatusNotFound {
+				err = buserr.New("ErrAppVersionUnavailable")
+				return
+			}
+			if err != nil {
+				return
+			}
+			appDetail.DockerCompose = string(composeRes)
+			_ = appDetailRepo.Update(context.Background(), appDetail)
+		}
+		if err = yaml.Unmarshal([]byte(appDetail.DockerCompose), &composeMap); err != nil {
+			return
+		}
+	}
+
+	value, ok := composeMap["services"]
+	if !ok || value == nil {
+		err = buserr.New("ErrFileParse")
+		return
+	}
+	servicesMap := value.(map[string]interface{})
+	containerName := constant.ContainerPrefix + app.Key + "-" + common.RandStr(4)
+	if req.Advanced && req.ContainerName != "" {
+		containerName = req.ContainerName
+		appInstalls, _ := appInstallRepo.ListBy(context.Background(), appInstallRepo.WithContainerName(containerName))
+		if len(appInstalls) > 0 {
+			err = buserr.New("ErrContainerName")
+			return
+		}
+		containerExist := false
+		containerExist, err = checkContainerNameIsExist(req.ContainerName, appInstall.GetPath())
+		if err != nil {
+			return
+		}
+		if containerExist {
+			err = buserr.New("ErrContainerName")
+			return
+		}
+	}
+	req.Params[constant.ContainerName] = containerName
+	appInstall.ContainerName = containerName
+
+	index := 0
+	serviceName := ""
+	for k := range servicesMap {
+		serviceName = k
+		if index > 0 {
+			continue
+		}
+		index++
+	}
+	newServiceName := strings.ToLower(appInstall.Name)
+	if app.Limit == 0 && newServiceName != serviceName && len(servicesMap) == 1 && !req.KeepServiceName {
+		servicesMap[newServiceName] = servicesMap[serviceName]
+		delete(servicesMap, serviceName)
+		serviceName = newServiceName
+	}
+	appInstall.ServiceName = serviceName
+
+	if !req.SkipComposeCommonConfig {
+		if err = addDockerComposeCommonParam(composeMap, appInstall.ServiceName, req.AppContainerConfig, req.Params); err != nil {
+			return
+		}
+	}
+	var (
+		composeByte []byte
+		paramByte   []byte
+	)
+
+	composeByte, err = yaml.Marshal(composeMap)
+	if err != nil {
+		return
+	}
+	appInstall.DockerCompose = string(composeByte)
+
+	if hostName, ok := req.Params["PANEL_DB_HOST"]; ok {
+		database, _ := databaseRepo.Get(repo.WithByName(hostName.(string)))
+		if !reflect.DeepEqual(database, model.Database{}) {
+			req.Params["PANEL_DB_HOST"] = database.Address
+			req.Params["PANEL_DB_PORT"] = database.Port
+			req.Params["PANEL_DB_HOST_NAME"] = hostName
+			req.Params["DATABASE_NAME"] = database.Name
+		}
+	}
+	if app.Key == "openresty" {
+		req.Params["CONTAINER_PACKAGE_URL"] = "http://archive.ubuntu.com/ubuntu/"
+		req.Params["RESTY_ADD_PACKAGE_BUILDDEPS"] = ""
+		req.Params["RESTY_CONFIG_OPTIONS_MORE"] = ""
+	}
+	if app.Key == "openresty" && (app.Resource == "remote" || app.Resource == "custom") && common.CompareVersion(appDetail.Version, "1.27") {
+		if dir, ok := req.Params["WEBSITE_DIR"]; ok {
+			siteDir := dir.(string)
+			if siteDir == "" || !strings.HasPrefix(siteDir, "/") {
+				siteDir = path.Join(global.Dir.DataDir, dir.(string))
+			}
+			req.Params["WEBSITE_DIR"] = siteDir
+		}
+	}
+	paramByte, err = json.Marshal(req.Params)
+	if err != nil {
+		return
+	}
+	appInstall.Env = string(paramByte)
+
+	var maxSort int
+	global.DB.Model(&model.AppInstall{}).Where("favorite = ?", false).Select("COALESCE(MAX(sort_order),0)").Scan(&maxSort)
+	appInstall.SortOrder = maxSort + 1
+
+	if err = appInstallRepo.Create(context.Background(), appInstall); err != nil {
+		return
+	}
+
+	installTask, err := task.NewTaskWithOps(appInstall.Name, task.TaskInstall, task.TaskScopeApp, req.TaskID, appInstall.ID)
+	if err != nil {
+		return
+	}
+
+	if err = createLink(context.Background(), installTask, app, appInstall, req.Params); err != nil {
+		return
+	}
+
+	installApp := func(t *task.Task) error {
+		if err = copyData(t, app, appDetail, appInstall, req); err != nil {
+			return err
+		}
+		if hooks != nil && hooks.AfterCopyData != nil {
+			if err = hooks.AfterCopyData(appInstall); err != nil {
+				return err
+			}
+		}
+		if executeScript || req.UseLifecycleScripts {
+			if err = runScript(t, appInstall, "init"); err != nil {
+				return err
+			}
+		}
+		if app.Key == "openresty" {
+			if err = handleSiteDir(app, appDetail, req, t); err != nil {
+				return err
+			}
+			if err = handleOpenrestyFile(appInstall); err != nil {
+				return err
+			}
+		}
+		if err = upApp(t, appInstall, req.PullImage, req.UseLifecycleScripts); err != nil {
+			return err
+		}
+		updateToolApp(appInstall)
+		return nil
+	}
+
+	handleAppStatus := func(t *task.Task) {
+		appInstall.Status = constant.StatusUpErr
+		appInstall.Message = installTask.Task.ErrorMsg
+		_ = appInstallRepo.Save(context.Background(), appInstall)
+	}
+
+	installTask.AddSubTaskWithOps(task.GetTaskName(appInstall.Name, task.TaskInstall, task.TaskScopeApp), installApp, handleAppStatus, 0, time.Hour)
+
+	go func() {
+		if taskErr := installTask.Execute(); taskErr != nil {
+			appInstall.Status = constant.StatusInstallErr
+			appInstall.Message = taskErr.Error()
+			if strings.Contains(taskErr.Error(), "Timeout") && strings.Contains(taskErr.Error(), "Pulling") {
+				appInstall.Message = buserr.New("PullImageTimeout").Error() + appInstall.Message
+			}
+			_ = appInstallRepo.Save(context.Background(), appInstall)
+		}
+	}()
+
+	return
+}
+
+func (a AppService) SyncAppListFromLocal(TaskID string) {
+	var (
+		err        error
+		dirEntries []os.DirEntry
+		localApps  []model.App
+	)
+
+	syncTask, err := task.NewTaskWithOps(i18n.GetMsgByKey("LocalApp"), task.TaskSync, task.TaskScopeAppStore, TaskID, 0)
+	if err != nil {
+		global.LOG.Errorf("Create sync task failed %v", err)
+		return
+	}
+
+	syncTask.AddSubTask(task.GetTaskName(i18n.GetMsgByKey("LocalApp"), task.TaskSync, task.TaskScopeAppStore), func(t *task.Task) (err error) {
+		fileOp := files.NewFileOp()
+		localAppDir := global.Dir.LocalAppResourceDir
+		if !fileOp.Stat(localAppDir) {
+			return nil
+		}
+		dirEntries, err = os.ReadDir(localAppDir)
+		if err != nil {
+			return
+		}
+		for _, dirEntry := range dirEntries {
+			if dirEntry.IsDir() {
+				appDir := filepath.Join(localAppDir, dirEntry.Name())
+				appDirEntries, err := os.ReadDir(appDir)
+				if err != nil {
+					t.Log(i18n.GetWithNameAndErr("ErrAppDirNull", dirEntry.Name(), err))
+					continue
+				}
+				app, err := handleLocalApp(appDir)
+				if err != nil {
+					t.Log(i18n.GetWithNameAndErr("LocalAppErr", dirEntry.Name(), err))
+					continue
+				}
+				var appDetails []model.AppDetail
+				for _, appDirEntry := range appDirEntries {
+					if appDirEntry.IsDir() {
+						appDetail := model.AppDetail{
+							Version: appDirEntry.Name(),
+							Status:  constant.AppNormal,
+						}
+						versionDir := filepath.Join(appDir, appDirEntry.Name())
+						if err = handleLocalAppDetail(versionDir, &appDetail); err != nil {
+							t.Log(i18n.GetMsgWithMap("LocalAppVersionErr", map[string]interface{}{"name": app.Name, "version": appDetail.Version, "err": err.Error()}))
+							continue
+						}
+						appDetails = append(appDetails, appDetail)
+					}
+				}
+				if len(appDetails) > 0 {
+					app.Details = appDetails
+					localApps = append(localApps, *app)
+				} else {
+					t.Log(i18n.GetWithName("LocalAppVersionNull", app.Name))
+				}
+			}
+		}
+
+		var (
+			newApps    []model.App
+			deleteApps []model.App
+			updateApps []model.App
+			oldAppIds  []uint
+
+			deleteAppIds     []uint
+			deleteAppDetails []model.AppDetail
+			newAppDetails    []model.AppDetail
+			updateDetails    []model.AppDetail
+
+			appTags []*model.AppTag
+		)
+
+		oldApps, _ := appRepo.GetBy(appRepo.WithResource(constant.AppResourceLocal))
+		apps := make(map[string]model.App, len(oldApps))
+		for _, old := range oldApps {
+			old.Status = constant.AppTakeDown
+			apps[old.Key] = old
+		}
+		for _, app := range localApps {
+			if oldApp, ok := apps[app.Key]; ok {
+				app.ID = oldApp.ID
+				appDetails := make(map[string]model.AppDetail, len(oldApp.Details))
+				for _, old := range oldApp.Details {
+					old.Status = constant.AppTakeDown
+					appDetails[old.Version] = old
+				}
+				for i, newDetail := range app.Details {
+					version := newDetail.Version
+					newDetail.Status = constant.AppNormal
+					newDetail.AppId = app.ID
+					oldDetail, exist := appDetails[version]
+					if exist {
+						newDetail.ID = oldDetail.ID
+						delete(appDetails, version)
+					}
+					app.Details[i] = newDetail
+				}
+				for _, v := range appDetails {
+					app.Details = append(app.Details, v)
+				}
+			}
+			app.TagsKey = append(app.TagsKey, constant.AppResourceLocal)
+			apps[app.Key] = app
+		}
+
+		for _, app := range apps {
+			if app.ID == 0 {
+				newApps = append(newApps, app)
+			} else {
+				oldAppIds = append(oldAppIds, app.ID)
+				if app.Status == constant.AppTakeDown {
+					installs, _ := appInstallRepo.ListBy(context.Background(), appInstallRepo.WithAppId(app.ID))
+					if len(installs) > 0 {
+						updateApps = append(updateApps, app)
+						continue
+					}
+					deleteAppIds = append(deleteAppIds, app.ID)
+					deleteApps = append(deleteApps, app)
+					deleteAppDetails = append(deleteAppDetails, app.Details...)
+				} else {
+					updateApps = append(updateApps, app)
+				}
+			}
+
+		}
+
+		tags, _ := tagRepo.All()
+		tagMap := make(map[string]uint, len(tags))
+		for _, tag := range tags {
+			tagMap[tag.Key] = tag.ID
+		}
+
+		tx, ctx := getTxAndContext()
+		defer tx.Rollback()
+		if len(newApps) > 0 {
+			if err = appRepo.BatchCreate(ctx, newApps); err != nil {
+				return
+			}
+		}
+		for _, update := range updateApps {
+			if err = appRepo.Save(ctx, &update); err != nil {
+				return
+			}
+		}
+		if len(deleteApps) > 0 {
+			if err = appRepo.BatchDelete(ctx, deleteApps); err != nil {
+				return
+			}
+			if err = appDetailRepo.DeleteByAppIds(ctx, deleteAppIds); err != nil {
+				return
+			}
+		}
+
+		if err = appTagRepo.DeleteByAppIds(ctx, oldAppIds); err != nil {
+			return
+		}
+		for _, newApp := range newApps {
+			if newApp.ID > 0 {
+				for _, detail := range newApp.Details {
+					detail.AppId = newApp.ID
+					newAppDetails = append(newAppDetails, detail)
+				}
+			}
+		}
+		for _, update := range updateApps {
+			for _, detail := range update.Details {
+				if detail.ID == 0 {
+					detail.AppId = update.ID
+					newAppDetails = append(newAppDetails, detail)
+				} else {
+					if detail.Status == constant.AppNormal {
+						updateDetails = append(updateDetails, detail)
+					} else {
+						deleteAppDetails = append(deleteAppDetails, detail)
+					}
+				}
+			}
+		}
+
+		allApps := append(newApps, updateApps...)
+		for _, app := range allApps {
+			for _, t := range app.TagsKey {
+				tagId, ok := tagMap[t]
+				if ok {
+					appTags = append(appTags, &model.AppTag{
+						AppId: app.ID,
+						TagId: tagId,
+					})
+				}
+			}
+		}
+
+		if len(newAppDetails) > 0 {
+			if err = appDetailRepo.BatchCreate(ctx, newAppDetails); err != nil {
+				return
+			}
+		}
+
+		for _, updateAppDetail := range updateDetails {
+			if err = appDetailRepo.Update(ctx, updateAppDetail); err != nil {
+				return
+			}
+		}
+
+		if len(deleteAppDetails) > 0 {
+			if err = appDetailRepo.BatchDelete(ctx, deleteAppDetails); err != nil {
+				return
+			}
+		}
+
+		if len(oldAppIds) > 0 {
+			if err = appTagRepo.DeleteByAppIds(ctx, oldAppIds); err != nil {
+				return
+			}
+		}
+
+		if len(appTags) > 0 {
+			if err = appTagRepo.BatchCreate(ctx, appTags); err != nil {
+				return
+			}
+		}
+		tx.Commit()
+		global.LOG.Infof("Synchronization of local applications completed")
+		return nil
+	}, nil)
+	go func() {
+		_ = syncTask.Execute()
+	}()
+}
+
+func (a AppService) GetAppUpdate() (*response.AppUpdateRes, error) {
+	res := &response.AppUpdateRes{
+		CanUpdate: false,
+	}
+	mysql, _ := appRepo.GetFirst(appRepo.WithKey("mysql"))
+	if !mysql.BatchInstallSupport {
+		res.CanUpdate = true
+		return res, nil
+	}
+
+	versionUrl := fmt.Sprintf("%s/%s/1panel.json.version.txt", global.AppRepoURL(), global.CONF.Base.Mode)
+	_, versionRes, err := req_helper.HandleRequest(versionUrl, http.MethodGet, constant.TimeOut20s)
+	if err != nil {
+		return nil, err
+	}
+	lastModifiedStr := string(versionRes)
+	lastModified, err := strconv.Atoi(lastModifiedStr)
+	if err != nil {
+		return nil, err
+	}
+	setting, err := NewISettingService().GetSettingInfo()
+	if err != nil {
+		return nil, err
+	}
+	if setting.AppStoreSyncStatus == constant.StatusSyncing {
+		res.IsSyncing = true
+		return res, nil
+	}
+
+	appStoreLastModified, _ := strconv.Atoi(setting.AppStoreLastModified)
+	res.AppStoreLastModified = appStoreLastModified
+	if setting.AppStoreLastModified == "" || lastModified != appStoreLastModified {
+		res.CanUpdate = true
+		return res, err
+	}
+	apps, _ := appRepo.GetBy(appRepo.WithResource(constant.AppResourceRemote))
+	for _, app := range apps {
+		if app.Icon == "" {
+			res.CanUpdate = true
+			return res, err
+		}
+		if appicon.IsIconFile(app.Icon) {
+			fileName, _ := appicon.ParseIconField(app.Icon)
+			if fileName == "" || !appicon.IconFileExists(fileName) {
+				res.CanUpdate = true
+				return res, err
+			}
+		}
+	}
+
+	list, err := getAppList()
+	if err != nil {
+		return res, err
+	}
+	if list.Extra.Version != "" && setting.SystemVersion != list.Extra.Version && !common.CompareVersion(setting.SystemVersion, list.Extra.Version) {
+		global.LOG.Errorf("The current version %s is too low to synchronize with the App Store. The minimum required version is %s", setting.SystemVersion, list.Extra.Version)
+		return nil, buserr.New("ErrVersionTooLow")
+	}
+	res.AppList = list
+	return res, nil
+}
+
+func getAppFromRepo(downloadPath string) error {
+	downloadUrl := downloadPath
+	global.LOG.Infof("[AppStore] download file from %s", downloadUrl)
+	fileOp := files.NewFileOp()
+	packagePath := filepath.Join(global.Dir.ResourceDir, filepath.Base(downloadUrl))
+	if err := files.DownloadFileWithProxy(downloadUrl, packagePath); err != nil {
+		return err
+	}
+
+	if err := fileOp.Decompress(context.Background(), packagePath, global.Dir.ResourceDir, files.SdkZip, ""); err != nil {
+		return err
+	}
+	defer func() {
+		_ = fileOp.DeleteFile(packagePath)
+	}()
+	return nil
+}
+
+func getAppList() (*dto.AppList, error) {
+	list := &dto.AppList{}
+	if err := getAppFromRepo(fmt.Sprintf("%s/%s/1panel.json.zip", global.AppRepoURL(), global.CONF.Base.Mode)); err != nil {
+		return nil, err
+	}
+	listFile := filepath.Join(global.Dir.ResourceDir, "1panel.json")
+	file, err := os.Open(listFile)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	if err = json.NewDecoder(file).Decode(list); err != nil {
+		return nil, err
+	}
+
+	return list, nil
+}
+
+var InitTypes = map[string]struct{}{
+	"runtime": {},
+	"php":     {},
+	"node":    {},
+}
+
+func deleteCustomApp() {
+	installs, err := appInstallRepo.ListBy(context.Background())
+	if err != nil {
+		global.LOG.Errorf("[AppStore] deleteCustomApp: failed to list installs, skipping: %v", err)
+		return
+	}
+	var appIDS []uint
+	for _, install := range installs {
+		appIDS = append(appIDS, install.AppId)
+	}
+	var ops []repo.DBOption
+	if len(appIDS) > 0 {
+		ops = append(ops, repo.WithByIDNotIn(appIDS))
+	}
+	apps, err := appRepo.GetBy(ops...)
+	if err != nil {
+		global.LOG.Errorf("[AppStore] deleteCustomApp: failed to get apps, skipping: %v", err)
+		return
+	}
+	var deleteIDS []uint
+	for _, app := range apps {
+		if app.Resource == constant.AppResourceCustom {
+			deleteIDS = append(deleteIDS, app.ID)
+		}
+	}
+	if len(deleteIDS) == 0 {
+		return
+	}
+	if err = appRepo.DeleteByIDs(context.Background(), deleteIDS); err != nil {
+		global.LOG.Errorf("[AppStore] deleteCustomApp: failed to delete apps: %v", err)
+	}
+	if err = appDetailRepo.DeleteByAppIds(context.Background(), deleteIDS); err != nil {
+		global.LOG.Errorf("[AppStore] deleteCustomApp: failed to delete app details: %v", err)
+	}
+}
+
+func (a AppService) SyncAppListFromRemote(taskID string) (err error) {
+	if xpack.MultiNodeProvider.IsUseCustomApp() {
+		return nil
+	}
+
+	appStoreSyncMu.Lock()
+	global.LOG.Info("[AppStore] sync app from remote task create start")
+	if appStoreSyncing {
+		appStoreSyncMu.Unlock()
+		global.LOG.Info("[AppStore] sync already in progress, skipping")
+		return nil
+	}
+	appStoreSyncing = true
+	appStoreSyncMu.Unlock()
+
+	syncTask, err := task.NewTaskWithOps(i18n.GetMsgByKey("App"), task.TaskSync, task.TaskScopeAppStore, taskID, 0)
+	if err != nil {
+		appStoreSyncMu.Lock()
+		appStoreSyncing = false
+		appStoreSyncMu.Unlock()
+		return err
+	}
+
+	var sharedCtx *appSyncContext
+
+	syncTask.AddSubTask(task.GetTaskName(i18n.GetMsgByKey("App"), task.TaskSync, task.TaskScopeAppStore), a.createSyncAppStoreTask(&sharedCtx), nil)
+	syncTask.AddSubTask(i18n.GetMsgByKey("SyncAppDetail"), a.createSyncAppStoreMetaTask(&sharedCtx), nil)
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				global.LOG.Errorf("[AppStore] sync goroutine recovered from panic: %v", r)
+				if updateErr := NewISettingService().Update("AppStoreSyncStatus", constant.StatusError); updateErr != nil {
+					global.LOG.Warnf("[AppStore] failed to update sync status after panic: %v", updateErr)
+				}
+			}
+			appStoreSyncMu.Lock()
+			appStoreSyncing = false
+			appStoreSyncMu.Unlock()
+		}()
+		if err := syncTask.Execute(); err != nil {
+			if updateErr := NewISettingService().Update("AppStoreLastModified", "0"); updateErr != nil {
+				global.LOG.Warnf("[AppStore] failed to reset last modified: %v", updateErr)
+			}
+			if updateErr := NewISettingService().Update("AppStoreSyncStatus", constant.StatusError); updateErr != nil {
+				global.LOG.Warnf("[AppStore] failed to update sync status to error: %v", updateErr)
+			}
+			return
+		}
+	}()
+
+	global.LOG.Info("[AppStore] sync app from remote task create ok")
+	return nil
+}
+
+func (a AppService) GetAppIcon(key string) ([]byte, string, string, error) {
+	app, err := appRepo.GetFirst(appRepo.WithKey(key))
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	if appicon.IsIconFile(app.Icon) {
+		fileName, etag := appicon.ParseIconField(app.Icon)
+		iconBytes, err := appicon.ReadIconFile(fileName)
+		if err != nil {
+			global.LOG.Warnf("[AppIcon] read icon file failed key=%s, file=%s, err=%v", key, fileName, err)
+			return nil, "", "", nil
+		}
+		return iconBytes, fileName, etag, nil
+	}
+
+	iconBytes, err := base64.StdEncoding.DecodeString(app.Icon)
+	if err != nil {
+		global.LOG.Warnf("[AppIcon] decode base64 icon failed key=%s, err=%v", key, err)
+		return nil, "", "", nil
+	}
+	return iconBytes, "", "", nil
+}

@@ -1,0 +1,241 @@
+package docs
+
+import (
+	"encoding/json"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestGenerateXlog(t *testing.T) {
+	workDir := panelWorkDir(t)
+	fset := token.NewFileSet()
+
+	apiDirs := []string{
+		filepath.Join(workDir, "agent/app/api/v2"),
+		filepath.Join(workDir, "core/app/api/v2"),
+		filepath.Join(workDir, "agent/xpack/app/api/v2"),
+		filepath.Join(workDir, "core/xpack/app/api/v2"),
+		filepath.Join(workDir, "agent/enterprise/app/api/v2"),
+		filepath.Join(workDir, "core/enterprise/app/api/v2"),
+	}
+
+	xlogMap := make(map[string]operationJson)
+	for _, dir := range apiDirs {
+		entries, _ := os.ReadDir(dir)
+		for _, info := range entries {
+			if info.IsDir() {
+				continue
+			}
+			fileItem, err := parser.ParseFile(fset, filepath.Join(dir, info.Name()), nil, parser.ParseComments)
+			if err != nil {
+				continue
+			}
+			for _, decl := range fileItem.Decls {
+				switch d := decl.(type) {
+				case *ast.FuncDecl:
+					if d.Doc != nil {
+						routerContent := ""
+						logContent := ""
+						for _, comment := range d.Doc.List {
+							if strings.HasPrefix(comment.Text, "// @Router") {
+								routerContent = replaceStr(comment.Text, "// @Router", "[post]", "[get]")
+							}
+							if strings.HasPrefix(comment.Text, "// @x-panel-log") {
+								logContent = replaceStr(comment.Text, "// @x-panel-log")
+							}
+						}
+						if len(routerContent) != 0 && len(logContent) != 0 {
+							var item operationJson
+							if err := json.Unmarshal([]byte(logContent), &item); err != nil {
+								panic(fmt.Sprintf("json unmarshal failed, err: %v", err))
+							}
+							xlogMap[routerContent] = item
+						}
+					}
+				}
+			}
+		}
+	}
+
+	newJson, err := json.MarshalIndent(xlogMap, "", "\t")
+	if err != nil {
+		panic(fmt.Sprintf("json marshal for new file failed, err: %v", err))
+	}
+	if err := os.WriteFile("x-log.json", newJson, 0640); err != nil {
+		panic(fmt.Sprintf("write core x-log.json failed, err: %v", err))
+	}
+	if err := os.WriteFile(filepath.Join(workDir, "agent/cmd/server/docs/x-log.json"), newJson, 0640); err != nil {
+		panic(fmt.Sprintf("write agent x-log.json failed, err: %v", err))
+	}
+}
+
+func TestGenerateSwaggerDoc(t *testing.T) {
+	workDir := panelWorkDir(t)
+	swagBin := swagBin(t)
+
+	cmd1 := exec.Command(swagBin, "init", "-o", filepath.Join(workDir, "core/cmd/server/docs/docs_agent"), "-d", filepath.Join(workDir, "agent"), "-g", "../agent/cmd/server/main.go")
+	cmd1.Dir = workDir
+	std1, err := cmd1.CombinedOutput()
+	if err != nil {
+		fmt.Printf("generate swagger doc of agent failed, std1: %v, err: %v", string(std1), err)
+		return
+	}
+	cmd2 := exec.Command(swagBin, "init", "-o", filepath.Join(workDir, "core/cmd/server/docs/docs_core"), "-d", filepath.Join(workDir, "core"), "-g", "./cmd/server/main.go")
+	cmd2.Dir = workDir
+	std2, err := cmd2.CombinedOutput()
+	if err != nil {
+		fmt.Printf("generate swagger doc of core failed, std2: %v, err: %v", string(std2), err)
+		return
+	}
+
+	agentJson := filepath.Join(workDir, "core/cmd/server/docs/docs_agent/swagger.json")
+	agentFile, err := os.ReadFile(agentJson)
+	if err != nil {
+		fmt.Printf("read file docs_agent failed, err: %v", err)
+		return
+	}
+	var agentSwagger Swagger
+	if err := json.Unmarshal(agentFile, &agentSwagger); err != nil {
+		fmt.Printf("agent json unmarshal failed, err: %v", err)
+		return
+	}
+
+	coreJson := filepath.Join(workDir, "core/cmd/server/docs/docs_core/swagger.json")
+	coreFile, err := os.ReadFile(coreJson)
+	if err != nil {
+		fmt.Printf("read file docs_core failed, err: %v", err)
+		return
+	}
+	var coreSwagger Swagger
+	if err := json.Unmarshal(coreFile, &coreSwagger); err != nil {
+		fmt.Printf("core json unmarshal failed, err: %v", err)
+		return
+	}
+
+	newSwagger := Swagger{
+		Swagger:     agentSwagger.Swagger,
+		Info:        agentSwagger.Info,
+		Host:        agentSwagger.Host,
+		BasePath:    agentSwagger.BasePath,
+		Paths:       agentSwagger.Paths,
+		Definitions: agentSwagger.Definitions,
+	}
+
+	for key, val := range coreSwagger.Paths {
+		if _, ok := newSwagger.Paths[key]; !ok {
+			newSwagger.Paths[key] = val
+		}
+	}
+	for key, val := range coreSwagger.Definitions {
+		if _, ok := newSwagger.Definitions[key]; !ok {
+			newSwagger.Definitions[key] = val
+		}
+	}
+
+	newJson, err := json.MarshalIndent(newSwagger, "", "\t")
+	if err != nil {
+		fmt.Printf("json marshal for new file failed, err: %v", err)
+		return
+	}
+	if err := os.WriteFile("swagger.json", newJson, 0640); err != nil {
+		fmt.Printf("write new swagger.json failed, err: %v", err)
+		return
+	}
+	docTemplate := strings.ReplaceAll(loadDefaultDocs(), "const docTemplate = \"aa\"", fmt.Sprintf("const docTemplate = `%s`", string(newJson)))
+	if err := os.WriteFile(filepath.Join(workDir, "core/cmd/server/docs/docs.go"), []byte(docTemplate), 0640); err != nil {
+		fmt.Printf("write new docs.go failed, err: %v", err)
+		return
+	}
+
+	_ = os.RemoveAll(filepath.Join(workDir, "core/cmd/server/docs/docs_agent"))
+	_ = os.RemoveAll(filepath.Join(workDir, "core/cmd/server/docs/docs_core"))
+}
+
+func panelWorkDir(t *testing.T) string {
+	t.Helper()
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get current work dir failed: %v", err)
+	}
+	workDir, err := filepath.Abs(filepath.Join(wd, "../../../.."))
+	if err != nil {
+		t.Fatalf("resolve 1Panel work dir failed: %v", err)
+	}
+	return workDir
+}
+
+func swagBin(t *testing.T) string {
+	t.Helper()
+
+	swagBin, err := exec.LookPath("swag")
+	if err != nil {
+		t.Skip("swag is not installed or not in PATH")
+	}
+	return swagBin
+}
+
+type Swagger struct {
+	Swagger     string                 `json:"swagger"`
+	Info        interface{}            `json:"info"`
+	Host        string                 `json:"host"`
+	BasePath    string                 `json:"basePath"`
+	Paths       map[string]interface{} `json:"paths"`
+	Definitions map[string]interface{} `json:"definitions"`
+}
+
+func loadDefaultDocs() string {
+	return `package docs
+
+import "github.com/swaggo/swag"
+
+const docTemplate = "aa"
+
+var SwaggerInfo = &swag.Spec{
+	Version:          "2.0",
+	Host:             "localhost",
+	BasePath:         "/api/v2",
+	Schemes:          []string{},
+	Title:            "1Panel",
+	Description:      "Top-Rated Web-based Linux Server Management Tool",
+	InfoInstanceName: "swagger",
+	SwaggerTemplate:  docTemplate,
+	LeftDelim:        "{{",
+	RightDelim:       "}}",
+}
+
+func init() {
+	swag.Register(SwaggerInfo.InstanceName(), SwaggerInfo)
+}`
+}
+
+func replaceStr(val string, rep ...string) string {
+	for _, item := range rep {
+		val = strings.ReplaceAll(val, item, "")
+	}
+	val = strings.TrimSpace(val)
+	return val
+}
+
+type operationJson struct {
+	BodyKeys        []string       `json:"bodyKeys"`
+	ParamKeys       []string       `json:"paramKeys"`
+	BeforeFunctions []functionInfo `json:"beforeFunctions"`
+	FormatZH        string         `json:"formatZH"`
+	FormatEN        string         `json:"formatEN"`
+}
+type functionInfo struct {
+	InputColumn  string `json:"input_column"`
+	InputValue   string `json:"input_value"`
+	IsList       bool   `json:"isList"`
+	DB           string `json:"db"`
+	OutputColumn string `json:"output_column"`
+	OutputValue  string `json:"output_value"`
+}

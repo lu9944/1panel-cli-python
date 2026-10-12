@@ -8,7 +8,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
 
+from . import redact
 from .client import PanelClient
 from .errors import CliError
 from .session import delete_session, load_session, session_path
@@ -92,10 +94,26 @@ def normalize_api_path(path: str) -> str:
     return f"api/v2/{p}"
 
 
-def api_call(profile: str, method: str, path: str, body: str | None) -> None:
+def read_body_file(path: str) -> str:
+    """读取 --body-file:``-`` 表示从标准输入读取。"""
+    if path == "-":
+        return sys.stdin.read()
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise CliError(f"读取 --body-file 失败: {exc}") from exc
+
+
+def api_call(profile: str, method: str, path: str, body: str | None,
+             body_file: str | None = None) -> None:
     session = load_session(profile)
     client = PanelClient(session.panel_url, session.cookies, session.insecure)
     full = normalize_api_path(path)
+
+    if body and body_file:
+        raise CliError("--body 与 --body-file 只能二选一")
+    if body_file:
+        body = read_body_file(body_file)
 
     json_body = None
     if body and body.strip():
@@ -136,8 +154,10 @@ def api_call(profile: str, method: str, path: str, body: str | None) -> None:
 
     text = resp.text()
     try:
-        print(json.dumps(json.loads(text), ensure_ascii=False, indent=2))
+        payload = json.loads(text)
     except ValueError:
-        print(text)
+        print(redact.redact_text(text))
+    else:
+        print(json.dumps(redact.redact(payload), ensure_ascii=False, indent=2))
     if not resp.ok:
         raise CliError(f"{method} /{full} 返回 HTTP {resp.status}")

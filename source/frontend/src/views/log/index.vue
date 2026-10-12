@@ -1,0 +1,31 @@
+<template>
+    <div>
+        <RouterButton :buttons="buttons" />
+        <LayoutContent>
+            <RouterViewCache />
+        </LayoutContent>
+    </div>
+</template>
+
+<script lang="ts" setup>
+import i18n from '@/lang';
+
+const buttons = [
+    {
+        label: i18n.global.t('logs.panelLog'),
+        path: '/logs/operation',
+    },
+    {
+        label: i18n.global.t('logs.hostSystem'),
+        path: '/logs/host',
+    },
+    {
+        label: i18n.global.t('ssh.loginLogs'),
+        path: '/logs/ssh',
+    },
+    {
+        label: i18n.global.t('logs.websiteLog'),
+        path: '/logs/website',
+    },
+];
+</script>

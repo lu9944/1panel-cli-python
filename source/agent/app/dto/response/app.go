@@ -1,0 +1,190 @@
+package response
+
+import (
+	"time"
+
+	"github.com/1Panel-dev/1Panel/agent/app/dto"
+	"github.com/1Panel-dev/1Panel/agent/app/dto/request"
+
+	"github.com/1Panel-dev/1Panel/agent/app/model"
+)
+
+type AppRes struct {
+	Items []*AppItem `json:"items"`
+	Total int64      `json:"total"`
+}
+
+type AppUpdateRes struct {
+	CanUpdate            bool         `json:"canUpdate"`
+	IsSyncing            bool         `json:"isSyncing"`
+	AppStoreLastModified int          `json:"appStoreLastModified"`
+	AppList              *dto.AppList `json:"appList"`
+}
+
+type AppDTO struct {
+	model.App
+	Installed bool     `json:"installed"`
+	Versions  []string `json:"versions"`
+	Tags      []TagDTO `json:"tags"`
+}
+
+type AppItem struct {
+	Name                string   `json:"name"`
+	Key                 string   `json:"key"`
+	ID                  uint     `json:"id"`
+	Description         string   `json:"description"`
+	Status              string   `json:"status"`
+	Installed           bool     `json:"installed"`
+	Limit               int      `json:"limit"`
+	Tags                []string `json:"tags"`
+	GpuSupport          bool     `json:"gpuSupport"`
+	Recommend           int      `json:"recommend"`
+	Type                string   `json:"type"`
+	BatchInstallSupport bool     `json:"batchInstallSupport"`
+}
+
+type TagDTO struct {
+	ID   uint   `json:"id"`
+	Key  string `json:"key"`
+	Name string `json:"name"`
+}
+
+type AppInstalledCheck struct {
+	IsExist       bool      `json:"isExist"`
+	Name          string    `json:"name"`
+	App           string    `json:"app"`
+	Version       string    `json:"version"`
+	Status        string    `json:"status"`
+	CreatedAt     time.Time `json:"createdAt"`
+	LastBackupAt  string    `json:"lastBackupAt"`
+	AppInstallID  uint      `json:"appInstallId"`
+	ContainerName string    `json:"containerName"`
+	InstallPath   string    `json:"installPath"`
+	HttpPort      int       `json:"httpPort"`
+	HttpsPort     int       `json:"httpsPort"`
+	WebsiteDir    string    `json:"websiteDir"`
+}
+
+type AppDetailDTO struct {
+	model.AppDetail
+	Enable         bool        `json:"enable"`
+	Params         interface{} `json:"params"`
+	Image          string      `json:"image"`
+	HostMode       bool        `json:"hostMode"`
+	Architectures  string      `json:"architectures"`
+	MemoryRequired int         `json:"memoryRequired"`
+	GpuSupport     bool        `json:"gpuSupport"`
+}
+
+type AppDetailSimpleDTO struct {
+	ID uint `json:"id"`
+}
+
+type IgnoredApp struct {
+	Icon     string `json:"icon"`
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	DetailID uint   `json:"detailID"`
+}
+
+type AppInstalledDTO struct {
+	model.AppInstall
+	Total     int    `json:"total"`
+	Ready     int    `json:"ready"`
+	AppName   string `json:"appName"`
+	Icon      string `json:"icon"`
+	CanUpdate bool   `json:"canUpdate"`
+	Path      string `json:"path"`
+}
+
+type AppDetail struct {
+	Website  string `json:"website"`
+	Document string `json:"document"`
+	Github   string `json:"github"`
+}
+
+type AppInstallDTO struct {
+	ID            uint                   `json:"id"`
+	Name          string                 `json:"name"`
+	AppID         uint                   `json:"appID"`
+	AppDetailID   uint                   `json:"appDetailID"`
+	Version       string                 `json:"version"`
+	Status        string                 `json:"status"`
+	Message       string                 `json:"message"`
+	HttpPort      int                    `json:"httpPort"`
+	HttpsPort     int                    `json:"httpsPort"`
+	Path          string                 `json:"path"`
+	CanUpdate     bool                   `json:"canUpdate"`
+	Icon          string                 `json:"icon"`
+	AppName       string                 `json:"appName"`
+	Ready         int                    `json:"ready"`
+	Total         int                    `json:"total"`
+	AppKey        string                 `json:"appKey"`
+	AppType       string                 `json:"appType"`
+	AppStatus     string                 `json:"appStatus"`
+	DockerCompose string                 `json:"dockerCompose"`
+	WebUI         string                 `json:"webUI"`
+	CreatedAt     time.Time              `json:"createdAt"`
+	Favorite      bool                   `json:"favorite"`
+	SortOrder     int                    `json:"sortOrder"`
+	App           AppDetail              `json:"app"`
+	Container     string                 `json:"container"`
+	IsEdit        bool                   `json:"isEdit"`
+	LinkDB        bool                   `json:"linkDB"`
+	ResourceKeys  []string               `json:"resourceKeys"`
+	ServiceName   string                 `json:"serviceName"`
+	Env           map[string]interface{} `json:"env"`
+}
+
+type AppInstallInfo struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Status      string `json:"status"`
+	Message     string `json:"message"`
+	HttpPort    int    `json:"HttpPort"`
+	Container   string `json:"container"`
+	ComposePath string `json:"composePath"`
+	AppKey      string `json:"appKey"`
+	AppPorts    []int  `json:"appPorts"`
+
+	Env map[string]interface{} `json:"env"`
+}
+
+type DatabaseConn struct {
+	Status        string `json:"status"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+	ContainerName string `json:"containerName"`
+	ServiceName   string `json:"serviceName"`
+	Port          int64  `json:"port"`
+}
+
+type AppService struct {
+	Label  string      `json:"label"`
+	Value  string      `json:"value"`
+	Config interface{} `json:"config"`
+	From   string      `json:"from"`
+	Status string      `json:"status"`
+}
+
+type AppParam struct {
+	Value     interface{} `json:"value"`
+	Edit      bool        `json:"edit"`
+	Key       string      `json:"key"`
+	Rule      string      `json:"rule"`
+	LabelZh   string      `json:"labelZh"`
+	LabelEn   string      `json:"labelEn"`
+	Type      string      `json:"type"`
+	Values    interface{} `json:"values"`
+	ShowValue string      `json:"showValue"`
+	Required  bool        `json:"required"`
+	Multiple  bool        `json:"multiple"`
+	Label     dto.Locale  `json:"label"`
+}
+
+type AppConfig struct {
+	Params     []AppParam `json:"params"`
+	RawCompose string     `json:"rawCompose"`
+	request.AppContainerConfig
+}

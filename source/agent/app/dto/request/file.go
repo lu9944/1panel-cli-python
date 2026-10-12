@@ -1,0 +1,231 @@
+package request
+
+import (
+	"github.com/1Panel-dev/1Panel/agent/app/dto"
+	"github.com/1Panel-dev/1Panel/agent/utils/files"
+)
+
+type FileOption struct {
+	files.FileOption
+}
+
+type FileAISearch struct {
+	Path             string   `json:"path" validate:"required"`
+	Query            string   `json:"query" validate:"required"`
+	ResponseLanguage string   `json:"responseLanguage,omitempty"`
+	ContainSub       *bool    `json:"containSub,omitempty"`
+	MaxItems         int      `json:"maxItems" validate:"omitempty,min=1,max=2000"`
+	MatchCase        bool     `json:"matchCase"`
+	WholeWord        bool     `json:"wholeWord"`
+	UseRegex         bool     `json:"useRegex"`
+	Extensions       []string `json:"extensions,omitempty"`
+	MinSize          int64    `json:"minSize"`
+	MaxSize          int64    `json:"maxSize"`
+	ModifiedAfter    string   `json:"modifiedAfter,omitempty"`
+	ModifiedBefore   string   `json:"modifiedBefore,omitempty"`
+
+	MaxScanFiles              int   `json:"maxScanFiles"`
+	MaxFileBytes              int64 `json:"maxFileBytes"`
+	MaxHitsPerFile            int   `json:"maxHitsPerFile"`
+	MaxTotalHits              int   `json:"maxTotalHits"`
+	ContentHitsPromptMaxBytes int   `json:"contentHitsPromptMaxBytes"`
+	LlmMaxOutputTokens        int   `json:"llmMaxOutputTokens"`
+}
+
+type FileContentReq struct {
+	Path     string `json:"path" validate:"required"`
+	IsDetail bool   `json:"isDetail"`
+}
+type SearchUploadWithPage struct {
+	dto.PageInfo
+	Path string `json:"path" validate:"required"`
+}
+
+type FileCreate struct {
+	Path      string `json:"path" validate:"required"`
+	Content   string `json:"content"`
+	IsDir     bool   `json:"isDir"`
+	Mode      int64  `json:"mode"`
+	IsLink    bool   `json:"isLink"`
+	IsSymlink bool   `json:"isSymlink"`
+	LinkPath  string `json:"linkPath"`
+	Sub       bool   `json:"sub"`
+}
+
+type FileRoleReq struct {
+	Paths []string `json:"paths" validate:"required"`
+	Mode  int64    `json:"mode" validate:"required"`
+	User  string   `json:"user" validate:"required"`
+	Group string   `json:"group" validate:"required"`
+	Sub   bool     `json:"sub"`
+}
+
+type FileDelete struct {
+	Path        string `json:"path" validate:"required"`
+	IsDir       bool   `json:"isDir"`
+	ForceDelete bool   `json:"forceDelete"`
+}
+
+type FileBatchDelete struct {
+	Paths []string `json:"paths" validate:"required"`
+	IsDir bool     `json:"isDir"`
+}
+
+type FileCompress struct {
+	Files   []string `json:"files" validate:"required"`
+	Dst     string   `json:"dst" validate:"required"`
+	Type    string   `json:"type" validate:"required"`
+	Name    string   `json:"name" validate:"required"`
+	Replace bool     `json:"replace"`
+	Secret  string   `json:"secret"`
+	TaskID  string   `json:"taskID"`
+}
+
+type FileCompressStopReq struct {
+	TaskID string `json:"taskID" validate:"required"`
+}
+
+type FileDeCompress struct {
+	Dst    string `json:"dst"  validate:"required"`
+	Type   string `json:"type"  validate:"required"`
+	Path   string `json:"path" validate:"required"`
+	Secret string `json:"secret"`
+	TaskID string `json:"taskID"`
+}
+
+type FileDeCompressStopReq struct {
+	TaskID string `json:"taskID" validate:"required"`
+}
+
+type FileEdit struct {
+	Path    string `json:"path"  validate:"required"`
+	Content string `json:"content"`
+}
+
+type FileRename struct {
+	OldName string `json:"oldName" validate:"required"`
+	NewName string `json:"newName" validate:"required"`
+}
+
+type FilePathCheck struct {
+	Path     string `json:"path" validate:"required"`
+	WithInit bool   `json:"withInit"`
+}
+
+type FilePathsCheck struct {
+	Paths []string `json:"paths" validate:"required"`
+}
+
+type FileWget struct {
+	Url               string `json:"url" validate:"required"`
+	Path              string `json:"path" validate:"required"`
+	Name              string `json:"name" validate:"required"`
+	IgnoreCertificate bool   `json:"ignoreCertificate"`
+	UseProxy          bool   `json:"useProxy"`
+	UseServerFilename bool   `json:"useServerFilename"`
+}
+
+type FileMove struct {
+	Type       string   `json:"type" validate:"required"`
+	OldPaths   []string `json:"oldPaths" validate:"required"`
+	NewPath    string   `json:"newPath" validate:"required"`
+	Name       string   `json:"name"`
+	Cover      bool     `json:"cover"`
+	CoverPaths []string `json:"coverPaths"`
+	TaskID     string   `json:"taskID"`
+}
+
+type FileMoveStopReq struct {
+	TaskID string `json:"taskID" validate:"required"`
+}
+
+type FileDownload struct {
+	Paths    []string `json:"paths" validate:"required"`
+	Type     string   `json:"type" validate:"required"`
+	Name     string   `json:"name" validate:"required"`
+	Compress bool     `json:"compress"`
+}
+
+type FileChunkDownload struct {
+	Path string `json:"path" validate:"required"`
+	Name string `json:"name" validate:"required"`
+}
+
+type DirSizeReq struct {
+	Path string `json:"path" validate:"required"`
+}
+
+type FileProcessReq struct {
+	Key string `json:"key"`
+}
+
+type FileProcessRemoveReq struct {
+	Keys []string `json:"keys" validate:"required,min=1,max=1000"`
+}
+
+type FileRoleUpdate struct {
+	Path  string `json:"path" validate:"required"`
+	User  string `json:"user" validate:"required"`
+	Group string `json:"group" validate:"required"`
+	Sub   bool   `json:"sub"`
+}
+
+type FileReadByLineReq struct {
+	Page     int    `json:"page" validate:"required"`
+	PageSize int    `json:"pageSize" validate:"required"`
+	Type     string `json:"type"`
+	ID       uint   `json:"ID"`
+	Name     string `json:"name"`
+	Latest   bool   `json:"latest"`
+	TaskReq
+}
+
+type TaskLogReadReq struct {
+	Page     int  `json:"page" validate:"required,min=1"`
+	PageSize int  `json:"pageSize" validate:"required,min=1"`
+	Latest   bool `json:"latest"`
+	TaskReq
+}
+
+type TaskReq struct {
+	TaskID      string `json:"taskID"`
+	TaskType    string `json:"taskType"`
+	TaskOperate string `json:"taskOperate"`
+	ResourceID  uint   `json:"resourceID"`
+}
+
+type FileExistReq struct {
+	Name string `json:"name" validate:"required"`
+	Dir  string `json:"dir" validate:"required"`
+}
+
+type FileConvert struct {
+	Path         string `json:"path" validate:"required"`
+	Type         string `json:"type" validate:"required"`
+	InputFile    string `json:"inputFile" validate:"required"`
+	Extension    string `json:"extension" validate:"required"`
+	OutputFormat string `json:"outputFormat" validate:"required"`
+	Status       string `json:"status"`
+}
+
+type FileConvertRequest struct {
+	Files        []FileConvert `json:"files" validate:"required"`
+	OutputPath   string        `json:"outputPath" validate:"required"`
+	DeleteSource bool          `json:"deleteSource"`
+	TaskID       string        `json:"taskID"`
+}
+
+type FileRemarkBatch struct {
+	Paths []string `json:"paths" validate:"required"`
+}
+
+type FileRemarkUpdate struct {
+	Path   string `json:"path" validate:"required"`
+	Remark string `json:"remark"`
+}
+
+type FileShareCreate struct {
+	Path          string  `json:"path" validate:"required"`
+	ExpireMinutes int     `json:"expireMinutes" validate:"min=0,max=10080"`
+	Password      *string `json:"password"`
+}

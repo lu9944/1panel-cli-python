@@ -1,0 +1,277 @@
+import { File } from '@/api/interface/file';
+import http from '@/api';
+import { AxiosRequestConfig } from 'axios';
+import { ResPage } from '../interface';
+import { TimeoutEnum } from '@/enums/http-enum';
+import { ReqPage } from '@/api/interface';
+import { Dashboard } from '@/api/interface/dashboard';
+
+export type FileUploadRequestConfig = AxiosRequestConfig & {
+    skipErrorMessage?: boolean;
+};
+
+export const getFilesList = (params: File.ReqFile) => {
+    return http.post<File.File>('files/search', params, TimeoutEnum.T_5M);
+};
+
+export const fileAiSearch = (params: File.FileAISearchReq) => {
+    return http.post<File.FileAISearchResult>('files/ai-search', params, TimeoutEnum.T_10M);
+};
+
+export const getFilesListByNode = (params: File.ReqNodeFile) => {
+    return http.post<File.File>('files/search?operateNode=' + params.node, params, TimeoutEnum.T_5M);
+};
+
+export const getUploadList = (params: File.SearchUploadInfo) => {
+    return http.post<ResPage<File.UploadInfo>>('files/upload/search', params);
+};
+
+export const getFilesTree = (params: File.ReqFile) => {
+    return http.post<File.FileTree[]>('files/tree', params);
+};
+
+export const createFile = (form: File.FileCreate) => {
+    return http.post<File.File>('files', form);
+};
+
+export const deleteFile = (form: File.FileDelete) => {
+    return http.post<File.File>('files/del', form);
+};
+
+export const deleteFileByNode = (form: File.FileDelete, node: string) => {
+    return http.post<File.File>('files/del?operateNode=' + node, form);
+};
+
+export const batchDeleteFile = (form: File.FileBatchDelete) => {
+    return http.post('files/batch/del', form);
+};
+
+export const changeFileMode = (form: File.FileCreate) => {
+    return http.post<File.File>('files/mode', form, TimeoutEnum.T_5M);
+};
+
+export const compressFile = (form: File.FileCompress, config?: AxiosRequestConfig) => {
+    return http.service.post<File.File>('files/compress', form, {
+        timeout: TimeoutEnum.T_10M,
+        ...config,
+    });
+};
+
+export const stopCompressFile = (taskID: string) => {
+    return http.post('files/compress/stop', { taskID } as File.FileCompressStopReq);
+};
+
+export const deCompressFile = (form: File.FileDeCompress, config?: AxiosRequestConfig) => {
+    return http.service.post<File.File>('files/decompress', form, {
+        timeout: TimeoutEnum.T_10M,
+        ...config,
+    });
+};
+
+export const stopDeCompressFile = (taskID: string) => {
+    return http.post('files/decompress/stop', { taskID } as File.FileDeCompressStopReq);
+};
+
+export const getFileContent = (params: File.ReqFile, currentNode?: string) => {
+    return http.post<File.File>(
+        `files/content`,
+        params,
+        TimeoutEnum.T_3M,
+        currentNode ? { CurrentNode: currentNode } : undefined,
+    );
+};
+
+export const getPreviewContent = (params: File.PreviewContentReq) => {
+    return http.post<File.File>('files/preview', params, TimeoutEnum.T_5M);
+};
+
+export const saveFileContent = (params: File.FileEdit) => {
+    return http.post<File.File>('files/save', params);
+};
+
+export const searchFileHistory = (params: File.FileHistorySearchReq) => {
+    return http.post<ResPage<File.FileHistoryInfo>>('files/history/search', params);
+};
+
+export const getFileHistoryContent = (id: number) => {
+    return http.post<File.FileHistoryInfo>('files/history/content', { id });
+};
+
+export const deleteFileHistory = (ids: number[]) => {
+    return http.post('files/history/del', { ids: Array.from(ids) });
+};
+
+export const restoreFileHistory = (id: number) => {
+    return http.post<File.File>('files/history/restore', { id });
+};
+
+export const checkFile = (path: string, withInit: boolean) => {
+    return http.post<boolean>('files/check', { path: path, withInit: withInit });
+};
+
+export const uploadFileData = (params: FormData, config: FileUploadRequestConfig) => {
+    return http.upload<File.File>('files/upload', params, config);
+};
+
+export const batchCheckFiles = (paths: string[]) => {
+    return http.post<File.ExistFileInfo[]>('files/batch/check', { paths: paths }, TimeoutEnum.T_5M);
+};
+
+export const batchGetFileRemarks = (paths: string[]) => {
+    return http.post<File.FileRemarksRes>('files/remarks', { paths: paths }, TimeoutEnum.T_5M);
+};
+
+export const setFileRemark = (params: File.FileRemarkUpdate) => {
+    return http.post('files/remark', params);
+};
+
+export const chunkUploadFileData = (params: FormData, config: FileUploadRequestConfig) => {
+    return http.upload<File.File>('files/chunkupload', params, config);
+};
+
+export const stopChunkUpload = (key: string, currentNode?: string) => {
+    return http.post(
+        'files/chunkupload/stop',
+        { key },
+        undefined,
+        currentNode ? { CurrentNode: currentNode } : undefined,
+    );
+};
+
+export const renameRile = (params: File.FileRename) => {
+    return http.post<File.File>('files/rename', params);
+};
+
+export const changeOwner = (params: File.FileOwner) => {
+    return http.post<File.File>('files/owner', params);
+};
+
+export const wgetFile = (params: File.FileWget) => {
+    return http.post<File.FileWgetRes>('files/wget', params);
+};
+
+export const getFileDownloadPreference = () => {
+    return http.get<{ useServerFilename: boolean }>('core/settings/file/download');
+};
+
+export const updateFileDownloadPreference = (useServerFilename: boolean) => {
+    return http.post('core/settings/file/download', { useServerFilename });
+};
+
+export const stopWgetFile = (key: string, currentNode?: string) => {
+    return http.post('files/wget/stop', { key }, undefined, currentNode ? { CurrentNode: currentNode } : undefined);
+};
+
+export const removeWgetRecords = (keys: string[], currentNode: string) => {
+    return http.post<File.FileKeys>('files/wget/process/remove', { keys }, undefined, { CurrentNode: currentNode });
+};
+
+export const moveFile = (params: File.FileMove) => {
+    return http.post<File.File>('files/move', params);
+};
+
+export const stopMoveFile = (taskID: string, currentNode?: string) => {
+    return http.post(
+        'files/move/stop',
+        { taskID } as File.FileMoveStopReq,
+        undefined,
+        currentNode ? { CurrentNode: currentNode } : undefined,
+    );
+};
+
+export const downloadFile = (params: File.FileDownload) => {
+    return http.download<BlobPart>('files/download', params, { responseType: 'blob', timeout: TimeoutEnum.T_40S });
+};
+
+export const createFileShare = (params: File.FileShareCreate) => {
+    return http.post<File.FileShareInfo>('files/share/create', params);
+};
+
+export const searchFileShare = (params: ReqPage) => {
+    return http.post<ResPage<File.FileShareInfo>>('files/share/search', params);
+};
+
+export const getFileShareDetail = (path: string) => {
+    return http.post<File.FileShareInfo | null>('files/share/detail', { path });
+};
+
+export const removeFileShare = (path: string) => {
+    return http.post<any>('files/share/del', { path });
+};
+
+export const getPublicFileShareInfo = (code: string, operateNode: string, headers?: AxiosRequestConfig['headers']) => {
+    return http.get<File.FileSharePublicInfo>('files/share/info', { code, operateNode }, { headers });
+};
+
+export const checkFileShare = (params: File.FileShareCheck, headers?: AxiosRequestConfig['headers']) => {
+    return http.get('files/share/check', params, { headers });
+};
+
+export const computeDirSize = (params: File.DirSizeReq) => {
+    return http.post<File.DirSizeRes>('files/size', params, TimeoutEnum.T_5M);
+};
+
+export const computeDepthDirSize = (params: File.DirSizeReq) => {
+    return http.post<File.DepthDirSizeRes[]>('files/depth/size', params, TimeoutEnum.T_5M);
+};
+
+export const fileWgetKeys = () => {
+    return http.get<File.FileKeys>('files/wget/process/keys');
+};
+
+export const getRecycleList = (params: ReqPage) => {
+    return http.post<ResPage<File.RecycleBin>>('files/recycle/search', params);
+};
+
+export const reduceFile = (params: File.RecycleBinReduce) => {
+    return http.post<any>('files/recycle/reduce', params);
+};
+
+export const clearRecycle = () => {
+    return http.post<any>('files/recycle/clear');
+};
+
+export const searchFavorite = (params: ReqPage) => {
+    return http.post<ResPage<File.Favorite>>('files/favorite/search', params);
+};
+
+export const addFavorite = (path: string) => {
+    return http.post<any>('files/favorite', { path: path });
+};
+
+export const readByLine = (req: File.FileReadByLine, operateNode?: string) => {
+    const params = operateNode ? `?operateNode=${operateNode}` : '';
+    return http.post<any>(`files/read/${encodeURIComponent(req.type)}${params}`, req, TimeoutEnum.T_40S);
+};
+
+export const removeFavorite = (id: number) => {
+    return http.post<any>('files/favorite/del', { id: id });
+};
+
+export const batchChangeRole = (params: File.FileRole) => {
+    return http.post<any>('files/batch/role', params, TimeoutEnum.T_5M);
+};
+
+export const getRecycleStatus = () => {
+    return http.get<string>('files/recycle/status');
+};
+
+export const getRecycleStatusByNode = (node: string) => {
+    return http.get<string>('files/recycle/status?operateNode=' + node);
+};
+
+export const searchHostMount = () => {
+    return http.post<Dashboard.DiskInfo[]>(`/files/mount`);
+};
+
+export const searchUserGroup = () => {
+    return http.post<File.UserGroupResponse>(`/files/user/group`);
+};
+
+export const convertFiles = (params: File.ConvertFileRequest) => {
+    return http.post<File.ConvertFile>('files/convert', params, TimeoutEnum.T_5M);
+};
+
+export const convertLogs = (params: ReqPage) => {
+    return http.post<ResPage<File.ConvertLogResponse>>('files/convert/log', params, TimeoutEnum.T_5M);
+};

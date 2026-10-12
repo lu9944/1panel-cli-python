@@ -72,11 +72,11 @@ def extract_router(path: Path, prefix: str, swagger: dict, source_root: Path) ->
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True, help="1Panel source checkout")
-    parser.add_argument("--version", default="v2.2.5")
+    parser.add_argument("--version", default="v2.3.2")
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("panel_cli/data/api-v2.2.5.json"),
+        default=Path("panel_cli/data/api-v2.3.2.json"),
     )
     args = parser.parse_args()
 

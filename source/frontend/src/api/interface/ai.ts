@@ -1,0 +1,1087 @@
+import { ReqPage } from '.';
+
+export namespace AI {
+    export type AgentType = 'openclaw' | 'copaw' | 'hermes-agent';
+
+    export interface OllamaModelInfo {
+        id: number;
+        name: string;
+        size: string;
+        from: string;
+        logFileExist: boolean;
+        status: string;
+        message: string;
+        createdAt: Date;
+    }
+    export interface OllamaModelDropInfo {
+        id: number;
+        name: string;
+    }
+    export interface OllamaModelSearch extends ReqPage {
+        info: string;
+    }
+
+    export interface Info {
+        cudaVersion: string;
+        driverVersion: string;
+        type: string;
+        gpu: GPU[];
+        npu: NPU[];
+        xpuDriverVersion: string;
+        xpu: XpuInfo['xpu'];
+    }
+    export interface GPU {
+        type: 'nvidia' | 'amd';
+        index: number;
+        productName: string;
+        persistenceMode: string;
+        busID: string;
+        displayActive: string;
+        ecc: string;
+        fanSpeed: string;
+
+        temperature: string;
+        performanceState: string;
+        powerDraw: string;
+        maxPowerLimit: string;
+        memUsed: string;
+        memTotal: string;
+        gpuUtil: string;
+        computeMode: string;
+        migMode: string;
+        processes: Process[];
+    }
+    export interface NPU {
+        type: 'ascend';
+        index: number;
+        npuIndex: number;
+        chipIndex: number;
+        productName: string;
+        busID: string;
+        health: string;
+        temperature: string;
+        powerDraw: string;
+        aiCore: string;
+        memUsed: string;
+        memTotal: string;
+        memoryUsed: string;
+        memoryTotal: string;
+        hbmUsed: string;
+        hbmTotal: string;
+        hugepagesUsed: string;
+        hugepagesTotal: string;
+        processes: NPUProcess[];
+    }
+    export interface MonitorGPUSearch {
+        productName: string;
+        startTime: Date;
+        endTime: Date;
+    }
+    export interface MonitorGPUOptions {
+        gpuType: string;
+        options: Array<string>;
+        chartHide: Array<ChartHide>;
+    }
+    export interface ChartHide {
+        productName: string;
+        type?: 'gpu' | 'xpu';
+        process: boolean;
+        gpu: boolean;
+        memory: boolean;
+        power: boolean;
+        powerLimit: boolean;
+        temperature: boolean;
+        speed: boolean;
+    }
+    export interface MonitorGPUData {
+        date: Array<Date>;
+        gpuValue: Array<number>;
+        temperatureValue: Array<number>;
+        powerTotal: Array<number>;
+        powerUsed: Array<number>;
+        powerPercent: Array<number>;
+        memoryTotal: Array<number>;
+        memoryUsed: Array<number>;
+        memoryPercent: Array<number>;
+        speedValue: Array<number>;
+        processCount: Array<number>;
+        gpuProcesses: Array<Array<GPUProcess>>;
+    }
+    export interface GPUProcess {
+        pid: string;
+        type: string;
+        processName: string;
+        usedMemory: string;
+    }
+    export interface Process {
+        pid: string;
+        type: string;
+        processName: string;
+        usedMemory: string;
+    }
+    export interface NPUProcess {
+        pid: string;
+        processName: string;
+        usedMemory: string;
+    }
+
+    export interface XpuInfo {
+        type: string;
+        driverVersion: string;
+        xpu: Xpu[];
+    }
+
+    interface Xpu {
+        basic: Basic;
+        stats: Stats;
+        processes: XpuProcess[];
+    }
+
+    interface Basic {
+        deviceID: number;
+        deviceName: string;
+        vendorName: string;
+        driverVersion: string;
+        memory: string;
+        freeMemory: string;
+        pciBdfAddress: string;
+    }
+
+    interface Stats {
+        power: string;
+        gpuUtil: string;
+        frequency: string;
+        temperature: string;
+        memoryUsed: string;
+        memoryUtil: string;
+    }
+
+    interface XpuProcess {
+        pid: number;
+        command: string;
+        shr: string;
+        memory: string;
+    }
+
+    export interface BindDomain {
+        domain: string;
+        sslID: number;
+        ipList: string;
+        appInstallID: number;
+        websiteID?: number;
+    }
+
+    export interface BindDomainReq {
+        appInstallID: number;
+    }
+
+    export interface BindDomainRes {
+        domain: string;
+        sslID: number;
+        allowIPs: string[];
+        websiteID?: number;
+        connUrl: string;
+        acmeAccountID: number;
+    }
+
+    export interface Environment {
+        key: string;
+        value: string;
+    }
+
+    export interface Volume {
+        source: string;
+        target: string;
+    }
+
+    export interface McpServer {
+        id: number;
+        name: string;
+        status: string;
+        baseUrl: string;
+        ssePath: string;
+        command: string;
+        port: number;
+        message: string;
+        createdAt?: string;
+        containerName: string;
+        environments: Environment[];
+        volumes: Volume[];
+        dir?: string;
+        hostIP: string;
+        protocol: string;
+        url: string;
+        outputTransport: string;
+        streamableHttpPath: string;
+        type: string;
+        gatewayImage: string;
+        protocolVersion: string;
+        gatewayArgs: string;
+        taskID?: string;
+    }
+
+    export interface McpServerSearch extends ReqPage {
+        name: string;
+    }
+
+    export interface McpServerDelete {
+        id: number;
+    }
+
+    export interface McpServerDetail {
+        id: number;
+    }
+
+    export interface McpServerStatusSync {
+        ids: number[];
+    }
+
+    export interface McpServerStatus {
+        id: number;
+        status: string;
+        message: string;
+    }
+
+    export interface McpServerOperate {
+        id: number;
+        operate: string;
+    }
+
+    export interface McpServerConnectionTest {
+        id: number;
+    }
+
+    export interface McpServerConnectionTestRes {
+        success: boolean;
+        endpoint: string;
+        outputTransport: string;
+        protocolVersion?: string;
+        message: string;
+    }
+
+    export interface McpBindDomain {
+        domain: string;
+        sslID: number;
+        ipList: string;
+    }
+
+    export interface McpDomainRes {
+        domain: string;
+        sslID: number;
+        acmeAccountID: number;
+        allowIPs: string[];
+        websiteID?: number;
+        connUrl: string;
+    }
+
+    export interface McpBindDomainUpdate {
+        websiteID: number;
+        sslID: number;
+        ipList: string;
+    }
+
+    export interface ImportMcpServer {
+        name: string;
+        command: string;
+        ssePath: string;
+        containerName: string;
+        environments: Environment[];
+    }
+
+    export interface ExposedPort {
+        hostPort: number;
+        containerPort: number;
+        hostIP: string;
+        protocol?: string;
+    }
+
+    export interface Environment {
+        key: string;
+        value: string;
+    }
+    export interface Volume {
+        source: string;
+        target: string;
+        mode: string;
+    }
+
+    export interface ExtraHosts {
+        hostname: string;
+        ip: string;
+    }
+
+    export interface TensorRTLLM {
+        id?: number;
+        name: string;
+        containerName: string;
+        version: string;
+        modelDir: string;
+        status?: string;
+        message?: string;
+        createdAt?: string;
+        exposedPorts?: ExposedPort[];
+        environments?: Environment[];
+        volumes?: Volume[];
+        extraHosts?: ExtraHosts[];
+    }
+
+    export interface TensorRTLLMDTO extends TensorRTLLM {
+        dir?: string;
+    }
+
+    export interface TensorRTLLMSearch extends ReqPage {
+        name: string;
+    }
+
+    export interface TensorRTLLMDelete {
+        id: number;
+    }
+
+    export interface TensorRTLLMOperate {
+        id: number;
+        operate: string;
+    }
+
+    export interface AgentCreateReq {
+        name: string;
+        remark: string;
+        appVersion: string;
+        webUIPort: number;
+        bridgePort?: number;
+        allowedOrigins?: string[];
+        agentType: AgentType;
+        model?: string;
+        accountId?: number;
+        token?: string;
+        dashboardUsername?: string;
+        dashboardPassword?: string;
+        taskID: string;
+        advanced: boolean;
+        containerName: string;
+        allowPort: boolean;
+        specifyIP: string;
+        restartPolicy: string;
+        cpuQuota: number;
+        memoryLimit: number;
+        memoryUnit: string;
+        pullImage: boolean;
+        editCompose: boolean;
+        dockerCompose: string;
+    }
+
+    export interface AgentItem {
+        id: number;
+        name: string;
+        remark: string;
+        agentType: AgentType;
+        provider: string;
+        providerName: string;
+        model: string;
+        apiType: string;
+        baseUrl: string;
+        apiKey: string;
+        token: string;
+        dashboardUsername: string;
+        dashboardPassword: string;
+        status: string;
+        message: string;
+        appInstallId: number;
+        websiteId: number;
+        websitePrimaryDomain: string;
+        websiteType: string;
+        websiteProtocol: string;
+        accountId: number;
+        appVersion: string;
+        containerName: string;
+        webUIPort: number;
+        bridgePort: number;
+        path: string;
+        configPath: string;
+        upgradable: boolean;
+        createdAt: string;
+    }
+
+    export interface AgentDeleteReq {
+        id: number;
+        taskID: string;
+        forceDelete: boolean;
+    }
+
+    export interface AgentTokenResetReq {
+        id: number;
+    }
+
+    export interface AgentRemarkUpdateReq {
+        id: number;
+        remark: string;
+    }
+
+    export interface AgentWebsiteBindReq {
+        agentId: number;
+        websiteId: number;
+    }
+
+    export interface AgentModelConfigUpdateReq {
+        agentId: number;
+        accountId: number;
+        model: string;
+        fallbacks: string[];
+        metadata: AgentModelMetadata[];
+    }
+
+    export interface AgentModelConfig {
+        accountId: number;
+        model: string;
+        fallbacks: string[];
+        metadata: AgentModelMetadata[];
+    }
+
+    export interface AgentModelMetadata {
+        model: string;
+        inputMode: 'auto' | 'text' | 'image';
+        contextWindow: number;
+        maxTokens: number;
+    }
+
+    export interface AgentHermesChatSessionItem {
+        id: string;
+        title: string;
+        model: string;
+        messageCount: number;
+        startedAt: string;
+        lastActive: string;
+    }
+
+    export interface AgentHermesChatSessionRenameReq {
+        agentId: number;
+        id: string;
+        title: string;
+    }
+
+    export interface AgentHermesChatSessionDeleteReq {
+        agentId: number;
+        id: string;
+    }
+
+    export interface AgentOverviewReq {
+        agentId: number;
+    }
+
+    export interface AgentIDReq {
+        agentId: number;
+    }
+
+    export interface AgentRoleCreateReq {
+        agentId: number;
+        name: string;
+        model: string;
+        bindings: AgentRoleBinding[];
+    }
+
+    export interface AgentRoleBinding {
+        channel: string;
+        accountId: string;
+    }
+
+    export interface AgentRoleCreateResp {
+        output: string;
+    }
+
+    export interface AgentRoleDeleteReq {
+        agentId: number;
+        id: string;
+    }
+
+    export interface AgentRoleBindReq {
+        agentId: number;
+        id: string;
+        channel: string;
+        accountId: string;
+    }
+
+    export interface AgentConfiguredAgentsReq {
+        agentId: number;
+    }
+
+    export interface AgentRoleChannelsReq {
+        agentId: number;
+    }
+
+    export interface AgentRoleChannelItem {
+        name: string;
+        bound: boolean;
+        accountIds: string[];
+    }
+
+    export interface AgentRoleMarkdownFilesReq {
+        agentId: number;
+        workspace: string;
+    }
+
+    export interface AgentConfiguredAgentItem {
+        id: string;
+        name: string;
+        workspace: string;
+        model: string;
+        agentDir: string;
+        bindings: AgentRoleBinding[];
+    }
+
+    export interface AgentRoleMarkdownFileItem {
+        name: string;
+        content: string;
+    }
+
+    export interface AgentRoleMarkdownFileUpdateItem {
+        name: string;
+        content: string;
+    }
+
+    export interface AgentRoleMarkdownFilesUpdateReq {
+        agentId: number;
+        workspace: string;
+        restart: boolean;
+        files: AgentRoleMarkdownFileUpdateItem[];
+    }
+
+    export interface AgentOverviewSnapshot {
+        containerStatus: string;
+        appVersion: string;
+        defaultModel: string;
+        channelCount: number;
+        skillCount: number;
+        jobCount: number;
+        sessionCount: number;
+    }
+
+    export interface AgentOverview {
+        snapshot: AgentOverviewSnapshot;
+    }
+
+    export interface AgentAccountModel {
+        recordId: number;
+        id: string;
+        name: string;
+    }
+
+    export interface AgentAccountModelReq {
+        accountId: number;
+    }
+
+    export interface AgentAccountModelDiscoverReq {
+        provider: string;
+        baseURL: string;
+        apiKey: string;
+        apiType: string;
+    }
+
+    export interface AgentAccountModelCreateReq {
+        accountId: number;
+        model: AgentAccountModel;
+    }
+
+    export interface AgentAccountModelUpdateReq {
+        accountId: number;
+        model: AgentAccountModel;
+    }
+
+    export interface AgentAccountModelDeleteReq {
+        accountId: number;
+        recordId: number;
+    }
+
+    export interface ProviderModelInfo {
+        id: string;
+        name: string;
+    }
+
+    export interface ProviderAPIInfo {
+        apiType: string;
+        baseUrl: string;
+        editableBaseUrl: boolean;
+        supportsModelDiscovery: boolean;
+        defaultAuthMode: string;
+        authModes: string[];
+        models: ProviderModelInfo[];
+    }
+
+    export interface ProviderInfo {
+        provider: string;
+        displayName: string;
+        baseUrl: string;
+        defaultApiType: string;
+        apiTypes: ProviderAPIInfo[];
+        models: ProviderModelInfo[];
+    }
+
+    export interface AgentAccountCreateReq {
+        provider: string;
+        name: string;
+        apiKey: string;
+        rememberApiKey: boolean;
+        baseURL: string;
+        apiType: string;
+        authMode: string;
+        models?: AgentAccountModel[];
+        verifyModel: string;
+        validateAvailability: boolean;
+        remark: string;
+    }
+
+    export interface AgentAccountUpdateReq {
+        id: number;
+        name: string;
+        apiKey: string;
+        rememberApiKey: boolean;
+        baseURL: string;
+        apiType: string;
+        authMode: string;
+        verifyModel: string;
+        validateAvailability: boolean;
+        remark: string;
+        syncAgents: boolean;
+    }
+
+    export interface AgentAccountSearch {
+        page: number;
+        pageSize: number;
+        provider: string;
+        apiType?: string;
+        textOnly?: boolean;
+        name: string;
+    }
+
+    export interface AgentAccountProviderCountReq {
+        providers: string[];
+    }
+
+    export interface AgentAccountItem {
+        id: number;
+        provider: string;
+        providerName: string;
+        name: string;
+        apiKey: string;
+        rememberApiKey: boolean;
+        baseUrl: string;
+        models: AgentAccountModel[];
+        apiType: string;
+        authMode: string;
+        verifyModel: string;
+        verified: boolean;
+        remark: string;
+        createdAt: string;
+    }
+
+    export interface AgentAccountDeleteReq {
+        id: number;
+    }
+
+    export interface AgentFeishuConfigReq {
+        agentId: number;
+    }
+
+    export interface AgentChannelBotBase {
+        accountId: string;
+        name: string;
+        enabled: boolean;
+        isDefault: boolean;
+    }
+
+    export interface AgentFeishuBot extends AgentChannelBotBase {
+        appId: string;
+        appSecret: string;
+        dmPolicy: 'pairing' | 'open' | 'allowlist' | 'disabled';
+        allowFrom: string[];
+    }
+
+    export interface AgentFeishuConfig {
+        enabled: boolean;
+        threadSession: boolean;
+        replyMode: string;
+        streaming: boolean;
+        requireMention: 'true' | 'false' | 'open';
+        groupPolicy: 'open' | 'allowlist' | 'disabled';
+        groupAllowFrom: string[];
+        domain?: string;
+        connectionMode?: 'websocket' | 'webhook';
+        bots: AgentFeishuBot[];
+        installed: boolean;
+    }
+
+    export interface AgentFeishuConfigUpdateReq {
+        agentId: number;
+        enabled: boolean;
+        threadSession: boolean;
+        replyMode: string;
+        streaming: boolean;
+        requireMention: 'true' | 'false' | 'open';
+        groupPolicy: 'open' | 'allowlist' | 'disabled';
+        groupAllowFrom: string[];
+        domain?: string;
+        connectionMode?: 'websocket' | 'webhook';
+        bots: AgentFeishuBot[];
+    }
+
+    export interface AgentTelegramConfigReq {
+        agentId: number;
+    }
+
+    export interface AgentTelegramConfig {
+        enabled: boolean;
+        dmPolicy: 'pairing' | 'open' | 'allowlist' | 'disabled';
+        allowFrom: string[];
+        requireMention: boolean;
+        groupPolicy: 'open' | 'allowlist' | 'disabled';
+        groupAllowFrom: string[];
+        proxy: string;
+        streaming: 'off' | 'partial' | 'block' | 'progress';
+        defaultAccount: string;
+        bots: AgentTelegramBot[];
+    }
+
+    export interface AgentTelegramConfigUpdateReq {
+        agentId: number;
+        enabled: boolean;
+        dmPolicy: 'pairing' | 'open' | 'allowlist' | 'disabled';
+        allowFrom: string[];
+        requireMention: boolean;
+        groupPolicy: 'open' | 'allowlist' | 'disabled';
+        groupAllowFrom: string[];
+        proxy: string;
+        streaming: 'off' | 'partial' | 'block' | 'progress';
+        defaultAccount: string;
+        bots: AgentTelegramBot[];
+    }
+
+    export interface AgentChannelPairingApproveReq {
+        agentId: number;
+        type: 'feishu' | 'telegram' | 'discord' | 'wecom' | 'qqbot' | 'dingtalk';
+        pairingCode: string;
+        accountId?: string;
+    }
+
+    export interface AgentTelegramBot extends AgentChannelBotBase {
+        botToken: string;
+        dmPolicy: 'pairing' | 'open' | 'allowlist' | 'disabled';
+        groupPolicy: 'open' | 'allowlist' | 'disabled';
+        streaming: 'off' | 'partial' | 'block' | 'progress';
+    }
+
+    export interface AgentWecomConfigReq {
+        agentId: number;
+    }
+
+    export interface AgentWecomConfig {
+        enabled: boolean;
+        dmPolicy: 'pairing' | 'open' | 'allowlist' | 'disabled';
+        allowFrom: string[];
+        groupPolicy: 'open' | 'allowlist' | 'disabled';
+        groupAllowFrom: string[];
+        botId: string;
+        secret: string;
+        installed: boolean;
+    }
+
+    export interface AgentWecomConfigUpdateReq {
+        agentId: number;
+        enabled: boolean;
+        dmPolicy: 'pairing' | 'open' | 'allowlist' | 'disabled';
+        allowFrom: string[];
+        groupPolicy: 'open' | 'allowlist' | 'disabled';
+        groupAllowFrom: string[];
+        botId: string;
+        secret: string;
+    }
+
+    export interface AgentDingTalkConfigReq {
+        agentId: number;
+    }
+
+    export interface AgentDingTalkConfig {
+        enabled: boolean;
+        dmPolicy: 'pairing' | 'allowlist' | 'open' | 'disabled';
+        allowFrom: string[];
+        groupPolicy: 'open' | 'allowlist' | 'disabled';
+        groupAllowFrom: string[];
+        separateSessionByConversation: boolean;
+        groupSessionScope: 'group' | 'group_sender';
+        sharedMemoryAcrossConversations: boolean;
+        asyncMode: boolean;
+        ackText: string;
+        bots: AgentDingTalkBot[];
+        installed: boolean;
+    }
+
+    export interface AgentDingTalkConfigUpdateReq {
+        agentId: number;
+        enabled: boolean;
+        dmPolicy: 'pairing' | 'allowlist' | 'open' | 'disabled';
+        allowFrom: string[];
+        groupPolicy: 'open' | 'allowlist' | 'disabled';
+        groupAllowFrom: string[];
+        separateSessionByConversation: boolean;
+        groupSessionScope: 'group' | 'group_sender';
+        sharedMemoryAcrossConversations: boolean;
+        asyncMode: boolean;
+        ackText: string;
+        bots: AgentDingTalkBot[];
+    }
+
+    export interface AgentWeixinLoginReq {
+        agentId: number;
+        taskID: string;
+    }
+
+    export interface AgentWeixinConfig {
+        enabled: boolean;
+    }
+
+    export interface AgentChannelDeleteReq {
+        agentId: number;
+        type: 'feishu' | 'telegram' | 'discord' | 'wecom' | 'qqbot' | 'dingtalk' | 'weixin';
+    }
+
+    export interface AgentQQBotConfigReq {
+        agentId: number;
+    }
+
+    export interface AgentQQBotConfig {
+        enabled: boolean;
+        dmPolicy?: 'pairing' | 'open' | 'allowlist' | 'disabled';
+        allowFrom?: string[];
+        groupPolicy?: 'open' | 'allowlist' | 'disabled';
+        groupAllowFrom?: string[];
+        bots: AgentQQBotBot[];
+        installed: boolean;
+    }
+
+    export interface AgentQQBotConfigUpdateReq {
+        agentId: number;
+        enabled: boolean;
+        dmPolicy?: 'pairing' | 'open' | 'allowlist' | 'disabled';
+        allowFrom?: string[];
+        groupPolicy?: 'open' | 'allowlist' | 'disabled';
+        groupAllowFrom?: string[];
+        bots: AgentQQBotBot[];
+    }
+
+    export interface AgentPluginInstallReq {
+        agentId: number;
+        type: 'feishu' | 'qqbot' | 'wecom' | 'dingtalk' | 'weixin';
+        taskID: string;
+    }
+
+    export interface AgentPluginUpgradeReq {
+        agentId: number;
+        type: 'feishu' | 'qqbot' | 'wecom' | 'dingtalk' | 'weixin';
+        taskID: string;
+    }
+
+    export interface AgentPluginUninstallReq {
+        agentId: number;
+        type: 'feishu' | 'qqbot' | 'wecom' | 'dingtalk' | 'weixin';
+        taskID: string;
+    }
+
+    export interface AgentPluginCheckReq {
+        agentId: number;
+        type: 'feishu' | 'qqbot' | 'wecom' | 'dingtalk' | 'weixin';
+        checkLatest?: boolean;
+    }
+
+    export interface AgentPluginStatus {
+        installed: boolean;
+        currentVersion: string;
+        latestVersion: string;
+        upgradable: boolean;
+    }
+
+    export interface AgentPluginsReq {
+        agentId: number;
+    }
+
+    export interface AgentPluginSearchReq {
+        agentId: number;
+        keyword: string;
+        limit?: number;
+    }
+
+    export interface AgentPluginMarketInstallReq {
+        agentId: number;
+        package: string;
+        version: string;
+        taskID: string;
+    }
+
+    export interface AgentPluginOperateReq {
+        agentId: number;
+        pluginId: string;
+        operate: 'enable' | 'disable' | 'update' | 'uninstall';
+        taskID: string;
+    }
+
+    export interface AgentPluginItem {
+        id: string;
+        name: string;
+        version: string;
+        origin: string;
+        enabled: boolean;
+    }
+
+    export interface AgentPluginSearchItem {
+        package: string;
+        pluginId: string;
+        name: string;
+        description: string;
+        version: string;
+        channel: string;
+        verificationTier: string;
+        categories: string[];
+        official: boolean;
+        downloads: number;
+        score: number;
+    }
+
+    export interface AgentDiscordConfigReq {
+        agentId: number;
+    }
+
+    export interface AgentDiscordConfig {
+        enabled: boolean;
+        dmPolicy: string;
+        allowFrom: string[];
+        requireMention: boolean;
+        groupPolicy: string;
+        proxy: string;
+        defaultAccount: string;
+        bots: AgentDiscordBot[];
+    }
+
+    export interface AgentDiscordConfigUpdateReq {
+        agentId: number;
+        enabled: boolean;
+        dmPolicy: string;
+        allowFrom: string[];
+        requireMention: boolean;
+        groupPolicy: string;
+        proxy: string;
+        defaultAccount: string;
+        bots: AgentDiscordBot[];
+    }
+
+    export interface AgentDiscordBot extends AgentChannelBotBase {
+        token: string;
+    }
+
+    export interface AgentQQBotBot extends AgentChannelBotBase {
+        appId: string;
+        clientSecret: string;
+        allowFrom: string[];
+        systemPrompt: string;
+    }
+
+    export interface AgentDingTalkBot extends AgentChannelBotBase {
+        clientId: string;
+        clientSecret: string;
+    }
+
+    export interface AgentSecurityConfigReq {
+        agentId: number;
+    }
+
+    export interface AgentSecurityConfig {
+        allowedOrigins: string[];
+    }
+
+    export interface AgentSecurityConfigUpdateReq {
+        agentId: number;
+        allowedOrigins: string[];
+    }
+
+    export interface AgentOtherConfigReq {
+        agentId: number;
+    }
+
+    export interface AgentOtherConfig {
+        userTimezone: string;
+        browserEnabled: boolean;
+        npmRegistry: string;
+        dashboardUsername: string;
+        dashboardPassword: string;
+    }
+
+    export interface AgentOtherConfigUpdateReq {
+        agentId: number;
+        userTimezone?: string;
+        browserEnabled: boolean;
+        npmRegistry?: string;
+        dashboardUsername?: string;
+        dashboardPassword?: string;
+    }
+
+    export interface AgentConfigFileReq {
+        agentId: number;
+    }
+
+    export interface AgentConfigFile {
+        content: string;
+    }
+
+    export interface AgentConfigFileUpdateReq {
+        agentId: number;
+        content: string;
+    }
+
+    export interface AgentSkillsReq {
+        agentId: number;
+    }
+
+    export interface AgentSkillSearchReq {
+        agentId: number;
+        source: 'clawhub-global' | 'clawhub-cn' | 'skillhub' | 'official' | 'skills-sh' | 'local-hub';
+        keyword: string;
+    }
+
+    export interface AgentSkillItem {
+        name: string;
+        description: string;
+        category: string;
+        tags: string[];
+        source: string;
+        trust: string;
+        identifier: string;
+        bundled: boolean;
+        disabled: boolean;
+        uninstallable: boolean;
+    }
+
+    export interface AgentSkillSearchItem {
+        slug: string;
+        identifier: string;
+        name: string;
+        description: string;
+        summary: string;
+        version: string;
+        source: string;
+        trust: string;
+        score: string;
+    }
+
+    export interface AgentSkillUpdateReq {
+        agentId: number;
+        name: string;
+        enabled: boolean;
+    }
+
+    export interface AgentSkillInstallReq {
+        agentId: number;
+        source: 'clawhub-global' | 'clawhub-cn' | 'skillhub' | 'official' | 'skills-sh' | 'local-hub';
+        slug: string;
+        taskID: string;
+    }
+
+    export interface AgentSkillUninstallReq {
+        agentId: number;
+        name: string;
+    }
+}

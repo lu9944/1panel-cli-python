@@ -1,0 +1,1891 @@
+package v2
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/1Panel-dev/1Panel/agent/app/api/v2/helper"
+	"github.com/1Panel-dev/1Panel/agent/app/dto"
+	"github.com/1Panel-dev/1Panel/agent/app/dto/request"
+	"github.com/1Panel-dev/1Panel/agent/app/dto/response"
+	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"github.com/1Panel-dev/1Panel/agent/constant"
+	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/utils/files"
+	websocket2 "github.com/1Panel-dev/1Panel/agent/utils/websocket"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
+	qrcode "github.com/skip2/go-qrcode"
+)
+
+var cancelledChunkUploads = struct {
+	sync.RWMutex
+	ids map[string]struct{}
+}{ids: make(map[string]struct{})}
+
+type chunkUploadLock struct {
+	mutex sync.Mutex
+	refs  int
+}
+
+var chunkUploadLocks = struct {
+	sync.Mutex
+	items map[string]*chunkUploadLock
+}{items: make(map[string]*chunkUploadLock)}
+
+type completedChunkUpload struct {
+	dstDir   string
+	filename string
+	fileSize int64
+}
+
+var completedChunkUploads = struct {
+	sync.RWMutex
+	items map[string]completedChunkUpload
+}{items: make(map[string]completedChunkUpload)}
+
+var activeChunkUploadTTL = 24 * time.Hour
+
+var (
+	errChunkUploadCancelled = errors.New("upload cancelled")
+	errInvalidChunkUpload   = errors.New("invalid chunk upload")
+)
+
+type activeChunkUpload struct {
+	upload    completedChunkUpload
+	expiresAt time.Time
+	timer     *time.Timer
+}
+
+var activeChunkUploads = struct {
+	sync.RWMutex
+	items map[string]activeChunkUpload
+}{items: make(map[string]activeChunkUpload)}
+
+type resumableUploadChunk struct {
+	UploadID   string
+	Filename   string
+	DstDir     string
+	ChunkIndex int
+	ChunkCount int
+	Offset     int64
+	FileSize   int64
+	Overwrite  bool
+}
+
+func invalidChunkUploadError(message string) error {
+	return fmt.Errorf("%w: %s", errInvalidChunkUpload, message)
+}
+
+func isRetryableChunkUploadError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, errChunkUploadCancelled) ||
+		errors.Is(err, errInvalidChunkUpload) ||
+		errors.Is(err, os.ErrExist) ||
+		errors.Is(err, os.ErrPermission) ||
+		errors.Is(err, os.ErrInvalid) ||
+		errors.Is(err, syscall.ENOSPC) ||
+		errors.Is(err, syscall.EDQUOT) ||
+		errors.Is(err, syscall.EROFS) ||
+		errors.Is(err, syscall.EFBIG) ||
+		errors.Is(err, syscall.ENAMETOOLONG) ||
+		errors.Is(err, syscall.ENOTDIR) ||
+		errors.Is(err, syscall.EISDIR) {
+		return false
+	}
+	return true
+}
+
+// @Tags File
+// @Summary List files
+// @Accept json
+// @Param request body request.FileOption true "request"
+// @Success 200 {object} response.FileInfo
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/search [post]
+func (b *BaseApi) ListFiles(c *gin.Context) {
+	var req request.FileOption
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	fileList, err := fileService.GetFileList(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, fileList)
+}
+
+// @Tags File
+// @Summary File search: content grep + optional AI summary
+// @Description When file-management AI is enabled, returns mode=ai with summary and hits. When disabled, returns mode=grep with hits only. Scans file contents only. Supports match options, extension/size/time filters, and scan limits.
+// @Accept json
+// @Param request body request.FileAISearch true "request"
+// @Success 200 {object} response.FileAISearchResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/ai-search [post]
+func (b *BaseApi) FileAISearch(c *gin.Context) {
+	var req request.FileAISearch
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if strings.TrimSpace(req.ResponseLanguage) == "" {
+		req.ResponseLanguage = strings.TrimSpace(c.GetHeader("Accept-Language"))
+	}
+	res, err := fileService.AISearch(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags File
+// @Summary Page file
+// @Accept json
+// @Param request body request.SearchUploadWithPage true "request"
+// @Success 200 {object} dto.PageResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/upload/search [post]
+func (b *BaseApi) SearchUploadWithPage(c *gin.Context) {
+	var req request.SearchUploadWithPage
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	total, files, err := fileService.SearchUploadWithPage(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, dto.PageResult{
+		Items: files,
+		Total: total,
+	})
+}
+
+// @Tags File
+// @Summary Load files tree
+// @Accept json
+// @Param request body request.FileOption true "request"
+// @Success 200 {array} response.FileTree
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/tree [post]
+func (b *BaseApi) GetFileTree(c *gin.Context) {
+	var req request.FileOption
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	tree, err := fileService.GetFileTree(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithDataGzipped(c, tree)
+}
+
+// @Tags File
+// @Summary Create file
+// @Accept json
+// @Param request body request.FileCreate true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files [post]
+// @x-panel-log {"bodyKeys":["path"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"创建文件/文件夹 [path]","formatEN":"Create dir or file [path]"}
+func (b *BaseApi) CreateFile(c *gin.Context) {
+	var req request.FileCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	err := fileService.Create(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Delete file
+// @Accept json
+// @Param request body request.FileDelete true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/del [post]
+// @x-panel-log {"bodyKeys":["path"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"删除文件/文件夹 [path]","formatEN":"Delete dir or file [path]"}
+func (b *BaseApi) DeleteFile(c *gin.Context) {
+	var req request.FileDelete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	err := fileService.Delete(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Batch delete file
+// @Accept json
+// @Param request body request.FileBatchDelete true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/batch/del [post]
+// @x-panel-log {"bodyKeys":["paths"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"批量删除文件/文件夹 [paths]","formatEN":"Batch delete dir or file [paths]"}
+func (b *BaseApi) BatchDeleteFile(c *gin.Context) {
+	var req request.FileBatchDelete
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	err := fileService.BatchDelete(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Change file mode
+// @Accept json
+// @Param request body request.FileCreate true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/mode [post]
+// @x-panel-log {"bodyKeys":["path","mode"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"修改权限 [path] => [mode]","formatEN":"Change mode [path] => [mode]"}
+func (b *BaseApi) ChangeFileMode(c *gin.Context) {
+	var req request.FileCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	err := fileService.ChangeMode(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Change file owner
+// @Accept json
+// @Param request body request.FileRoleUpdate true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/owner [post]
+// @x-panel-log {"bodyKeys":["path","user","group"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"修改用户/组 [path] => [user]/[group]","formatEN":"Change owner [path] => [user]/[group]"}
+func (b *BaseApi) ChangeFileOwner(c *gin.Context) {
+	var req request.FileRoleUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := fileService.ChangeOwner(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Compress file
+// @Accept json
+// @Param request body request.FileCompress true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/compress [post]
+// @x-panel-log {"bodyKeys":["name"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"压缩文件 [name]","formatEN":"Compress file [name]"}
+func (b *BaseApi) CompressFile(c *gin.Context) {
+	var req request.FileCompress
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	err := fileService.Compress(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Stop compress task
+// @Accept json
+// @Param request body request.FileCompressStopReq true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/compress/stop [post]
+func (b *BaseApi) StopCompressFile(c *gin.Context) {
+	var req request.FileCompressStopReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := fileService.StopCompress(req.TaskID); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Decompress file
+// @Accept json
+// @Param request body request.FileDeCompress true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/decompress [post]
+// @x-panel-log {"bodyKeys":["path"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"解压 [path]","formatEN":"Decompress file [path]"}
+func (b *BaseApi) DeCompressFile(c *gin.Context) {
+	var req request.FileDeCompress
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	err := fileService.DeCompress(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Stop decompress task
+// @Accept json
+// @Param request body request.FileDeCompressStopReq true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/decompress/stop [post]
+func (b *BaseApi) StopDeCompressFile(c *gin.Context) {
+	var req request.FileDeCompressStopReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := fileService.StopDeCompress(req.TaskID); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Load file content
+// @Accept json
+// @Param request body request.FileContentReq true "request"
+// @Success 200 {object} response.FileInfo
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/content [post]
+// @x-panel-log {"bodyKeys":["path"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"获取文件内容 [path]","formatEN":"Load file content [path]"}
+func (b *BaseApi) GetContent(c *gin.Context) {
+	var req request.FileContentReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	info, err := fileService.GetContent(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	if info.Size > 2*1024 && info.Size < 5*1024*1024 {
+		helper.SuccessWithDataGzipped(c, info)
+	} else {
+		helper.SuccessWithData(c, info)
+	}
+}
+
+// @Tags File
+// @Summary Preview file content
+// @Accept json
+// @Param request body request.FileContentReq true "request"
+// @Success 200 {object} response.FileInfo
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/preview [post]
+// @x-panel-log {"bodyKeys":["path"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"预览文件内容 [path]","formatEN":"Preview file content [path]"}
+func (b *BaseApi) PreviewContent(c *gin.Context) {
+	var req request.FileContentReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	info, err := fileService.GetPreviewContent(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+
+	helper.SuccessWithData(c, info)
+}
+
+// @Tags File
+// @Summary Update file content
+// @Accept json
+// @Param request body request.FileEdit true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/save [post]
+// @x-panel-log {"bodyKeys":["path"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"更新文件内容 [path]","formatEN":"Update file content [path]"}
+func (b *BaseApi) SaveContent(c *gin.Context) {
+	var req request.FileEdit
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := fileService.SaveContent(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Upload file
+// @Param file formData file true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/upload [post]
+// @x-panel-log {"bodyKeys":["path", "file"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"上传文件 [path]/[file]","formatEN":"Upload file [path]/[file]"}
+func (b *BaseApi) UploadFiles(c *gin.Context) {
+	form, err := c.MultipartForm()
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	uploadFiles := form.File["file"]
+	paths := form.Value["path"]
+
+	overwrite := true
+	if ow, ok := form.Value["overwrite"]; ok {
+		if len(ow) != 0 {
+			parseBool, _ := strconv.ParseBool(ow[0])
+			overwrite = parseBool
+		}
+	}
+
+	if len(paths) == 0 || !strings.Contains(paths[0], "/") {
+		helper.BadRequest(c, errors.New("error paths in request"))
+		return
+	}
+	dir := path.Clean(paths[0])
+
+	_, err = os.Stat(dir)
+	if err != nil && os.IsNotExist(err) {
+		mode, err := files.GetParentMode(dir)
+		if err != nil {
+			helper.InternalServer(c, err)
+			return
+		}
+		if err = os.MkdirAll(dir, mode); err != nil {
+			helper.BadRequest(c, fmt.Errorf("mkdir %s failed, err: %v", dir, err))
+			return
+		}
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	mode := info.Mode()
+
+	fileOp := files.NewFileOp()
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	uid, gid := -1, -1
+	if ok {
+		uid, gid = int(stat.Uid), int(stat.Gid)
+	}
+	success := 0
+	failures := make(buserr.MultiErr)
+	for _, file := range uploadFiles {
+		dstFilename := path.Join(paths[0], file.Filename)
+		dstDir := path.Dir(dstFilename)
+		if !fileOp.Stat(dstDir) {
+			if err = fileOp.CreateDir(dstDir, mode); err != nil {
+				e := fmt.Errorf("create dir [%s] failed, err: %v", path.Dir(dstFilename), err)
+				failures[file.Filename] = e
+				global.LOG.Error(e)
+				continue
+			}
+			_ = os.Chown(dstDir, uid, gid)
+		}
+		dstDirMode := mode
+		dstFileMode := mode.Perm()
+		if dstDirInfo, err := os.Stat(dstDir); err == nil {
+			dstDirMode = dstDirInfo.Mode()
+			dstFileMode = dstDirInfo.Mode().Perm()
+		}
+		tmpFilename := dstFilename + ".tmp"
+		if err := c.SaveUploadedFile(file, tmpFilename, dstDirMode); err != nil {
+			_ = os.Remove(tmpFilename)
+			e := fmt.Errorf("upload [%s] file failed, err: %v", file.Filename, err)
+			failures[file.Filename] = e
+			global.LOG.Error(e)
+			continue
+		}
+		dstInfo, statErr := os.Stat(dstFilename)
+		err = finalizeUploadedFile(tmpFilename, dstFilename, overwrite)
+		if err != nil {
+			_ = os.Remove(tmpFilename)
+			e := fmt.Errorf("upload [%s] file failed, err: %v", file.Filename, err)
+			failures[file.Filename] = e
+			global.LOG.Error(e)
+			continue
+		}
+		if statErr == nil {
+			_ = os.Chmod(dstFilename, dstInfo.Mode())
+		} else {
+			_ = os.Chmod(dstFilename, dstFileMode)
+		}
+		if uid != -1 && gid != -1 {
+			_ = os.Chown(dstFilename, uid, gid)
+		}
+		success++
+	}
+	if success == 0 {
+		helper.InternalServer(c, failures)
+	} else {
+		helper.SuccessWithMsg(c, fmt.Sprintf("%d files upload success", success))
+	}
+}
+
+// @Tags File
+// @Summary Check file exist
+// @Accept json
+// @Param request body request.FilePathCheck true "request"
+// @Success 200 {boolean} isOk
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/check [post]
+func (b *BaseApi) CheckFile(c *gin.Context) {
+	var req request.FilePathCheck
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	fileOp := files.NewFileOp()
+	if fileOp.Stat(req.Path) {
+		helper.SuccessWithData(c, true)
+		return
+	}
+	if req.WithInit {
+		if err := fileOp.CreateDir(req.Path, 0644); err != nil {
+			helper.SuccessWithData(c, false)
+			return
+		}
+		helper.SuccessWithData(c, true)
+		return
+	}
+	helper.SuccessWithData(c, false)
+}
+
+// @Tags File
+// @Summary Batch check file exist
+// @Accept json
+// @Param request body request.FilePathsCheck true "request"
+// @Success 200 {array} response.ExistFileInfo
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/batch/check [post]
+func (b *BaseApi) BatchCheckFiles(c *gin.Context) {
+	var req request.FilePathsCheck
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	fileList := fileService.BatchCheckFiles(req)
+	helper.SuccessWithData(c, fileList)
+}
+
+// @Tags File
+// @Summary Change file name
+// @Accept json
+// @Param request body request.FileRename true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/rename [post]
+// @x-panel-log {"bodyKeys":["oldName","newName"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"重命名 [oldName] => [newName]","formatEN":"Rename [oldName] => [newName]"}
+func (b *BaseApi) ChangeFileName(c *gin.Context) {
+	var req request.FileRename
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := fileService.ChangeName(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Wget file
+// @Accept json
+// @Param request body request.FileWget true "request"
+// @Success 200 {object} response.FileWgetRes
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/wget [post]
+// @x-panel-log {"bodyKeys":["url","path","name"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"下载 url => [path]/[name]","formatEN":"Download url => [path]/[name]"}
+func (b *BaseApi) WgetFile(c *gin.Context) {
+	var req request.FileWget
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	key, err := fileService.Wget(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, response.FileWgetRes{
+		Key: key,
+	})
+}
+
+// @Tags File
+// @Summary Stop wget file download
+// @Accept json
+// @Param request body request.FileProcessReq true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/wget/stop [post]
+// @x-panel-log {"bodyKeys":["key"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"停止下载任务 [key]","formatEN":"Stop wget task [key]"}
+func (b *BaseApi) StopWget(c *gin.Context) {
+	var req request.FileProcessReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if strings.TrimSpace(req.Key) == "" {
+		helper.BadRequest(c, errors.New("key is required"))
+		return
+	}
+
+	if err := files.CancelDownload(req.Key); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Remove finished download progress records without deleting files
+// @Accept json
+// @Param request body request.FileProcessRemoveReq true "request"
+// @Success 200 {object} response.FileProcessKeys
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/wget/process/remove [post]
+// @x-panel-log {"bodyKeys":["keys"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"移除已结束下载记录 [keys]","formatEN":"Remove finished download records [keys]"}
+func (b *BaseApi) RemoveWgetRecords(c *gin.Context) {
+	var req request.FileProcessRemoveReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	keys, err := files.RemoveDownloadRecords(req.Keys)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	helper.SuccessWithData(c, response.FileProcessKeys{Keys: keys})
+}
+
+// @Tags File
+// @Summary Move file
+// @Accept json
+// @Param request body request.FileMove true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/move [post]
+// @x-panel-log {"bodyKeys":["oldPaths","newPath"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"移动文件 [oldPaths] => [newPath]","formatEN":"Move [oldPaths] => [newPath]"}
+func (b *BaseApi) MoveFile(c *gin.Context) {
+	var req request.FileMove
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := fileService.MvFile(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Stop file move task
+// @Accept json
+// @Param request body request.FileMoveStopReq true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/move/stop [post]
+func (b *BaseApi) StopMoveFile(c *gin.Context) {
+	var req request.FileMoveStopReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := fileService.StopMvFile(req.TaskID); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Download file
+// @Accept json
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/download [get]
+func (b *BaseApi) Download(c *gin.Context) {
+	filePath := c.Query("path")
+	if files.ShouldDenySensitiveFileRead(filePath) {
+		helper.InternalServer(c, buserr.New("ErrSensitiveFileRead"))
+		return
+	}
+	file, err := os.Open(filePath)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	c.Header("Content-Length", strconv.FormatInt(info.Size(), 10))
+	c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(info.Name()))
+	http.ServeContent(c.Writer, c.Request, info.Name(), info.ModTime(), file)
+}
+
+// @Tags File
+// @Summary Chunk Download file
+// @Accept json
+// @Param request body request.FileDownload true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/chunkdownload [post]
+// @x-panel-log {"bodyKeys":["name"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"下载文件 [name]","formatEN":"Download file [name]"}
+func (b *BaseApi) DownloadChunkFiles(c *gin.Context) {
+	var req request.FileChunkDownload
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	fileOp := files.NewFileOp()
+	if !fileOp.Stat(req.Path) {
+		helper.ErrorWithDetail(c, http.StatusInternalServerError, "ErrPathNotFound", nil)
+		return
+	}
+	if files.ShouldDenySensitiveFileRead(req.Path) {
+		helper.InternalServer(c, buserr.New("ErrSensitiveFileRead"))
+		return
+	}
+	filePath := req.Path
+	fstFile, err := fileOp.OpenFile(filePath)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	info, err := fstFile.Stat()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	if info.IsDir() {
+		helper.ErrorWithDetail(c, http.StatusInternalServerError, "ErrFileDownloadDir", err)
+		return
+	}
+
+	c.Writer.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", req.Name))
+	c.Writer.Header().Set("Content-Type", "application/octet-stream")
+	c.Writer.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	c.Writer.Header().Set("Accept-Ranges", "bytes")
+
+	if c.Request.Header.Get("Range") != "" {
+		rangeHeader := c.Request.Header.Get("Range")
+		rangeArr := strings.Split(rangeHeader, "=")[1]
+		rangeParts := strings.Split(rangeArr, "-")
+
+		startPos, _ := strconv.ParseInt(rangeParts[0], 10, 64)
+
+		var endPos int64
+		if rangeParts[1] == "" {
+			endPos = info.Size() - 1
+		} else {
+			endPos, _ = strconv.ParseInt(rangeParts[1], 10, 64)
+		}
+
+		c.Writer.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", startPos, endPos, info.Size()))
+		c.Writer.WriteHeader(http.StatusPartialContent)
+
+		buffer := make([]byte, 1024*1024)
+		file, err := os.Open(filePath)
+		if err != nil {
+			helper.InternalServer(c, err)
+			return
+		}
+		defer file.Close()
+
+		_, _ = file.Seek(startPos, 0)
+		reader := io.LimitReader(file, endPos-startPos+1)
+		_, err = io.CopyBuffer(c.Writer, reader, buffer)
+		if err != nil {
+			helper.InternalServer(c, err)
+			return
+		}
+	} else {
+		c.File(filePath)
+	}
+}
+
+// @Tags File
+// @Summary Load file size
+// @Accept json
+// @Param request body request.DirSizeReq true "request"
+// @Success 200 {object} response.DirSizeRes
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/size [post]
+// @x-panel-log {"bodyKeys":["path"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"获取文件夹大小 [path]","formatEN":"Load file size [path]"}
+func (b *BaseApi) Size(c *gin.Context) {
+	var req request.DirSizeReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := fileService.DirSize(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags File
+// @Summary Multi file size
+// @Accept json
+// @Param request body request.DirSizeReq true "request"
+// @Success 200 {array} response.DepthDirSizeRes
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/depth/size [post]
+// @x-panel-log {"bodyKeys":["path"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"获取目录及其第一层子目录文件夹大小 [path]","formatEN":"Multi file size [path]"}
+func (b *BaseApi) DepthDirSize(c *gin.Context) {
+	var req request.DirSizeReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := fileService.DepthDirSize(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+func lockChunkUpload(uploadID string) func() {
+	chunkUploadLocks.Lock()
+	lock, ok := chunkUploadLocks.items[uploadID]
+	if !ok {
+		lock = &chunkUploadLock{}
+		chunkUploadLocks.items[uploadID] = lock
+	}
+	lock.refs++
+	chunkUploadLocks.Unlock()
+
+	lock.mutex.Lock()
+	return func() {
+		lock.mutex.Unlock()
+		chunkUploadLocks.Lock()
+		lock.refs--
+		if lock.refs == 0 {
+			delete(chunkUploadLocks.items, uploadID)
+		}
+		chunkUploadLocks.Unlock()
+	}
+}
+
+func resumableUploadPartPath(dstDir, uploadID string) string {
+	return filepath.Join(dstDir, fmt.Sprintf(".1panel-upload-%s.part", uploadID))
+}
+
+func finalizeUploadedFile(tmpFile, dstFile string, overwrite bool) error {
+	if overwrite {
+		return os.Rename(tmpFile, dstFile)
+	}
+	if err := os.Link(tmpFile, dstFile); err != nil {
+		return err
+	}
+	if err := os.Remove(tmpFile); err != nil {
+		if rollbackErr := os.Remove(dstFile); rollbackErr != nil {
+			return fmt.Errorf("remove upload temporary file failed: %v, rollback destination failed: %w", err, rollbackErr)
+		}
+		return err
+	}
+	return nil
+}
+
+func registerActiveChunkUpload(uploadID string, upload completedChunkUpload) error {
+	activeChunkUploads.Lock()
+	defer activeChunkUploads.Unlock()
+	if active, ok := activeChunkUploads.items[uploadID]; ok {
+		if active.upload != upload {
+			return invalidChunkUploadError("upload ID is already used by another file")
+		}
+		active.timer.Stop()
+	}
+	expiresAt := time.Now().Add(activeChunkUploadTTL)
+	timer := time.AfterFunc(activeChunkUploadTTL, func() {
+		expireActiveChunkUpload(uploadID, expiresAt)
+	})
+	activeChunkUploads.items[uploadID] = activeChunkUpload{
+		upload:    upload,
+		expiresAt: expiresAt,
+		timer:     timer,
+	}
+	return nil
+}
+
+func loadActiveChunkUpload(uploadID string) (completedChunkUpload, bool) {
+	activeChunkUploads.RLock()
+	active, ok := activeChunkUploads.items[uploadID]
+	activeChunkUploads.RUnlock()
+	return active.upload, ok
+}
+
+func deleteActiveChunkUpload(uploadID string) {
+	activeChunkUploads.Lock()
+	if active, ok := activeChunkUploads.items[uploadID]; ok {
+		active.timer.Stop()
+	}
+	delete(activeChunkUploads.items, uploadID)
+	activeChunkUploads.Unlock()
+}
+
+func discardActiveChunkUpload(uploadID, partFile string) error {
+	deleteActiveChunkUpload(uploadID)
+	if err := os.Remove(partFile); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove upload temporary file failed: %w", err)
+	}
+	return nil
+}
+
+func finalizeActiveChunkUpload(uploadID, partFile, dstFile string, overwrite bool) error {
+	if err := finalizeUploadedFile(partFile, dstFile, overwrite); err != nil {
+		if removeErr := discardActiveChunkUpload(uploadID, partFile); removeErr != nil {
+			return errors.Join(err, removeErr)
+		}
+		return err
+	}
+	return nil
+}
+
+func expireActiveChunkUpload(uploadID string, expiresAt time.Time) {
+	unlock := lockChunkUpload(uploadID)
+	defer unlock()
+	activeChunkUploads.Lock()
+	active, ok := activeChunkUploads.items[uploadID]
+	if !ok || !active.expiresAt.Equal(expiresAt) {
+		activeChunkUploads.Unlock()
+		return
+	}
+	delete(activeChunkUploads.items, uploadID)
+	activeChunkUploads.Unlock()
+	partFile := resumableUploadPartPath(active.upload.dstDir, uploadID)
+	if err := os.Remove(partFile); err != nil && !os.IsNotExist(err) {
+		global.LOG.Warnf("remove inactive upload part [%s] failed: %v", partFile, err)
+	}
+}
+
+func removeActiveResumableUploadPart(uploadID string) error {
+	unlock := lockChunkUpload(uploadID)
+	defer unlock()
+	upload, ok := loadActiveChunkUpload(uploadID)
+	if !ok {
+		return nil
+	}
+	err := os.Remove(resumableUploadPartPath(upload.dstDir, uploadID))
+	if err == nil || os.IsNotExist(err) {
+		deleteActiveChunkUpload(uploadID)
+		return nil
+	}
+	return err
+}
+
+func loadCompletedChunkUpload(uploadID string) (completedChunkUpload, bool) {
+	completedChunkUploads.RLock()
+	completed, ok := completedChunkUploads.items[uploadID]
+	completedChunkUploads.RUnlock()
+	return completed, ok
+}
+
+func markChunkUploadCompleted(uploadID string, completed completedChunkUpload) {
+	completedChunkUploads.Lock()
+	completedChunkUploads.items[uploadID] = completed
+	completedChunkUploads.Unlock()
+	time.AfterFunc(10*time.Minute, func() {
+		completedChunkUploads.Lock()
+		delete(completedChunkUploads.items, uploadID)
+		completedChunkUploads.Unlock()
+	})
+}
+
+func writeResumableUploadChunk(chunk resumableUploadChunk, chunkData []byte) error {
+	unlock := lockChunkUpload(chunk.UploadID)
+	defer unlock()
+	if chunkUploadCancelled(chunk.UploadID) {
+		return errChunkUploadCancelled
+	}
+	if chunk.UploadID == "" || filepath.Base(chunk.UploadID) != chunk.UploadID || strings.ContainsAny(chunk.UploadID, `/\`) {
+		return invalidChunkUploadError("invalid upload ID")
+	}
+	if chunk.Filename == "" || filepath.Base(chunk.Filename) != chunk.Filename || strings.ContainsAny(chunk.Filename, `/\`) {
+		return invalidChunkUploadError("invalid filename")
+	}
+	if strings.TrimSpace(chunk.DstDir) == "" {
+		return invalidChunkUploadError("upload destination is required")
+	}
+	dstDir := filepath.Clean(strings.TrimSpace(chunk.DstDir))
+
+	if chunk.ChunkCount <= 0 || chunk.ChunkIndex < 0 || chunk.ChunkIndex >= chunk.ChunkCount {
+		return invalidChunkUploadError("invalid chunk index")
+	}
+	if chunk.FileSize <= 0 || chunk.Offset < 0 || chunk.Offset > chunk.FileSize {
+		return invalidChunkUploadError("invalid upload offset")
+	}
+	chunkEnd := chunk.Offset + int64(len(chunkData))
+	if chunkEnd > chunk.FileSize {
+		return invalidChunkUploadError("chunk exceeds file size")
+	}
+	if chunk.ChunkIndex+1 == chunk.ChunkCount {
+		if chunkEnd != chunk.FileSize {
+			return invalidChunkUploadError("final chunk does not match file size")
+		}
+	} else if chunkEnd >= chunk.FileSize {
+		return invalidChunkUploadError("non-final chunk reaches file size")
+	}
+	if completed, ok := loadCompletedChunkUpload(chunk.UploadID); ok {
+		if completed.dstDir == dstDir && completed.filename == chunk.Filename && completed.fileSize == chunk.FileSize {
+			return nil
+		}
+		return invalidChunkUploadError("upload ID has already completed another file")
+	}
+	upload := completedChunkUpload{dstDir: dstDir, filename: chunk.Filename, fileSize: chunk.FileSize}
+	if err := registerActiveChunkUpload(chunk.UploadID, upload); err != nil {
+		return err
+	}
+
+	mode, err := files.GetParentMode(dstDir)
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(dstDir, mode); err != nil {
+		return err
+	}
+	dstDirInfo, err := os.Stat(dstDir)
+	if err != nil {
+		return err
+	}
+	if !dstDirInfo.IsDir() {
+		return invalidChunkUploadError(fmt.Sprintf("upload destination [%s] is not a directory", dstDir))
+	}
+
+	dstFile := filepath.Join(dstDir, chunk.Filename)
+	partFile := resumableUploadPartPath(dstDir, chunk.UploadID)
+	if dstFile == partFile {
+		return invalidChunkUploadError("filename conflicts with upload temporary file")
+	}
+	fileMode := dstDirInfo.Mode().Perm()
+	ownerInfo := dstDirInfo
+	if dstInfo, statErr := os.Stat(dstFile); statErr == nil {
+		if !chunk.Overwrite {
+			if err := discardActiveChunkUpload(chunk.UploadID, partFile); err != nil {
+				return errors.Join(os.ErrExist, err)
+			}
+			return os.ErrExist
+		}
+		fileMode = dstInfo.Mode().Perm()
+		ownerInfo = dstInfo
+	} else if !os.IsNotExist(statErr) {
+		return statErr
+	}
+
+	part, err := os.OpenFile(partFile, os.O_CREATE|os.O_RDWR, fileMode)
+	if err != nil {
+		return err
+	}
+	partClosed := false
+	defer func() {
+		if !partClosed {
+			_ = part.Close()
+		}
+	}()
+	if stat, statErr := part.Stat(); statErr != nil {
+		return statErr
+	} else if chunk.Offset > stat.Size() {
+		return invalidChunkUploadError(fmt.Sprintf("unexpected upload offset %d, current size is %d", chunk.Offset, stat.Size()))
+	} else if chunk.Offset < stat.Size() && chunkEnd > stat.Size() {
+		if err = part.Truncate(chunk.Offset); err != nil {
+			return err
+		}
+	}
+	if _, err = part.WriteAt(chunkData, chunk.Offset); err != nil {
+		return err
+	}
+
+	if chunk.ChunkIndex+1 != chunk.ChunkCount {
+		return nil
+	}
+	partInfo, err := part.Stat()
+	if err != nil {
+		return err
+	}
+	if partInfo.Size() != chunk.FileSize {
+		return invalidChunkUploadError(fmt.Sprintf("uploaded file size mismatch: expected %d, got %d", chunk.FileSize, partInfo.Size()))
+	}
+	if err = part.Close(); err != nil {
+		return err
+	}
+	partClosed = true
+	if err = os.Chmod(partFile, fileMode); err != nil {
+		return err
+	}
+	if stat, ok := ownerInfo.Sys().(*syscall.Stat_t); ok {
+		if err = os.Chown(partFile, int(stat.Uid), int(stat.Gid)); err != nil {
+			return err
+		}
+	}
+	if chunkUploadCancelled(chunk.UploadID) {
+		return errChunkUploadCancelled
+	}
+	if err = finalizeActiveChunkUpload(chunk.UploadID, partFile, dstFile, chunk.Overwrite); err != nil {
+		return err
+	}
+	markChunkUploadCompleted(chunk.UploadID, upload)
+	deleteActiveChunkUpload(chunk.UploadID)
+	return nil
+}
+
+func mergeChunks(fileName string, fileDir string, dstDir string, chunkCount int, overwrite bool) error {
+	defer func() {
+		_ = os.RemoveAll(fileDir)
+	}()
+
+	op := files.NewFileOp()
+	dstDir = strings.TrimSpace(dstDir)
+	mode, _ := files.GetParentMode(dstDir)
+	if mode == 0 {
+		mode = constant.DirPerm
+	}
+	if _, err := os.Stat(dstDir); err != nil && os.IsNotExist(err) {
+		if err = op.CreateDir(dstDir, mode); err != nil {
+			return err
+		}
+	}
+	if dstDirInfo, err := os.Stat(dstDir); err == nil {
+		mode = dstDirInfo.Mode().Perm()
+	}
+	dstFileName := filepath.Join(dstDir, fileName)
+	dstInfo, statErr := os.Stat(dstFileName)
+	if statErr == nil {
+		mode = dstInfo.Mode()
+	}
+	if overwrite {
+		_ = os.Remove(dstFileName)
+	}
+	targetFile, err := os.OpenFile(dstFileName, os.O_RDWR|os.O_CREATE, mode)
+	if err != nil {
+		return err
+	}
+	defer targetFile.Close()
+	for i := 0; i < chunkCount; i++ {
+		chunkPath := filepath.Join(fileDir, fmt.Sprintf("%s.%d", fileName, i))
+		chunkData, err := os.ReadFile(chunkPath)
+		if err != nil {
+			return err
+		}
+		_, err = targetFile.Write(chunkData)
+		if err != nil {
+			return err
+		}
+		_ = os.Remove(chunkPath)
+	}
+	_ = os.Chmod(dstFileName, mode)
+
+	return nil
+}
+
+// @Tags File
+// @Summary ChunkUpload file
+// @Param file formData file true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/chunkupload [post]
+func (b *BaseApi) UploadChunkFiles(c *gin.Context) {
+	var err error
+	fileForm, err := c.FormFile("chunk")
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	uploadFile, err := fileForm.Open()
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	defer uploadFile.Close()
+	chunkIndex, err := strconv.Atoi(c.PostForm("chunkIndex"))
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	chunkCount, err := strconv.Atoi(c.PostForm("chunkCount"))
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	if chunkCount <= 0 || chunkIndex < 0 || chunkIndex >= chunkCount {
+		helper.BadRequest(c, errors.New("invalid chunk index"))
+		return
+	}
+	fileOp := files.NewFileOp()
+	tmpDir := path.Join(global.Dir.TmpDir, "upload")
+	if !fileOp.Stat(tmpDir) {
+		if err := fileOp.CreateDir(tmpDir, constant.DirPerm); err != nil {
+			helper.BadRequest(c, err)
+			return
+		}
+	}
+	filename := c.PostForm("filename")
+	if filename == "" || filepath.Base(filename) != filename || strings.ContainsAny(filename, `/\\`) {
+		helper.BadRequest(c, errors.New("invalid filename"))
+		return
+	}
+	uploadID := strings.TrimSpace(c.PostForm("uploadID"))
+	resumable := c.PostForm("fileSize") != "" || c.PostForm("offset") != ""
+	cancellable := uploadID != ""
+	if cancellable && (filepath.Base(uploadID) != uploadID || strings.ContainsAny(uploadID, `/\\`)) {
+		helper.BadRequest(c, errors.New("invalid upload ID"))
+		return
+	}
+	if resumable && !cancellable {
+		helper.BadRequest(c, errors.New("upload ID is required"))
+		return
+	}
+	if !cancellable {
+		uploadID = filename
+	}
+	fileDir := filepath.Join(tmpDir, uploadID)
+	if cancellable && chunkUploadCancelled(uploadID) {
+		helper.BadRequest(c, errChunkUploadCancelled)
+		return
+	}
+	if !resumable && chunkIndex == 0 {
+		if fileOp.Stat(fileDir) {
+			_ = fileOp.DeleteDir(fileDir)
+		}
+		_ = os.MkdirAll(fileDir, constant.DirPerm)
+	}
+	filePath := filepath.Join(fileDir, filename)
+
+	defer func() {
+		if !resumable && err != nil {
+			_ = os.RemoveAll(fileDir)
+		}
+	}()
+	chunkData, err := io.ReadAll(uploadFile)
+	if err != nil {
+		helper.InternalServer(c, buserr.WithMap("ErrFileUpload", map[string]interface{}{"name": filename, "detail": err.Error()}, err))
+		return
+	}
+	if cancellable && chunkUploadCancelled(uploadID) {
+		err = errChunkUploadCancelled
+		helper.BadRequest(c, err)
+		return
+	}
+	if resumable {
+		offset, parseErr := strconv.ParseInt(c.PostForm("offset"), 10, 64)
+		if parseErr != nil {
+			helper.BadRequest(c, parseErr)
+			return
+		}
+		fileSize, parseErr := strconv.ParseInt(c.PostForm("fileSize"), 10, 64)
+		if parseErr != nil {
+			helper.BadRequest(c, parseErr)
+			return
+		}
+		overwrite := true
+		if ow := c.PostForm("overwrite"); ow != "" {
+			overwrite, _ = strconv.ParseBool(ow)
+		}
+		err = writeResumableUploadChunk(resumableUploadChunk{
+			UploadID:   uploadID,
+			Filename:   filename,
+			DstDir:     c.PostForm("path"),
+			ChunkIndex: chunkIndex,
+			ChunkCount: chunkCount,
+			Offset:     offset,
+			FileSize:   fileSize,
+			Overwrite:  overwrite,
+		}, chunkData)
+		if err != nil {
+			uploadErr := buserr.WithMap("ErrFileUpload", map[string]interface{}{"name": filename, "detail": err.Error()}, err)
+			helper.ErrorWithDetailAndData(c, http.StatusInternalServerError, "ErrInternalServer", uploadErr, gin.H{
+				"retryable": isRetryableChunkUploadError(err),
+			})
+			return
+		}
+		if chunkIndex+1 == chunkCount {
+			cancelledChunkUploads.Lock()
+			delete(cancelledChunkUploads.ids, uploadID)
+			cancelledChunkUploads.Unlock()
+		}
+		helper.SuccessWithData(c, true)
+		return
+	}
+
+	emptyFile, err := os.Create(filePath)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	defer emptyFile.Close()
+
+	chunkPath := filepath.Join(fileDir, fmt.Sprintf("%s.%d", filename, chunkIndex))
+	err = os.WriteFile(chunkPath, chunkData, constant.DirPerm)
+	if err != nil {
+		helper.InternalServer(c, buserr.WithMap("ErrFileUpload", map[string]interface{}{"name": filename, "detail": err.Error()}, err))
+		return
+	}
+
+	if chunkIndex+1 == chunkCount {
+		overwrite := true
+		if ow := c.PostForm("overwrite"); ow != "" {
+			overwrite, _ = strconv.ParseBool(ow)
+		}
+		err = mergeChunks(filename, fileDir, c.PostForm("path"), chunkCount, overwrite)
+		if err != nil {
+			helper.InternalServer(c, buserr.WithMap("ErrFileUpload", map[string]interface{}{"name": filename, "detail": err.Error()}, err))
+			return
+		}
+		if cancellable {
+			cancelledChunkUploads.Lock()
+			delete(cancelledChunkUploads.ids, uploadID)
+			cancelledChunkUploads.Unlock()
+		}
+		helper.SuccessWithData(c, true)
+	} else {
+		return
+	}
+}
+
+// StopChunkUpload removes temporary chunks left by a cancelled upload.
+func (b *BaseApi) StopChunkUpload(c *gin.Context) {
+	var req request.FileProcessReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	uploadID := strings.TrimSpace(req.Key)
+	if uploadID == "" || filepath.Base(uploadID) != uploadID || strings.ContainsAny(uploadID, `/\\`) {
+		helper.BadRequest(c, errors.New("invalid upload ID"))
+		return
+	}
+	cancelledChunkUploads.Lock()
+	cancelledChunkUploads.ids[uploadID] = struct{}{}
+	cancelledChunkUploads.Unlock()
+	time.AfterFunc(10*time.Minute, func() {
+		cancelledChunkUploads.Lock()
+		delete(cancelledChunkUploads.ids, uploadID)
+		cancelledChunkUploads.Unlock()
+	})
+	if err := os.RemoveAll(filepath.Join(global.Dir.TmpDir, "upload", uploadID)); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	if err := removeActiveResumableUploadPart(uploadID); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+func chunkUploadCancelled(uploadID string) bool {
+	cancelledChunkUploads.RLock()
+	_, ok := cancelledChunkUploads.ids[uploadID]
+	cancelledChunkUploads.RUnlock()
+	return ok
+}
+
+var wsUpgrade = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+// @Tags File
+// @Summary Wget process
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/wget/process [get]
+func (b *BaseApi) WgetProcess(c *gin.Context) {
+	if !websocket.IsWebSocketUpgrade(c.Request) {
+		helper.Success(c)
+		return
+	}
+	ws, err := wsUpgrade.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		return
+	}
+	wsClient := websocket2.NewWsClient("fileClient", ws)
+	go wsClient.Read()
+	go wsClient.Write()
+}
+
+// @Tags File
+// @Summary Process keys
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/wget/process/keys [get]
+func (b *BaseApi) ProcessKeys(c *gin.Context) {
+	res := &response.FileProcessKeys{}
+	keys := global.CACHE.PrefixScanKey("file-wget-")
+	for _, key := range keys {
+		value := global.CACHE.Get(key)
+		if value == "" {
+			continue
+		}
+		var process files.Process
+		if err := json.Unmarshal([]byte(value), &process); err != nil {
+			continue
+		}
+		res.Keys = append(res.Keys, key)
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags File
+// @Summary Read file by Line
+// @Param type path string true "type"
+// @Param request body request.FileReadByLineReq true "request"
+// @Success 200 {object} response.FileLineContent
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/read/{type} [post]
+func (b *BaseApi) ReadFileByLine(c *gin.Context) {
+	var req request.FileReadByLineReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if readType := strings.TrimSpace(c.Param("type")); readType != "" {
+		req.Type = readType
+	}
+	res, err := fileService.ReadLogByLine(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	if res.TotalLines > 100 {
+		helper.SuccessWithDataGzipped(c, res)
+	} else {
+		helper.SuccessWithData(c, res)
+	}
+}
+
+// @Tags File
+// @Summary Batch change file mode and owner
+// @Accept json
+// @Param request body request.FileRoleReq true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/batch/role [post]
+// @x-panel-log {"bodyKeys":["paths","mode","user","group"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"批量修改文件权限和用户/组 [paths] => [mode]/[user]/[group]","formatEN":"Batch change file mode and owner [paths] => [mode]/[user]/[group]"}
+func (b *BaseApi) BatchChangeModeAndOwner(c *gin.Context) {
+	var req request.FileRoleReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := fileService.BatchChangeModeAndOwner(req); err != nil {
+		helper.InternalServer(c, err)
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary system mount
+// @Accept json
+// @Success 200 {object} dto.DiskInfo
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/mount [post]
+func (b *BaseApi) GetHostMount(c *gin.Context) {
+	disks := fileService.GetHostMount()
+	helper.SuccessWithData(c, disks)
+}
+
+// @Tags File
+// @Summary system user and group
+// @Accept json
+// @Success 200 {object} response.UserGroupResponse
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/user/group [post]
+func (b *BaseApi) GetUsersAndGroups(c *gin.Context) {
+	res, err := fileService.GetUsersAndGroups()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags File
+// @Summary Convert file
+// @Accept json
+// @Param request body request.FileConvert true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/convert [post]
+func (b *BaseApi) ConvertFile(c *gin.Context) {
+	var req request.FileConvertRequest
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	fileService.Convert(req)
+	helper.SuccessWithData(c, nil)
+}
+
+// @Tags File
+// @Summary Convert file
+// @Accept json
+// @Param request body dto.PageInfo true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/convert/log [post]
+func (b *BaseApi) ConvertLog(c *gin.Context) {
+	var req dto.PageInfo
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	total, logs, err := fileService.ConvertLog(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, dto.PageResult{
+		Items: logs,
+		Total: total,
+	})
+}
+
+// @Tags File
+// @Summary Batch get file remarks
+// @Accept json
+// @Param request body request.FileRemarkBatch true "request"
+// @Success 200 {object} response.FileRemarksRes
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/remarks [post]
+func (b *BaseApi) BatchGetFileRemarks(c *gin.Context) {
+	var req request.FileRemarkBatch
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	remarks := fileService.BatchGetRemarks(req)
+	helper.SuccessWithData(c, response.FileRemarksRes{Remarks: remarks})
+}
+
+// @Tags File
+// @Summary Set file remark
+// @Accept json
+// @Param request body request.FileRemarkUpdate true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/remark [post]
+func (b *BaseApi) SetFileRemark(c *gin.Context) {
+	var req request.FileRemarkUpdate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := fileService.SetRemark(req); err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary List file shares
+// @Accept json
+// @Param request body dto.PageInfo true "request"
+// @Success 200 {object} dto.PageResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/share/search [post]
+func (b *BaseApi) SearchFileShare(c *gin.Context) {
+	var req dto.PageInfo
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	total, list, err := fileShareService.Page(req)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, dto.PageResult{
+		Total: total,
+		Items: list,
+	})
+}
+
+// @Tags File
+// @Summary Get file share detail by path
+// @Accept json
+// @Param request body dto.FilePath true "request"
+// @Success 200 {object} response.FileShareInfo
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/share/detail [post]
+func (b *BaseApi) GetFileShareDetail(c *gin.Context) {
+	var req dto.FilePath
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	info, err := fileShareService.GetByPath(req.Path)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, info)
+}
+
+// @Tags File
+// @Summary Get file share detail by code (no login)
+// @Param code query string true "share code"
+// @Success 200 {object} response.FileSharePublicInfo
+// @Router /files/share/info [get]
+func (b *BaseApi) GetPublicFileShareInfo(c *gin.Context) {
+	code := strings.TrimSpace(c.Query("code"))
+	if code == "" {
+		helper.BadRequest(c, errors.New("code is required"))
+		return
+	}
+	info, err := fileShareService.GetPublicByCode(code)
+	if err != nil {
+		if be, ok := err.(buserr.BusinessError); ok {
+			helper.ErrorWithDetail(c, http.StatusBadRequest, be.Msg, be)
+			return
+		}
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, info)
+}
+
+func buildSharePublicURL(c *gin.Context, code, operateNode string) string {
+	scheme := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto"))
+	if scheme == "" {
+		if c.Request.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+	host := strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
+	if host == "" {
+		host = c.Request.Host
+	}
+	shareURL := url.URL{
+		Scheme: scheme,
+		Host:   host,
+		Path:   "/s/" + url.PathEscape(code),
+	}
+	query := shareURL.Query()
+	if strings.TrimSpace(operateNode) != "" {
+		query.Set("operateNode", operateNode)
+	}
+	shareURL.RawQuery = query.Encode()
+	return shareURL.String()
+}
+
+// @Tags File
+// @Summary Get file share QR code image
+// @Produce png
+// @Param code query string true "share code"
+// @Param operateNode query string false "operate node"
+// @Success 200 {file} file
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/share/qrcode [get]
+func (b *BaseApi) GetFileShareQRCode(c *gin.Context) {
+	code := strings.TrimSpace(c.Query("code"))
+	if code == "" {
+		helper.BadRequest(c, errors.New("code is required"))
+		return
+	}
+	if _, err := fileShareService.GetByCode(code); err != nil {
+		if be, ok := err.(buserr.BusinessError); ok {
+			helper.ErrorWithDetail(c, http.StatusBadRequest, be.Msg, be)
+			return
+		}
+		helper.InternalServer(c, err)
+		return
+	}
+
+	png, err := qrcode.Encode(buildSharePublicURL(c, code, c.Query("operateNode")), qrcode.Medium, 256)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	c.Header("Cache-Control", "private, max-age=300")
+	c.Data(http.StatusOK, "image/png", png)
+}
+
+// @Tags File
+// @Summary Create temporary file share link
+// @Accept json
+// @Param request body request.FileShareCreate true "request"
+// @Success 200 {object} response.FileShareInfo
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/share/create [post]
+// @x-panel-log {"bodyKeys":["path","expireMinutes"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"创建文件分享 [path]","formatEN":"Create file share [path]"}
+func (b *BaseApi) CreateFileShare(c *gin.Context) {
+	var req request.FileShareCreate
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := fileShareService.Create(req)
+	if err != nil {
+		if be, ok := err.(buserr.BusinessError); ok {
+			helper.ErrorWithDetail(c, http.StatusInternalServerError, be.Msg, be.Err)
+			return
+		}
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags File
+// @Summary Delete file share by path
+// @Accept json
+// @Param request body dto.FilePath true "request"
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/share/del [post]
+// @x-panel-log {"bodyKeys":["path"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"关闭文件分享 [path]","formatEN":"Close file share [path]"}
+func (b *BaseApi) DeleteFileShare(c *gin.Context) {
+	var req dto.FilePath
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	if err := fileShareService.DeleteByPath(req.Path); err != nil {
+		if be, ok := err.(buserr.BusinessError); ok {
+			helper.ErrorWithDetail(c, http.StatusInternalServerError, be.Msg, be.Err)
+			return
+		}
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Check file share code (no login)
+// @Param code query string true "share code"
+// @Param password query string false "optional password"
+// @Success 200 {object} dto.Response
+// @Router /files/share/check [get]
+func (b *BaseApi) CheckFileShare(c *gin.Context) {
+	code := strings.TrimSpace(c.Query("code"))
+	password := c.Query("password")
+	if code == "" {
+		helper.BadRequest(c, errors.New("code is required"))
+		return
+	}
+	if err := fileShareService.Check(code, password); err != nil {
+		if be, ok := err.(buserr.BusinessError); ok {
+			helper.ErrorWithDetail(c, http.StatusBadRequest, be.Msg, be)
+			return
+		}
+		helper.InternalServer(c, err)
+		return
+	}
+	helper.Success(c)
+}
+
+// @Tags File
+// @Summary Download file by share code (no login)
+// @Produce octet-stream
+// @Param code query string true "share code"
+// @Param password query string false "optional password"
+// @Success 200 {file} file
+// @Router /files/share/download [get]
+func (b *BaseApi) DownloadFileShare(c *gin.Context) {
+	code := strings.TrimSpace(c.Query("code"))
+	password := c.Query("password")
+	if code == "" {
+		helper.BadRequest(c, errors.New("code is required"))
+		return
+	}
+	filePath, displayName, err := fileShareService.PrepareDownload(code, password)
+	if err != nil {
+		if be, ok := err.(buserr.BusinessError); ok {
+			helper.ErrorWithDetail(c, http.StatusBadRequest, be.Msg, be)
+			return
+		}
+		helper.InternalServer(c, err)
+		return
+	}
+	if files.ShouldDenySensitiveFileRead(filePath) {
+		helper.InternalServer(c, buserr.New("ErrSensitiveFileRead"))
+		return
+	}
+	file, err := os.Open(filePath)
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		helper.InternalServer(c, err)
+		return
+	}
+	c.Header("Content-Length", strconv.FormatInt(info.Size(), 10))
+	c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(displayName))
+	http.ServeContent(c.Writer, c.Request, displayName, info.ModTime(), file)
+}
