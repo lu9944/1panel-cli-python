@@ -38,11 +38,11 @@ jobs:
         run: |
           set -e
           SERVER="${GITHUB_SERVER_URL:-https://github.com}"; SERVER="${SERVER%/}"
-          HOST="${SERVER#*://}"
+          SCHEME="${SERVER%%://*}"; HOST="${SERVER#*://}"
           REF="${GITHUB_REF_NAME:-master}"
           rm -rf repo
           git clone --quiet --depth 1 --branch "$REF" \
-            "http://x-access-token:${GITHUB_TOKEN}@${HOST}/${GITHUB_REPOSITORY}.git" repo
+            "${SCHEME}://x-access-token:${GITHUB_TOKEN}@${HOST}/${GITHUB_REPOSITORY}.git" repo
           cd repo
           git log --oneline -1
           echo "workspace=$PWD"
@@ -82,14 +82,21 @@ jobs:
           if [ "${REL_ID:-0}" = "0" ]; then
             PAYLOAD="$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "name": sys.argv[2], "body": sys.argv[3], "draft": False, "prerelease": False}))' \
               "$TAG" "1panel-cli Skill $TAG" "$NOTES")"
-            REL_ID="$(curl -sS -H "$AUTH" -H 'Content-Type: application/json' -X POST \
-              "$API/repos/$REPO/releases" -d "$PAYLOAD" \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", 0))')"
+            REL_JSON="$(curl -sS -H "$AUTH" -H 'Content-Type: application/json' -X POST \
+              "$API/repos/$REPO/releases" -d "$PAYLOAD")"
+            REL_ID="$(printf '%s' "$REL_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", 0))' 2>/dev/null || echo 0)"
             echo "已创建 Release: $TAG (id=$REL_ID)"
           else
             echo "Release 已存在: $TAG (id=$REL_ID),更新附件并保留现有说明"
           fi
           [ "${REL_ID:-0}" != "0" ] || { echo "创建/查询 Release 失败"; exit 1; }
+
+          # 附件上传端点:GitHub 必须用响应里的 upload_url(uploads.github.com,{?name,label} 要去掉),
+          # Gitea 没有该字段时回退到 api 基址
+          UPLOAD_URL="$(printf '%s' "$REL_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("upload_url", ""))' 2>/dev/null || echo "")"
+          UPLOAD_URL="${UPLOAD_URL%%\{*}"
+          [ -n "$UPLOAD_URL" ] || UPLOAD_URL="$API/repos/$REPO/releases/$REL_ID/assets"
+          echo "上传端点: $UPLOAD_URL"
 
           printf '%s' "$REL_JSON" | python3 -c '
           import json, sys
@@ -104,9 +111,14 @@ jobs:
           done
 
           curl -sS -H "$AUTH" -X POST \
-            "$API/repos/$REPO/releases/$REL_ID/assets?name=$(basename "$ASSET")" \
+            "$UPLOAD_URL?name=$(basename "$ASSET")" \
             -F "attachment=@${ASSET}" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); print("已上传附件:", d.get("name"), d.get("size"), d.get("browser_download_url", ""))'
+            | python3 -c '
+            import json,sys
+            d = json.load(sys.stdin)
+            if not d.get("id"):
+                print("附件上传失败:", json.dumps(d, ensure_ascii=False)[:300]); sys.exit(1)
+            print("已上传附件:", d.get("name"), d.get("size"), d.get("browser_download_url", ""))'
           echo "Release: ${GITHUB_SERVER_URL:-https://github.com}/${REPO}/releases/tag/$TAG"
 
       - name: Job summary
