@@ -98,17 +98,16 @@ jobs:
           [ -n "$UPLOAD_URL" ] || UPLOAD_URL="$API/repos/$REPO/releases/$REL_ID/assets"
           echo "上传端点: $UPLOAD_URL"
 
-          printf '%s' "$REL_JSON" | python3 -c 'import json,sys; [print(a["id"], a["name"]) for a in json.load(sys.stdin).get("assets", [])]' | while read -r AID ANAME; do
-            if [ "$ANAME" = "$(basename "$ASSET")" ]; then
-              DEL_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" -X DELETE "$API/repos/$REPO/releases/$REL_ID/assets/$AID")"
-              echo "已删除旧附件: $ANAME (HTTP $DEL_CODE)"
-              sleep 2
-            fi
-          done
-
-          # 附件上传:GitHub 删除旧附件后同名重传可能短暂 already_exists(一致性延迟),失败自动重试
+          # 附件上传:每次重试前按 Release ID 现拉一次资产列表(避免缓存拿到过期 id),
+          # 删除同名旧附件后 GitHub 存在一致性延迟,失败自动重试
           UP_OK=0
           for i in 1 2 3 4 5 6; do
+            FRESH_JSON="$(curl -sS -H "$AUTH" "$API/repos/$REPO/releases/$REL_ID")"
+            printf '%s' "$FRESH_JSON" | python3 -c 'import json,sys; [print(a["id"]) for a in json.load(sys.stdin).get("assets", []) if a["name"] == sys.argv[1]]' "$(basename "$ASSET")" | while read -r AID; do
+              DEL_CODE="$(curl -sS -o /dev/null -w '%{http_code}' -H "$AUTH" -X DELETE "$API/repos/$REPO/releases/assets/$AID")"
+              echo "删除同名旧附件 id=$AID (HTTP $DEL_CODE)"
+              sleep 2
+            done
             UP_JSON="$(curl -sS -H "$AUTH" -X POST \
               "$UPLOAD_URL?name=$(basename "$ASSET")" \
               -F "attachment=@${ASSET}")"
