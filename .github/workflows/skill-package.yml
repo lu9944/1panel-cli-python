@@ -55,6 +55,7 @@ jobs:
       - name: 打包技能包
         run: |
           cd repo
+          export PYTHONDONTWRITEBYTECODE=1
           scripts/build_skill_package.sh "$PWD/dist"
           dist/1panel-skill/bin/1panel-cli --version
 

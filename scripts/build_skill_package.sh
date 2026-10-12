@@ -11,6 +11,9 @@
 # - 在 CI 中运行时(设置了 $GITHUB_ENV)会导出 VERSION 供后续步骤使用。
 set -euo pipefail
 
+# 打包全程禁止生成 __pycache__(冒烟测试会 import panel_cli,否则会把 .pyc 带进 zip)
+export PYTHONDONTWRITEBYTECODE=1
+
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST="${1:-$SRC/dist}"
 VERSION="$(python3 -c "import tomllib; print(tomllib.load(open('$SRC/pyproject.toml','rb'))['project']['version'])")"
@@ -67,6 +70,10 @@ chmod +x "$PKG/install.sh"
 
 find "$PKG/panel_cli" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 "$PKG/bin/1panel-cli" --version
+
+# 冒烟测试可能重新生成 __pycache__,打包前再清一次,保证 zip 干净
+find "$PKG" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
+find "$PKG" -name '*.pyc' -type f -delete 2>/dev/null || true
 
 ZIP="$DIST/1panel-skill-${VERSION}.zip"
 rm -f "$ZIP"
