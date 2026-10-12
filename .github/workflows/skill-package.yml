@@ -98,27 +98,17 @@ jobs:
           [ -n "$UPLOAD_URL" ] || UPLOAD_URL="$API/repos/$REPO/releases/$REL_ID/assets"
           echo "上传端点: $UPLOAD_URL"
 
-          printf '%s' "$REL_JSON" | python3 -c '
-          import json, sys
-          d = json.load(sys.stdin)
-          for a in d.get("assets", []):
-              print(a["id"], a["name"])
-          ' | while read -r AID ANAME; do
+          printf '%s' "$REL_JSON" | python3 -c 'import json,sys; [print(a["id"], a["name"]) for a in json.load(sys.stdin).get("assets", [])]' | while read -r AID ANAME; do
             if [ "$ANAME" = "$(basename "$ASSET")" ]; then
               curl -sS -H "$AUTH" -X DELETE "$API/repos/$REPO/releases/$REL_ID/assets/$AID" >/dev/null
               echo "已删除旧附件: $ANAME"
             fi
           done
 
-          curl -sS -H "$AUTH" -X POST \
+          UP_JSON="$(curl -sS -H "$AUTH" -X POST \
             "$UPLOAD_URL?name=$(basename "$ASSET")" \
-            -F "attachment=@${ASSET}" \
-            | python3 -c '
-            import json,sys
-            d = json.load(sys.stdin)
-            if not d.get("id"):
-                print("附件上传失败:", json.dumps(d, ensure_ascii=False)[:300]); sys.exit(1)
-            print("已上传附件:", d.get("name"), d.get("size"), d.get("browser_download_url", ""))'
+            -F "attachment=@${ASSET}")"
+          printf '%s' "$UP_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("已上传附件:", d.get("name"), d.get("size"), d.get("browser_download_url","")) if d.get("id") else sys.exit("附件上传失败: " + json.dumps(d, ensure_ascii=False)[:300])'
           echo "Release: ${GITHUB_SERVER_URL:-https://github.com}/${REPO}/releases/tag/$TAG"
 
       - name: Job summary
