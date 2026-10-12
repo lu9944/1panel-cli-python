@@ -108,10 +108,17 @@ jobs:
               echo "删除同名旧附件 id=$AID (HTTP $DEL_CODE)"
               sleep 2
             done
-            UP_JSON="$(curl -sS -H "$AUTH" -X POST \
-              "$UPLOAD_URL?name=$(basename "$ASSET")" \
-              -F "attachment=@${ASSET}")"
-            if printf '%s' "$UP_JSON" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("id") else 1)'; then
+            # GitHub: 附件内容是请求体原样存储,必须 --data-binary;
+            # Gitea: 需要 multipart 的 attachment 字段
+            if [[ "$UPLOAD_URL" == *github.com* ]]; then
+              UP_JSON="$(curl -sS -H "$AUTH" -H 'Content-Type: application/octet-stream' -X POST \
+                "$UPLOAD_URL?name=$(basename "$ASSET")" --data-binary "@${ASSET}")"
+            else
+              UP_JSON="$(curl -sS -H "$AUTH" -X POST \
+                "$UPLOAD_URL?name=$(basename "$ASSET")" -F "attachment=@${ASSET}")"
+            fi
+            # 校验:存在 id 且线上字节数与本地一致(防止上传内容被外层包裹/截断)
+            if printf '%s' "$UP_JSON" | python3 -c 'import json,sys,os; d=json.load(sys.stdin); sys.exit(0 if d.get("id") and int(d.get("size",-1))==os.path.getsize(sys.argv[1]) else 1)' "$ASSET"; then
               UP_OK=1; break
             fi
             echo "第 $i 次上传未成功,5 秒后重试: $(printf '%s' "$UP_JSON" | head -c 200)"
