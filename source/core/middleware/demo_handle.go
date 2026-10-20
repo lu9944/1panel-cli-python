@@ -27,6 +27,10 @@ var demoAllowedRoutes = map[demoRoute]struct{}{
 	{http.MethodPost, "/api/v2/toolbox/clam/base"}:             {},
 	{http.MethodPost, "/api/v2/backups/record/size"}:           {},
 
+	{http.MethodPost, "/api/v2/hosts/firewall/base"}:                {},
+	{http.MethodPost, "/api/v2/hosts/firewall/forward/base"}:        {},
+	{http.MethodPost, "/api/v2/hosts/firewall/rules/native/detail"}: {},
+
 	{http.MethodPost, "/api/v2/core/auth/login"}:     {},
 	{http.MethodPost, "/api/v2/core/logs/login"}:     {},
 	{http.MethodPost, "/api/v2/core/logs/operation"}: {},
@@ -82,7 +86,7 @@ var demoDeniedRoutes = map[demoRoute]struct{}{
 	{http.MethodGet, "/api/v2/hosts/terminal/local"}:      {},
 	{http.MethodGet, "/api/v2/hosts/terminal/ssh"}:        {},
 	{http.MethodGet, "/api/v2/hosts/terminal/container"}:  {},
-	{http.MethodGet, "/api/v2/core/xpack/vms/console/ws"}: {},
+	{http.MethodGet, "/api/v2/xpack/vms/console/ws"}: {},
 }
 
 func DemoHandle() gin.HandlerFunc {

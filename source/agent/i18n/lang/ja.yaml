@@ -140,6 +140,9 @@ ErrComposeProjectNameEmpty: 'Docker Compose 設定またはファイルの親デ
 ErrComposeNameInvalid: 'Compose プロジェクト名の形式が正しくありません。小文字または数字で始まり、小文字、数字、ハイフン、アンダースコアのみを使用した 1～256 文字にしてください。'
 ErrAppVersionUnavailable: '現在のアプリケーションバージョンはリモートサービスから削除されています。別のバージョンを選択して再試行してください。'
 ErrVllmGB10ProOnly: 'この vLLM バージョンは 1Panel プロフェッショナル版でのみ利用できます。'
+ErrAIGatewayDatabaseTypeMismatch: 'AI Gateway は同じデータベース種別（SQLite または PostgreSQL）間でのみアップグレードできます。'
+ErrAIGatewayRecoverDatabaseTypeMismatch: 'AI Gateway のバックアップと復元先アプリのデータベース種別（SQLite または PostgreSQL）は一致している必要があります。'
+ErrHermesUpgradeVersion: 'Hermes Agent は、認識可能でメジャーバージョン間のアップグレード設定に適合する新しいリリースにのみアップグレードできます。以前のバージョンに戻すには、バックアップから復元してください。'
 ErrAppWarn: '異常な状態です。ログを確認してください'
 ErrAppParamKey: 'パラメータ {{ .name }} フィールドが異常です'
 ErrAppUpgrade: 'アプリケーション {{ .name }} のアップグレードに失敗しました {{ .err }}'
@@ -300,6 +303,9 @@ BuildCache: 'ビルドキャッシュ'
 Volume: 'ストレージボリューム'
 Network: 'ネットワーク'
 PruneStart: 'クリーンアップ中、しばらくお待ちください...'
+NetworkCleanupConnected: "ネットワーク [{{ .name }}] ({{ .id }}) をスキップしました：コンテナが接続されているか使用中のため、削除しませんでした"
+NetworkCleanupSummary: "ネットワークのクリーンアップが完了しました：削除 {{ .deleted }} 件、スキップ {{ .skipped }} 件、失敗 {{ .failed }} 件"
+NetworkCleanupPartialFailure: "一部のネットワークをクリーンアップできませんでした。タスクログを確認してください"
 ContainerBackupPrepare: 'コンテナバックアップ作業領域を準備'
 ContainerBackupStop: 'バックアップ前にコンテナを停止'
 ContainerBackupInspect: 'コンテナ inspect とネットワーク情報をバックアップ'
@@ -628,14 +634,15 @@ AppAttributesNotMatch: 'アプリケーションの種類または名前が一�
 # アラート
 ErrAlertMethodNotSupported: 'このバージョンではこの通知方法は利用できません'
 ErrAlertSync: 'アラーム情報の同期エラーです。確認してもう一度お試しください。'
+ErrWebhookTestFailed: 'Webhook の設定を確認してください。詳細はシステムログを参照してください。'
 
 # タスク - ランタイム
 ErrInstallExtension: 'インストールタスクが進行中です、タスクが終了するのを待ってください'
 
 # アラートメールテンプレート
 PanelAlertTitle: 'パネルアラート通知'
-TestAlertTitle: 'テストメール - メール接続の確認'
-TestAlert: 'これはテストメールです。メール送信設定が正しく構成されているかを確認します。'
+TestAlertTitle: 'パネルのテスト通知'
+TestAlertMessage: 'これは通知チャネルの設定と接続性を確認するためのテスト通知です。'
 LicenseExpirationAlert: 'あなたの {{ .node }}{{ .ip }} パネル、ライセンスは {{ .day }} 日後に期限切れになります。詳細はパネルにログインして'
 CronJobFailedAlert: 'あなたの {{ .node }}{{ .ip }} パネル、スケジュールタスク {{ .name }} の実行に失敗しました。詳細はパネルにログインして'
 ClamAlert: 'あなたの {{ .node }}{{ .ip }} パネル、ウイルススキャンタスクで {{ .num }} 個の感染ファイルを検出しました。詳細はパネルにログインして'
@@ -649,6 +656,7 @@ CommonAlert: 'あなたの {{ .node }}{{ .ip }} パネル、{{ .msg }}。詳細�
 NodeExceptionAlert: 'あなたの {{ .node }}{{ .ip }} パネル、{{ .num }} 個のノードに異常が発生しています。詳細はパネルにログインして'
 LicenseExceptionAlert: 'あなたの {{ .node }}{{ .ip }} パネル、{{ .num }} 個のライセンスに異常が発生しています。詳細はパネルにログインして'
 SSHAndPanelLoginAlert: 'あなたの {{ .node }}{{ .ip }} パネル、{{ .loginIp }} からの {{ .name }} ログインに異常があります。詳細はパネルにログインして'
+CronJobSuccessAlert: 'パネル {{ .node }}{{ .ip }}: スケジュールタスク {{ .name }} が正常に完了しました。詳細はパネルにログインして確認してください。'
 
 # ディスク
 DeviceNotFound: 'デバイス {{ .name }} が見つかりません'
@@ -682,8 +690,7 @@ AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
 # Firewall
 ErrDockerIptablesChainUnavailable: 'Docker の DOCKER-USER チェーンが見つかりません。Docker を再起動してから再試行してください'
 ErrDockerNftablesChainUnavailable: 'Docker の nftables IPv4 ファイアウォールチェーンが見つかりません。現在の Docker バージョンが nftables ファイアウォールバックエンドをサポートしていることを確認し、Docker を再起動してから再試行してください'
-ErrDockerForwardPolicyDrop: '{{ .family }} FORWARD の既定ポリシーが DROP です。変更してから再試行してください'
-ErrUFWRuleAdopt: 'UFW ルールの管理に失敗しました：{{ .detail }}。現在の UFW バージョンが 0.35 未満の場合は、UFW をアップグレードしてから再試行してください'
+ErrDockerForwardPolicyDrop: 'このサーバーではネットワーク転送が制限されているため、現在コンテナのポート保護を有効にできません。'
 Firewall: 'ファイアウォール'
 FirewallTaskHost: 'ホストファイアウォール'
 FirewallTaskForwarding: 'ポート転送'
@@ -697,28 +704,15 @@ FirewallCreateRulesStep: 'ファイアウォールルールを作成'
 FirewallCreateRulesResult: '作成結果：成功 {{ .succeeded }} 件、失敗 {{ .failed }} 件、未実行 {{ .skipped }} 件'
 FirewallRuleOperationResult: '操作結果：成功 {{ .succeeded }} 件、失敗 {{ .failed }} 件'
 FirewallCreateRuleSkipped: '未実行'
-FirewallCreateBatchStep: '{{ .backend }} に {{ .count }} 件のルールを一括送信'
 FirewallImportRuleConversion: '[{{ .index }}/{{ .total }}] {{ .source }} → {{ .target }}: {{ .rule }}；{{ .count }} 件のルールに変換'
-FirewallCreateRuleExecutionFailed: 'ルールの作成に失敗しました。データベースには保存せず、実行済みのコマンドはロールバックしません'
-FirewallCreateRulePersistenceFailed: 'ルールは作成されましたが、管理情報の保存に失敗しました'
-FirewallAdoptRulePersistenceFailed: 'ルールの管理対象への取り込みコマンドは実行されましたが、管理情報の保存に失敗しました'
-FirewallSyncOperationsResult: '同期操作：削除成功 {{ .removed }} 件、作成成功 {{ .created }} 件、失敗 {{ .failed }} 件、未実行 {{ .skipped }} 件、一致済みで変更不要 {{ .unchanged }} 件'
-FirewallSyncRuleUnchanged: '一致済み、変更不要'
-FirewallSyncStep: '{{ .name }} にルールを同期'
-FirewallSyncFailed: '{{ .failed }} 件のファイアウォールルールを同期できませんでした'
-FirewallResetSourceStep: '移行元ファイアウォール {{ .name }} をリセットして無効化'
-FirewallResetSourceResult: '移行元ファイアウォールをリセットし、データベースルール {{ .removed }} 件を削除しました'
+FirewallCreateRuleExecutionFailed: 'ルールの作成に失敗しました。実行済みのコマンドはロールバックしません'
 FirewallInitializeChainsStep: '{{ .name }} のベースチェーンを初期化してバインド'
-FirewallRestoreRulesStep: 'データベースルールを {{ .name }} に復元'
 FirewallSyncWhitelistStep: 'ファイアウォールポート許可リストを同期'
 FirewallEnableForwardingStep: 'ポート転送チェーンを有効化してバインド'
 FirewallRestoreForwardingRulesStep: 'データベースのポート転送ルールを復元'
 FirewallInspectDockerGuardStep: 'Docker ファイアウォールバックエンドと保護ポリシーを確認'
 FirewallInitializeDockerGuardStep: '{{ .name }} のポート保護チェーンを初期化してバインド'
 FirewallPersistDockerGuardStep: 'Docker ポート保護状態を保存'
-ErrFirewallRuleScopeChange: "現在のファイアウォールでは、ルールの適用範囲（IPv4/IPv6 アドレスファミリーなど）を変更できません。新しいルールを作成してください。"
-FirewallWhitelistReleased: "{{ .name }}：許可リストの保護を解除しました。許可ルールは保持されます。ポートを閉じるには、ルール一覧から手動で削除してください"
-FirewallWhitelistRequired: "{{ .name }}：システム必須ポートのルールで保護されています"
 FileTaskCopy: 'ファイルを {{ .dst }} にコピー'
 FileTaskMove: 'ファイルを {{ .dst }} に移動'
 FileTaskCompress: 'ファイルを {{ .dst }} に圧縮'
@@ -726,7 +720,56 @@ FileTaskDecompress: 'ファイルを {{ .dst }} に展開'
 FileTaskSource: '元のパス：{{ .path }}'
 FileTaskFormat: '圧縮形式：{{ .format }}'
 FileTaskRename: '保存先ファイル名：{{ .name }}'
-
 ErrFirewallBackendCleanupRequired: "現在のバックエンド {{ .current }} に 1Panel ルールが残っています。{{ .target }} に切り替える前に削除してください。"
 ErrDockerIPv4ForwardingDisabled: "IPv4 転送が無効です。Docker のファイアウォールバックエンドを使用する前に net.ipv4.ip_forward=1 を設定してください。"
 ErrFirewallRuleSavedApplyFailed: "新しいルール設定は保存されましたが、ファイアウォールへの適用に失敗しました。同期で再試行してください：{{ .detail }}"
+ErrFirewallRuleConflict: "UFW に同じ一致条件でアクションが異なるルールが既に存在します。既存のルールを編集してください。"
+ErrForwardInterfaceNotFound: "転送ルールで指定されたネットワークインターフェース {{ .name }} は存在しません。名前を確認して再試行してください。"
+ErrIPv6RARisk: "ネットワーク切断のおそれがあるため、IPv6 転送の有効化をブロックしました。ドキュメントとシステムログをご確認ください。"
+ErrIPv6RACheckFailed: "ネットワーク設定を確認できないため、IPv6 転送の有効化をブロックしました。詳細はシステムログをご確認ください。"
+
+ErrSSHPublicKey: "有効な SSH 公開鍵を入力してください"
+ErrSSHPrivateKey: "SSH 秘密鍵の形式が無効か、パスフレーズが間違っています。暗号化された鍵には元のパスフレーズが必要です"
+ErrSSHKeyMismatch: "SSH 公開鍵と秘密鍵が一致しません"
+
+# 仮想マシン
+ErrVMNotFound: "仮想マシンが存在しません"
+ErrVMAlreadyExists: "仮想マシンは既に存在します"
+ErrVMCountLimit: "Professional 版では最大 {{ .limit }} 台の仮想マシンを作成できます。既存の仮想マシンを削除するか、Enterprise 版にアップグレードしてから再試行してください。"
+ErrVMImageAlreadyExists: "仮想マシンのイメージファイルは既に存在します: {{ .detail }}"
+ErrVMStoragePathInUse: "ストレージプールのパスは既に [{{ .name }}] で使用されています"
+ErrVMHelperNotFound: "1panel-kvm が見つかりません"
+ErrVMBridgeManaged: "ブリッジ名はすでに libvirt または Docker によって管理されています"
+ErrVMNetworkInUse: "ネットワークは使用中のため削除できません"
+ErrVMStorageInUse: "ストレージプールは使用中のため削除できません"
+ErrVMStorageNameCannotChange: "ストレージプール名は変更できません"
+ErrVMStoragePathCannotChange: "ストレージプールのパスは変更できません"
+ErrVMRunning: "仮想マシンは実行中です"
+ErrVMLibvirtConnect: "libvirt への接続に失敗しました: {{ .detail }}"
+ErrVMPermission: "仮想マシンを操作する権限がありません: {{ .detail }}"
+ErrVMNetworkNotFound: "仮想マシンネットワークが存在しません: {{ .detail }}"
+ErrVMInvalidPath: "仮想マシンのパスが無効です: {{ .detail }}"
+ErrVMInvalidInput: "仮想マシンのパラメータが無効です: {{ .detail }}"
+ErrVMCommandFailed: "仮想マシンコマンドの実行に失敗しました: {{ .err }}"
+ErrVMDiskResizeBlocked: "ディスクが拡張条件を満たしていないか、他のデバイスから参照されています。ディスクの状態を確認してください。"
+ErrVMDiskReferenced: "この仮想ディスクは他の仮想マシンまたはデバイスで使用されているため、現在は拡張できません。"
+ErrVMDiskReferenceCheck: "仮想ディスクの参照を確認できないため拡張できません。他の仮想マシンのディスク状態を確認してください。"
+ErrVMSnapshotMetadataSync: "スナップショットは復元されましたが、ディスク情報の同期に失敗しました。更新して確認してください。再度復元する必要はありません。"
+VMCreateTask: "仮想マシン [{{ .name }}] を作成"
+VMCreateFromTemplateTask: "テンプレートから仮想マシン [{{ .name }}] を作成"
+VMUpdateTask: "仮想マシン [{{ .name }}] を更新"
+VMDiskResizeTask: "仮想マシン [{{ .name }}] のディスク [{{ .disk }}] を拡張"
+VMRenameTask: "仮想マシン [{{ .name }}] を [{{ .newName }}] にリネーム"
+VMDeleteTask: "仮想マシン [{{ .name }}] を削除"
+VMTemplateCreateTask: "仮想マシン [{{ .name }}] をテンプレート [{{ .template }}] として保存"
+VMTemplateDeleteTask: "仮想マシンテンプレート [{{ .name }}] を削除"
+VMForceDeleteMetadataOnly: "1panel-kvm が見つかりません。仮想マシン [{{ .name }}] のメタデータのみを強制削除します"
+VMForceDeleteMetadataAfterLibvirtFailed: "libvirt から仮想マシン [{{ .name }}] を削除できませんでした。メタデータを強制削除します: {{ .err }}"
+VMForceDeleteDiskFailed: "仮想マシンディスクファイル [{{ .path }}] の強制削除に失敗しました: {{ .err }}"
+VMForceDeleteDiskSuccess: "仮想マシンディスクファイル [{{ .path }}] を強制削除しました"
+VMSnapshotCreateTask: "仮想マシン [{{ .vm }}] のスナップショット [{{ .snapshot }}] を作成"
+VMSnapshotCreateStep: "仮想マシンのスナップショット [{{ .snapshot }}] を作成"
+VMSnapshotRecoverTask: "仮想マシン [{{ .vm }}] のスナップショット [{{ .snapshot }}] を復元"
+VMSnapshotRecoverStep: "仮想マシンのスナップショット [{{ .snapshot }}] を復元"
+VMSnapshotDeleteTask: "仮想マシン [{{ .vm }}] のスナップショット [{{ .snapshot }}] を削除"
+VMSnapshotDeleteStep: "仮想マシンのスナップショット [{{ .snapshot }}] を削除"

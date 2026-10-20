@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "1panel-cli"
-version = "2.3.2"
+version = "2.4.0"
 description = "1Panel v2 面板管理命令行工具(纯标准库实现)"
 readme = "README.md"
 license = { text = "MIT" }

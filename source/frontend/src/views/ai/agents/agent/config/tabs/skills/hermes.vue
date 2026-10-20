@@ -138,6 +138,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSearchReset } from '@/composables/useSearchReset';
 import { computed, ref, watch } from 'vue';
 import { Refresh, Search } from '@element-plus/icons-vue';
 import { useI18n } from 'vue-i18n';
@@ -168,6 +169,16 @@ const getDefaultMarketSource = (): HermesSkillMarketSource => {
 const marketSource = ref<HermesSkillMarketSource>(getDefaultMarketSource());
 const marketSearched = ref(false);
 const agentId = ref(0);
+useSearchReset(
+    { installedKeyword, marketKeyword },
+    {
+        scope: () => agentId.value || undefined,
+        onRevisit: () => {
+            marketResults.value = [];
+            marketSearched.value = false;
+        },
+    },
+);
 const installedSkills = ref<AI.AgentSkillItem[]>([]);
 const marketResults = ref<AI.AgentSkillSearchItem[]>([]);
 const installingSkill = ref('');
@@ -315,8 +326,6 @@ const handleModeChange = async (value: SkillViewMode) => {
 const load = async (id: number) => {
     agentId.value = id;
     mode.value = 'market';
-    installedKeyword.value = '';
-    marketKeyword.value = '';
     marketSource.value = getDefaultMarketSource();
     marketSearched.value = false;
     installedSkills.value = [];

@@ -326,39 +326,46 @@ func (u *ContainerService) Inspect(req dto.InspectReq) (string, error) {
 	case "container":
 		inspectInfo, err = client.ContainerInspect(context.Background(), req.ID)
 	case "compose":
-		filePath := ""
-		cli, err := docker.NewDockerClient()
-		if err != nil {
-			return "", err
-		}
-		defer cli.Close()
+		config, workdir := "", ""
 		options := container.ListOptions{All: true}
 		options.Filters = filters.NewArgs()
 		options.Filters.Add("label", fmt.Sprintf("%s=%s", composeProjectLabel, req.ID))
-		containers, err := cli.ContainerList(context.Background(), options)
+		containers, err := client.ContainerList(context.Background(), options)
 		if err != nil {
 			return "", err
 		}
-		for _, container := range containers {
-			config := container.Labels[composeConfigLabel]
-			if len(req.Detail) != 0 && strings.Contains(config, req.Detail) {
-				config = req.Detail
-			}
-			workdir := container.Labels[composeWorkdirLabel]
-			if len(config) != 0 && len(workdir) != 0 && strings.Contains(config, workdir) {
-				filePath = config
-				break
-			} else {
-				filePath = workdir
-				break
-			}
-		}
 		if len(containers) == 0 {
-			composeItem, _ := composeRepo.GetRecord(repo.WithByName(req.ID))
-			filePath = composeItem.Path
+			composeItem, err := composeRepo.GetRecord(repo.WithByName(req.ID))
+			if err != nil {
+				return "", err
+			}
+			config = composeItem.Path
+			workdir = filepath.Dir(primaryComposePath(config))
+		} else {
+			config = containers[0].Labels[composeConfigLabel]
+			workdir = containers[0].Labels[composeWorkdirLabel]
 		}
-		if _, err := os.Stat(filePath); err != nil {
+		composeFiles, err := resolveComposeFiles(workdir, config)
+		if err != nil {
 			return "", err
+		}
+		filePath := composeFiles[0]
+		if strings.TrimSpace(req.Detail) != "" {
+			selectedFiles, err := resolveComposeFiles(workdir, req.Detail)
+			if err != nil {
+				return "", err
+			}
+			if len(selectedFiles) != 1 || !slices.Contains(composeFiles, selectedFiles[0]) {
+				return "", fmt.Errorf("compose file %s does not belong to project %s", req.Detail, req.ID)
+			}
+			filePath = selectedFiles[0]
+		}
+		info, err := os.Stat(filePath)
+		if err != nil {
+			return "", err
+		}
+		if !info.Mode().IsRegular() {
+			return "", fmt.Errorf("compose path %s is not a regular file", filePath)
 		}
 		content, err := os.ReadFile(filePath)
 		if err != nil {
@@ -383,11 +390,6 @@ func (u *ContainerService) Inspect(req dto.InspectReq) (string, error) {
 }
 
 func (u *ContainerService) Prune(req dto.ContainerPrune) error {
-	client, err := docker.NewDockerClient()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
 	name := ""
 	switch req.PruneType {
 	case "container":
@@ -408,6 +410,14 @@ func (u *ContainerService) Prune(req dto.ContainerPrune) error {
 	}
 
 	taskItem.AddSubTask(i18n.GetMsgByKey("TaskClean"), func(t *task.Task) error {
+		if err := t.TaskCtx.Err(); err != nil {
+			return err
+		}
+		client, err := docker.NewDockerClient()
+		if err != nil {
+			return err
+		}
+		defer client.Close()
 		pruneFilters := filters.NewArgs()
 		if req.WithTagAll {
 			pruneFilters.Add("dangling", "false")
@@ -431,10 +441,7 @@ func (u *ContainerService) Prune(req dto.ContainerPrune) error {
 			}
 			SpaceReclaimed = int(rep.SpaceReclaimed)
 		case "network":
-			_, err := client.NetworksPrune(context.Background(), pruneFilters)
-			if err != nil {
-				return err
-			}
+			return cleanUnusedNetworks(t, client)
 		case "volume":
 			versions, err := client.ServerVersion(context.Background())
 			if err != nil {
@@ -803,31 +810,31 @@ func (u *ContainerService) ContainerLogClean(req dto.OperationWithName) error {
 func (u *ContainerService) StreamLogs(ctx *gin.Context, params dto.StreamLog) {
 	messageChan := make(chan string, 1024)
 	errorChan := make(chan error, 1)
-	doneChan := make(chan struct{})
-
-	go func() {
-		<-ctx.Request.Context().Done()
-		close(doneChan)
-	}()
+	logCtx, cancel := context.WithCancel(ctx.Request.Context())
+	defer cancel()
+	doneChan := logCtx.Done()
 	go collectLogs(doneChan, params, messageChan, errorChan)
 	ctx.Stream(func(w io.Writer) bool {
-		select {
-		case msg, ok := <-messageChan:
-			if !ok {
-				return false
-			}
-			_, err := fmt.Fprintf(w, "data: %s\n\n", msg)
-			if err != nil {
-				return false
-			}
-			return true
-		case err := <-errorChan:
-			if err != nil {
-				_, _ = fmt.Fprintf(w, "event: error\ndata: %v\n\n", err.Error())
-			}
-			return false
-		}
+		return writeContainerLogMessage(w, doneChan, messageChan, errorChan)
 	})
+}
+
+func writeContainerLogMessage(w io.Writer, done <-chan struct{}, messages <-chan string, errors <-chan error) bool {
+	select {
+	case <-done:
+		return false
+	case message, ok := <-messages:
+		if ok {
+			_, err := fmt.Fprintf(w, "data: %s\n\n", message)
+			return err == nil
+		}
+		// The collector closes both channels when it finishes. Drain all buffered
+		// logs before handling its result, or a ready error channel can drop the tail.
+		if err := <-errors; err != nil {
+			_, _ = fmt.Fprintf(w, "event: error\ndata: %v\n\n", err)
+		}
+		return false
+	}
 }
 
 func collectLogs(done <-chan struct{}, params dto.StreamLog, messageChan chan<- string, errorChan chan<- error) {

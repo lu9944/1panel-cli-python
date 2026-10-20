@@ -140,6 +140,9 @@ ErrComposeProjectNameEmpty: "无法从 Docker Compose 配置或文件父目录�
 ErrComposeNameInvalid: "Compose 项目名称格式错误：必须以小写字母或数字开头，仅支持小写字母、数字、- 和 _，长度为 1-256 个字符"
 ErrAppVersionUnavailable: "当前应用版本已从远程服务下架，请选择其他版本后重试"
 ErrVllmGB10ProOnly: "该 vLLM 版本仅支持 1Panel 专业版"
+ErrAIGatewayDatabaseTypeMismatch: 'AI 网关只能在相同数据库类型（SQLite 或 PostgreSQL）之间升级。'
+ErrAIGatewayRecoverDatabaseTypeMismatch: 'AI 网关备份与目标应用的数据库类型（SQLite 或 PostgreSQL）必须一致，无法跨数据库类型恢复。'
+ErrHermesUpgradeVersion: 'Hermes Agent 只能升级到可识别且符合跨版本升级设置的更新版本。如需恢复旧版本，请使用备份恢复。'
 ErrAppWarn: "状态异常，请查看日志"
 ErrAppParamKey: "参数 {{ .name }} 字段异常"
 ErrAppUpgrade: "应用 {{ .name }} 升级失败 {{ .err }}"
@@ -300,6 +303,9 @@ BuildCache: "构建缓存"
 Volume: "存储卷"
 Network: "网络"
 PruneStart: "清理中，请稍候..."
+NetworkCleanupConnected: "跳过网络 [{{ .name }}] ({{ .id }})：仍有容器连接或正在使用，未删除"
+NetworkCleanupSummary: "网络清理完成：已删除 {{ .deleted }}，已跳过 {{ .skipped }}，失败 {{ .failed }}"
+NetworkCleanupPartialFailure: "部分网络清理失败，请查看任务日志"
 ContainerBackupPrepare: "准备容器备份工作目录"
 ContainerBackupStop: "备份前停止容器"
 ContainerBackupInspect: "备份容器 Inspect 与网络信息"
@@ -628,14 +634,15 @@ AppAttributesNotMatch: "应用类型或名称不一致"
 # 告警
 ErrAlertMethodNotSupported: "当前版本不支持此告警方式"
 ErrAlertSync: "告警信息同步错误，请检查后重试"
+ErrWebhookTestFailed: "请检查 Webhook 配置，详细原因请查看系统日志"
 
 # 任务 - 运行环境
 ErrInstallExtension: "已有安装任务正在进行，请等待任务结束"
 
 # 告警邮件模板
 PanelAlertTitle: "面板告警通知"
-TestAlertTitle: "测试邮件 - 验证邮箱连通性"
-TestAlert: "这是一封测试邮件，用于验证邮箱发件配置。"
+TestAlertTitle: "面板测试通知"
+TestAlertMessage: "这是一条测试通知，用于验证通知渠道配置及连通性。"
 LicenseExpirationAlert: "您的 {{ .node }}{{ .ip }} 面板，许可证将在 {{ .day }} 天后到期，请登录面板查看详情。"
 CronJobFailedAlert: "您的 {{ .node }}{{ .ip }} 面板，计划任务-{{ .name }}执行失败，请登录面板查看详情。"
 ClamAlert: "您的 {{ .node }}{{ .ip }} 面板，病毒扫描任务发现 {{ .num }} 个感染文件，请登录面板查看详情。"
@@ -649,6 +656,7 @@ CommonAlert: "您的 {{ .node }}{{ .ip }} 面板，{{ .msg }}，请登录面板�
 NodeExceptionAlert: "您的 {{ .node }}{{ .ip }} 面板，{{ .num }} 个节点存在异常，请登录面板查看详情。"
 LicenseExceptionAlert: "您的 {{ .node }}{{ .ip }} 面板，{{ .num }} 个许可证存在异常，请登录面板查看详情。"
 SSHAndPanelLoginAlert: "您的 {{ .node }}{{ .ip }} 面板，面板 {{ .name }} 登录 {{ .loginIp }} 异常，请登录面板查看详情。"
+CronJobSuccessAlert: "您的 {{ .node }}{{ .ip }} 面板，计划任务-{{ .name }}执行成功，请登录面板查看详情。"
 
 # 磁盘
 DeviceNotFound: "设备 {{ .name }} 未找到"
@@ -682,8 +690,7 @@ AIProviderArkCodingPlan: "火山方舟 Coding Plan"
 # 防火墙
 ErrDockerIptablesChainUnavailable: "未检测到 Docker 的 DOCKER-USER 链，请重启 Docker 后重试"
 ErrDockerNftablesChainUnavailable: "未检测到 Docker 的 nftables IPv4 防火墙链，请确认当前 Docker 版本支持 nftables 防火墙后端，重启 Docker 后重试"
-ErrDockerForwardPolicyDrop: '检测到 {{ .family }} FORWARD 默认策略为 DROP，请调整后重试'
-ErrUFWRuleAdopt: "UFW 规则纳管失败：{{ .detail }}。如果当前 UFW 版本低于 0.35，请先升级 UFW 后重试"
+ErrDockerForwardPolicyDrop: '当前服务器限制了网络转发，暂时无法启用容器端口防护。'
 Firewall: "防火墙"
 FirewallTaskHost: '主机防火墙'
 FirewallTaskForwarding: '端口转发'
@@ -697,28 +704,15 @@ FirewallCreateRulesStep: '创建防火墙规则'
 FirewallCreateRulesResult: '创建结果：成功 {{ .succeeded }} 条，失败 {{ .failed }} 条，未执行 {{ .skipped }} 条'
 FirewallRuleOperationResult: '操作结果：成功 {{ .succeeded }} 条，失败 {{ .failed }} 条'
 FirewallCreateRuleSkipped: '未执行'
-FirewallCreateBatchStep: '向 {{ .backend }} 批量提交 {{ .count }} 条规则'
 FirewallImportRuleConversion: '[{{ .index }}/{{ .total }}] {{ .source }} → {{ .target }}：{{ .rule }}；转换为 {{ .count }} 条规则'
-FirewallCreateRuleExecutionFailed: '规则创建失败，未入库，已执行的命令不回滚'
-FirewallCreateRulePersistenceFailed: '规则已创建，但纳管信息保存失败'
-FirewallAdoptRulePersistenceFailed: '规则纳管命令已执行，但纳管信息保存失败'
-FirewallSyncOperationsResult: '同步操作汇总：删除成功 {{ .removed }} 条，创建成功 {{ .created }} 条，失败 {{ .failed }} 条，未执行 {{ .skipped }} 条，已一致无需变更 {{ .unchanged }} 条'
-FirewallSyncRuleUnchanged: '已一致，无需变更'
-FirewallSyncStep: "同步规则到 {{ .name }}"
-FirewallSyncFailed: "{{ .failed }} 条防火墙规则同步失败"
-FirewallResetSourceStep: "重置并停用源防火墙 {{ .name }}"
-FirewallResetSourceResult: "源防火墙重置完成，已删除 {{ .removed }} 条数据库规则"
+FirewallCreateRuleExecutionFailed: '规则创建失败，已执行的命令不回滚'
 FirewallInitializeChainsStep: "初始化并绑定 {{ .name }} 基础链"
-FirewallRestoreRulesStep: "恢复数据库规则到 {{ .name }}"
 FirewallSyncWhitelistStep: "同步防火墙端口白名单"
 FirewallEnableForwardingStep: "启用并绑定端口转发链"
 FirewallRestoreForwardingRulesStep: "恢复数据库端口转发规则"
 FirewallInspectDockerGuardStep: "检查 Docker 防火墙后端和防护策略"
 FirewallInitializeDockerGuardStep: "初始化并绑定 {{ .name }} 端口防护链"
 FirewallPersistDockerGuardStep: "保存 Docker 端口防护状态"
-ErrFirewallRuleScopeChange: "当前防火墙不支持修改规则的作用范围（如 IPv4/IPv6 地址族），请新建规则。"
-FirewallWhitelistReleased: "{{ .name }}：已解除白名单保护，放行规则保留；如需关闭端口，请在规则列表手动删除"
-FirewallWhitelistRequired: "{{ .name }}：由系统必需端口规则保护"
 FileTaskCopy: '复制文件到 {{ .dst }}'
 FileTaskMove: '移动文件到 {{ .dst }}'
 FileTaskCompress: '压缩文件到 {{ .dst }}'
@@ -726,7 +720,56 @@ FileTaskDecompress: '解压文件到 {{ .dst }}'
 FileTaskSource: '源路径：{{ .path }}'
 FileTaskFormat: '压缩格式：{{ .format }}'
 FileTaskRename: '目标文件名：{{ .name }}'
-
 ErrFirewallBackendCleanupRequired: "当前后端 {{ .current }} 中仍有 1Panel 规则，请先清理后再切换到 {{ .target }}。"
 ErrDockerIPv4ForwardingDisabled: "IPv4 转发未开启，请先设置 net.ipv4.ip_forward=1，再使用 Docker 防火墙后端。"
 ErrFirewallRuleSavedApplyFailed: "新规则配置已保存，但应用到防火墙失败。可通过同步重试：{{ .detail }}"
+ErrFirewallRuleConflict: "UFW 中已存在匹配条件相同但动作不同的规则，请编辑已有规则。"
+ErrForwardInterfaceNotFound: "转发规则指定的网卡 {{ .name }} 不存在，请检查网卡名称后重试。"
+ErrIPv6RARisk: "IPv6 转发存在断网风险，已阻止启用。请参阅文档，详情见系统日志。"
+ErrIPv6RACheckFailed: "无法检查 IPv6 网络配置，已阻止启用转发。详情见系统日志。"
+
+ErrSSHPublicKey: "请输入有效的 SSH 公钥"
+ErrSSHPrivateKey: "SSH 私钥格式无效或密码错误；加密私钥需要填写原密码"
+ErrSSHKeyMismatch: "SSH 公钥与私钥不匹配"
+
+# 虚拟机
+ErrVMNotFound: "虚拟机不存在"
+ErrVMAlreadyExists: "虚拟机已存在"
+ErrVMCountLimit: "专业版最多可创建 {{ .limit }} 台虚拟机，请删除已有虚拟机或升级企业版后重试。"
+ErrVMImageAlreadyExists: "虚拟机镜像文件已存在: {{ .detail }}"
+ErrVMStoragePathInUse: "存储池路径已被 [{{ .name }}] 使用"
+ErrVMHelperNotFound: "1panel-kvm 不存在"
+ErrVMBridgeManaged: "桥接名称已被 libvirt 或 Docker 管理"
+ErrVMNetworkInUse: "网络正在被使用，无法删除"
+ErrVMStorageInUse: "存储池正在被使用，无法删除"
+ErrVMStorageNameCannotChange: "存储池名称无法修改"
+ErrVMStoragePathCannotChange: "存储池路径无法修改"
+ErrVMRunning: "虚拟机正在运行"
+ErrVMLibvirtConnect: "连接 libvirt 失败: {{ .detail }}"
+ErrVMPermission: "没有虚拟机操作权限: {{ .detail }}"
+ErrVMNetworkNotFound: "虚拟机网络不存在: {{ .detail }}"
+ErrVMInvalidPath: "虚拟机路径非法: {{ .detail }}"
+ErrVMInvalidInput: "虚拟机参数非法: {{ .detail }}"
+ErrVMCommandFailed: "虚拟机命令执行失败: {{ .err }}"
+ErrVMDiskResizeBlocked: "磁盘不符合扩容条件，或被其他设备引用，请检查磁盘状态"
+ErrVMDiskReferenced: "该虚拟硬盘被其他虚拟机或设备使用，暂不支持扩容"
+ErrVMDiskReferenceCheck: "无法完成虚拟硬盘引用检查，暂不支持扩容，请检查其他虚拟机的磁盘状态"
+ErrVMSnapshotMetadataSync: "快照已恢复，但磁盘信息同步失败，请刷新检查，无需重复恢复快照"
+VMCreateTask: "创建虚拟机 [{{ .name }}]"
+VMCreateFromTemplateTask: "从模板创建虚拟机 [{{ .name }}]"
+VMUpdateTask: "更新虚拟机 [{{ .name }}]"
+VMDiskResizeTask: "扩容虚拟机 [{{ .name }}] 磁盘 [{{ .disk }}]"
+VMRenameTask: "重命名虚拟机 [{{ .name }}] 为 [{{ .newName }}]"
+VMDeleteTask: "删除虚拟机 [{{ .name }}]"
+VMTemplateCreateTask: "转存虚拟机 [{{ .name }}] 为模板 [{{ .template }}]"
+VMTemplateDeleteTask: "删除虚拟机模板 [{{ .name }}]"
+VMForceDeleteMetadataOnly: "1panel-kvm 不存在，仅强制删除虚拟机 [{{ .name }}] 元数据"
+VMForceDeleteMetadataAfterLibvirtFailed: "从 libvirt 删除虚拟机 [{{ .name }}] 失败，强制删除元数据: {{ .err }}"
+VMForceDeleteDiskFailed: "强制删除虚拟机磁盘文件 [{{ .path }}] 失败: {{ .err }}"
+VMForceDeleteDiskSuccess: "已强制删除虚拟机磁盘文件 [{{ .path }}]"
+VMSnapshotCreateTask: "创建虚拟机 [{{ .vm }}] 快照 [{{ .snapshot }}]"
+VMSnapshotCreateStep: "创建虚拟机快照 [{{ .snapshot }}]"
+VMSnapshotRecoverTask: "恢复虚拟机 [{{ .vm }}] 快照 [{{ .snapshot }}]"
+VMSnapshotRecoverStep: "恢复虚拟机快照 [{{ .snapshot }}]"
+VMSnapshotDeleteTask: "删除虚拟机 [{{ .vm }}] 快照 [{{ .snapshot }}]"
+VMSnapshotDeleteStep: "删除虚拟机快照 [{{ .snapshot }}]"

@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"math/big"
@@ -38,6 +39,28 @@ func Run() {
 		}
 	}
 
+	var gpuStatus, gpuInterval model.Setting
+	if err := global.DB.Where("key = ?", "GPUMonitorStatus").First(&gpuStatus).Error; err != nil {
+		global.LOG.Errorf("Load GPU monitoring status failed: %v", err)
+	} else if gpuStatus.Value == constant.StatusEnable {
+		if err := global.DB.Where("key = ?", "GPUMonitorInterval").First(&gpuInterval).Error; err != nil {
+			global.LOG.Errorf("Load GPU monitoring interval failed: %v", err)
+		} else if err := service.StartGPUMonitor(gpuInterval.Value); err != nil {
+			global.LOG.Errorf("Start GPU monitoring failed: %v", err)
+		}
+	}
+
+	var vllmStatus, vllmInterval model.Setting
+	if err := global.DB.Where("key = ?", "VLLMMonitorStatus").First(&vllmStatus).Error; err != nil {
+		global.LOG.Errorf("Load vLLM monitoring status failed: %v", err)
+	} else if vllmStatus.Value == constant.StatusEnable {
+		if err := global.DB.Where("key = ?", "VLLMMonitorInterval").First(&vllmInterval).Error; err != nil {
+			global.LOG.Errorf("Load vLLM monitoring interval failed: %v", err)
+		} else if err := service.StartVLLMMonitor(vllmInterval.Value); err != nil {
+			global.LOG.Errorf("Start vLLM monitoring failed: %v", err)
+		}
+	}
+
 	if _, err := global.Cron.AddJob("@daily", job.NewWebsiteJob()); err != nil {
 		global.LOG.Errorf("can not add  website corn job: %s", err.Error())
 	}
@@ -59,6 +82,17 @@ func Run() {
 	}
 	if _, err := global.Cron.AddJob("0 3 */31 * *", job.NewBackupJob()); err != nil {
 		global.LOG.Errorf("can not add  backup token refresh corn job: %s", err.Error())
+	}
+	if _, err := global.Cron.AddFunc("@every 240h", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		deleted, err := service.NewISettingService().CleanupDescriptions(ctx)
+		if err != nil {
+			global.LOG.Errorf("clean unused common descriptions: %v", err)
+		}
+		global.LOG.Infof("common description cleanup completed, deleted %d records", deleted)
+	}); err != nil {
+		global.LOG.Errorf("add common description cleanup job: %v", err)
 	}
 
 	var cronJobs []model.Cronjob

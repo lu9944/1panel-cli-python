@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSearchReset } from '@/composables/useSearchReset';
 import { Runtime } from '@/api/interface/runtime';
 import { GetPHPExtensions, InstallPHPExtension, UnInstallPHPExtension } from '@/api/modules/runtime';
 import i18n from '@/lang';
@@ -48,6 +49,7 @@ const supportExtensions = ref([]);
 const loading = ref(false);
 const taskLogRef = ref();
 const searchName = ref('');
+useSearchReset({ search: searchName }, { onRevisit: () => searchByName() });
 const data = ref([]);
 
 const handleClose = () => {
@@ -137,7 +139,6 @@ const searchByName = () => {
 };
 
 const acceptParams = (req: Runtime.Runtime): void => {
-    searchName.value = '';
     open.value = true;
     runtime.value = req;
     search();

@@ -1406,9 +1406,8 @@ func handleErr(install model.AppInstall, err error, out string) error {
 }
 
 func doNotNeedSync(installed model.AppInstall) bool {
-	return installed.Status == constant.StatusInstalling || installed.Status == constant.StatusRebuilding || installed.Status == constant.StatusUpgrading ||
-		installed.Status == constant.StatusSyncing || installed.Status == constant.StatusUninstalling || installed.Status == constant.StatusInstallErr ||
-		installed.Status == constant.StatusStarting || installed.Status == constant.StatusRestarting || installed.Status == constant.StatusWaiting
+	return appInstallOperationPending(installed.Status) || installed.Status == constant.StatusSyncing ||
+		installed.Status == constant.StatusInstallErr || installed.Status == constant.StatusUpgradeErr || installed.Status == constant.StatusUpErr
 }
 
 func synAppInstall(containers map[string]container.Summary, appInstall *model.AppInstall, force bool) {
@@ -1502,6 +1501,11 @@ func handleInstalled(appInstallList []model.AppInstall, updated, sync, checkUpda
 	}
 
 	for _, installed := range appInstallList {
+		if sync && appInstallOperationPending(installed.Status) {
+			if err := syncAppInstallStatus(&installed, false); err != nil {
+				return nil, err
+			}
+		}
 		if updated && ignoreUpdate(installed) {
 			continue
 		}
@@ -1567,11 +1571,14 @@ func handleInstalled(appInstallList []model.AppInstall, updated, sync, checkUpda
 
 		var versions []string
 		for _, appDetail := range details {
+			if !isAIGatewayUpgradeVersionAllowed(installed.App.Key, installed.Version, appDetail.Version) {
+				continue
+			}
 			ignores, _ := appIgnoreUpgradeRepo.List(runtimeRepo.WithDetailId(appDetail.ID), appIgnoreUpgradeRepo.WithScope("version"))
 			if len(ignores) > 0 {
 				continue
 			}
-			if common.IsCrossVersion(installed.Version, appDetail.Version) && !installed.App.CrossVersionUpdate {
+			if isCrossAppVersion(installed.App.Key, installed.Version, appDetail.Version) && !installed.App.CrossVersionUpdate {
 				continue
 			}
 			versions = append(versions, appDetail.Version)
@@ -1586,7 +1593,7 @@ func handleInstalled(appInstallList []model.AppInstall, updated, sync, checkUpda
 			continue
 		}
 
-		versions = common.GetSortedVersions(versions)
+		versions = sortAppVersions(installed.App.Key, versions)
 		lastVersion := versions[0]
 
 		if installed.App.Key == constant.AppMysql || installed.App.Key == constant.AppMysqlCluster {
@@ -1601,10 +1608,10 @@ func handleInstalled(appInstallList []model.AppInstall, updated, sync, checkUpda
 			}
 		}
 
-		if common.IsCrossVersion(installed.Version, lastVersion) {
+		if isCrossAppVersion(installed.App.Key, installed.Version, lastVersion) {
 			installDTO.CanUpdate = installed.App.CrossVersionUpdate
 		} else {
-			installDTO.CanUpdate = common.CompareVersion(lastVersion, installed.Version)
+			installDTO.CanUpdate = isNewerAppVersion(installed.App.Key, lastVersion, installed.Version)
 		}
 
 		if updated {
@@ -2275,7 +2282,12 @@ func getAppVersions(key string, details []model.AppDetail) []string {
 		}
 		versionsRaw = append(versionsRaw, detail.Version)
 	}
-	versions = common.GetSortedVersions(versionsRaw)
+	if isAIGatewayApp(key) {
+		sortAIGatewayVersions(versionsRaw)
+		versions = versionsRaw
+	} else {
+		versions = sortAppVersions(key, versionsRaw)
+	}
 	if hasLatest {
 		versions = append([]string{latestVersion}, versions...)
 	}

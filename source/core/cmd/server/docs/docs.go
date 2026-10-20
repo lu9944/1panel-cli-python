@@ -3906,13 +3906,11 @@ const docTemplate = `{
 					"Alert"
 				],
 				"x-panel-log": {
-					"BeforeFunctions": [],
-					"bodyKeys": [
-						"id"
-					],
-					"formatEN": "delete alert config [id]",
-					"formatZH": "删除告警配置 [id]",
-					"paramKeys": []
+					"bodyKeys": [],
+					"paramKeys": [],
+					"formatZH": "删除告警配置 [name]",
+					"formatEN": "delete alert config [name]",
+					"BeforeFunctions": []
 				}
 			}
 		},
@@ -4041,14 +4039,13 @@ const docTemplate = `{
 					"Alert"
 				],
 				"x-panel-log": {
-					"BeforeFunctions": [],
 					"bodyKeys": [
-						"id",
 						"displayName"
 					],
-					"formatEN": "update alert config [id][displayName]",
-					"formatZH": "更新告警配置 [id][displayName]",
-					"paramKeys": []
+					"paramKeys": [],
+					"formatZH": "更新告警配置 [displayName]",
+					"formatEN": "update alert config [displayName]",
+					"BeforeFunctions": []
 				}
 			}
 		},
@@ -15092,9 +15089,26 @@ const docTemplate = `{
 		},
 		"/databases/redis/install/cli": {
 			"post": {
+				"consumes": [
+					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/dto.RedisCliInstall"
+						}
+					}
+				],
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"schema": {
+							"type": "string"
+						}
 					}
 				},
 				"security": [
@@ -18644,6 +18658,33 @@ const docTemplate = `{
 				]
 			}
 		},
+		"/hosts/firewall/docker/endpoints": {
+			"get": {
+				"responses": {
+					"200": {
+						"description": "OK",
+						"schema": {
+							"items": {
+								"$ref": "#/definitions/dto.DockerPortGuardContainer"
+							},
+							"type": "array"
+						}
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "List Docker published ports",
+				"tags": [
+					"Firewall"
+				]
+			}
+		},
 		"/hosts/firewall/docker/operate": {
 			"post": {
 				"consumes": [
@@ -18774,11 +18815,9 @@ const docTemplate = `{
 				],
 				"x-panel-log": {
 					"BeforeFunctions": [],
-					"bodyKeys": [
-						"uuids"
-					],
-					"formatEN": "delete Docker port guard policies [uuids]",
-					"formatZH": "删除 Docker 端口防护策略 [uuids]",
+					"bodyKeys": [],
+					"formatEN": "delete Docker port guard policies",
+					"formatZH": "删除 Docker 端口防护策略",
 					"paramKeys": []
 				}
 			}
@@ -18807,11 +18846,28 @@ const docTemplate = `{
 				]
 			}
 		},
-		"/hosts/firewall/docker/sync": {
+		"/hosts/firewall/family/operate": {
 			"post": {
+				"consumes": [
+					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/dto.FirewallFamilyOperation"
+						}
+					}
+				],
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/dto.FilterChainOperationResponse"
+						}
 					}
 				},
 				"security": [
@@ -18822,15 +18878,19 @@ const docTemplate = `{
 						"Timestamp": []
 					}
 				],
-				"summary": "Sync Docker port guard rules",
+				"summary": "Initialize, repair or bind one firewall address family",
 				"tags": [
 					"Firewall"
 				],
 				"x-panel-log": {
 					"BeforeFunctions": [],
-					"bodyKeys": [],
-					"formatEN": "sync Docker port guard rules",
-					"formatZH": "同步 Docker 端口防护规则",
+					"bodyKeys": [
+						"subsystem",
+						"family",
+						"operation"
+					],
+					"formatEN": "[operation] [subsystem] [family] firewall chains",
+					"formatZH": "[operation] [subsystem] [family] 防火墙链",
 					"paramKeys": []
 				}
 			}
@@ -19055,7 +19115,10 @@ const docTemplate = `{
 				],
 				"responses": {
 					"200": {
-						"description": "OK"
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/dto.FirewallLifecycleOperationResponse"
+						}
 					}
 				},
 				"security": [
@@ -19139,30 +19202,27 @@ const docTemplate = `{
 				}
 			}
 		},
-		"/hosts/firewall/rules/adopt": {
-			"post": {
-				"consumes": [
-					"application/json"
-				],
+		"/hosts/firewall/rules/backups": {
+			"get": {
 				"parameters": [
 					{
-						"description": "request",
-						"in": "body",
-						"name": "request",
-						"required": true,
-						"schema": {
-							"$ref": "#/definitions/dto.FirewallRuleAdopt"
-						}
+						"default": "system",
+						"description": "Firewall subsystem",
+						"enum": [
+							"system",
+							"forwarding",
+							"docker"
+						],
+						"in": "query",
+						"name": "subsystem",
+						"type": "string"
 					}
 				],
 				"responses": {
 					"200": {
-						"description": "OK"
-					},
-					"400": {
-						"description": "Bad Request",
+						"description": "OK",
 						"schema": {
-							"$ref": "#/definitions/dto.Response"
+							"$ref": "#/definitions/dto.FirewallRuleBackups"
 						}
 					}
 				},
@@ -19174,25 +19234,18 @@ const docTemplate = `{
 						"Timestamp": []
 					}
 				],
-				"summary": "Adopt an external firewall rule",
+				"summary": "List firewall rule backups",
 				"tags": [
 					"Firewall"
-				],
-				"x-panel-log": {
-					"bodyKeys": [],
-					"paramKeys": [],
-					"BeforeFunctions": [],
-					"formatZH": "纳管防火墙规则",
-					"formatEN": "adopt firewall rule"
-				}
+				]
 			}
 		},
 		"/hosts/firewall/rules/delete": {
 			"post": {
-				"description": "Deletes managed rules by UUID or unprotected before-chain rules by instance key. Returns a taskID immediately; results are written to the task log.",
 				"consumes": [
 					"application/json"
 				],
+				"description": "Deletes non-whitelist rules by scope and instance key. Returns a taskID immediately; results are written to the task log.",
 				"parameters": [
 					{
 						"description": "request",
@@ -19318,17 +19371,66 @@ const docTemplate = `{
 						"Timestamp": []
 					}
 				],
-				"summary": "Reorder a managed unified firewall v2 rule",
+				"summary": "Reorder a firewall rule",
 				"tags": [
 					"Firewall"
 				],
 				"x-panel-log": {
 					"BeforeFunctions": [],
-					"bodyKeys": [
-						"uuid"
-					],
-					"formatEN": "reorder firewall rule [uuid]",
-					"formatZH": "调整防火墙规则顺序 [uuid]",
+					"bodyKeys": [],
+					"formatEN": "reorder firewall rule",
+					"formatZH": "调整防火墙规则顺序",
+					"paramKeys": []
+				}
+			}
+		},
+		"/hosts/firewall/rules/reset": {
+			"post": {
+				"consumes": [
+					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/dto.FirewallRuleReset"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/dto.FirewallRuleResetResponse"
+						}
+					},
+					"400": {
+						"description": "Bad Request",
+						"schema": {
+							"$ref": "#/definitions/dto.Response"
+						}
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "Reset firewall rules",
+				"tags": [
+					"Firewall"
+				],
+				"x-panel-log": {
+					"BeforeFunctions": [],
+					"bodyKeys": [],
+					"formatEN": "reset firewall rules",
+					"formatZH": "重置防火墙规则",
 					"paramKeys": []
 				}
 			}
@@ -19412,17 +19514,15 @@ const docTemplate = `{
 						"Timestamp": []
 					}
 				],
-				"summary": "Update a managed unified firewall v2 rule",
+				"summary": "Update a firewall rule",
 				"tags": [
 					"Firewall"
 				],
 				"x-panel-log": {
 					"BeforeFunctions": [],
-					"bodyKeys": [
-						"uuid"
-					],
-					"formatEN": "update firewall rule [uuid]",
-					"formatZH": "更新防火墙规则 [uuid]",
+					"bodyKeys": [],
+					"formatEN": "update firewall rule",
+					"formatZH": "更新防火墙规则",
 					"paramKeys": []
 				}
 			}
@@ -19449,6 +19549,53 @@ const docTemplate = `{
 				"tags": [
 					"Firewall"
 				]
+			}
+		},
+		"/hosts/firewall/settings/ipv6": {
+			"post": {
+				"consumes": [
+					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/dto.FirewallIPv6Operation"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK",
+						"schema": {
+							"$ref": "#/definitions/dto.FilterChainOperationResponse"
+						}
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "Update firewall IPv6 support",
+				"tags": [
+					"Firewall"
+				],
+				"x-panel-log": {
+					"BeforeFunctions": [],
+					"bodyKeys": [
+						"status"
+					],
+					"formatEN": "Set firewall IPv6 support to [status]",
+					"formatZH": "设置防火墙 IPv6 支持为 [status]",
+					"paramKeys": []
+				}
 			}
 		},
 		"/hosts/firewall/settings/operate": {
@@ -19502,7 +19649,7 @@ const docTemplate = `{
 				"consumes": [
 					"application/json"
 				],
-				"description": "Saves whitelist configuration only. Missing rules are added on startup, restart, initialization, or synchronization; existing rules are not removed.",
+				"description": "Saves whitelist configuration and applies missing allowances; existing rules are not removed.",
 				"parameters": [
 					{
 						"description": "request",
@@ -19547,7 +19694,7 @@ const docTemplate = `{
 				"consumes": [
 					"application/json"
 				],
-				"description": "Saves whitelist configuration only. Missing rules are added on startup, restart, initialization, or synchronization; existing rules are not removed.",
+				"description": "Removes whitelist configuration; existing firewall rules are not removed.",
 				"parameters": [
 					{
 						"description": "request",
@@ -19592,7 +19739,7 @@ const docTemplate = `{
 				"consumes": [
 					"application/json"
 				],
-				"description": "Saves whitelist configuration only. Missing rules are added on startup, restart, initialization, or synchronization; existing rules are not removed.",
+				"description": "Saves whitelist configuration and applies missing allowances; existing rules are not removed.",
 				"parameters": [
 					{
 						"description": "request",
@@ -35694,6 +35841,9 @@ const docTemplate = `{
 		},
 		"dto.DockerPortGuardBase": {
 			"properties": {
+				"ipv6Enabled": {
+					"type": "boolean"
+				},
 				"backend": {
 					"type": "string"
 				},
@@ -35709,10 +35859,16 @@ const docTemplate = `{
 				"ipv6": {
 					"$ref": "#/definitions/dto.DockerPortGuardFamilyStatus"
 				},
+				"isExist": {
+					"type": "boolean"
+				},
 				"message": {
 					"type": "string"
 				},
 				"name": {
+					"type": "string"
+				},
+				"version": {
 					"type": "string"
 				}
 			},
@@ -35764,7 +35920,7 @@ const docTemplate = `{
 				"containerPort": {
 					"type": "integer"
 				},
-				"description": {
+				"containerState": {
 					"type": "string"
 				},
 				"effective": {
@@ -35778,6 +35934,12 @@ const docTemplate = `{
 				},
 				"hostPort": {
 					"type": "integer"
+				},
+				"managementReason": {
+					"type": "string"
+				},
+				"managementTarget": {
+					"type": "string"
 				},
 				"mode": {
 					"type": "string"
@@ -35793,6 +35955,9 @@ const docTemplate = `{
 						"type": "string"
 					},
 					"type": "array"
+				},
+				"trafficPath": {
+					"type": "string"
 				}
 			},
 			"type": "object"
@@ -35841,6 +36006,9 @@ const docTemplate = `{
 				"initialized": {
 					"type": "boolean"
 				},
+				"partial": {
+					"type": "boolean"
+				},
 				"reason": {
 					"type": "string"
 				},
@@ -35860,12 +36028,22 @@ const docTemplate = `{
 						"$ref": "#/definitions/dto.DockerPortGuardContainer"
 					},
 					"type": "array"
+				},
+				"orphanPolicies": {
+					"items": {
+						"$ref": "#/definitions/dto.DockerPortGuardEndpoint"
+					},
+					"type": "array"
 				}
 			},
 			"type": "object"
 		},
 		"dto.DockerPortGuardOperation": {
 			"properties": {
+				"backupFile": {
+					"maxLength": 255,
+					"type": "string"
+				},
 				"operation": {
 					"enum": [
 						"initialize",
@@ -35886,10 +36064,6 @@ const docTemplate = `{
 		},
 		"dto.DockerPortGuardPolicy": {
 			"properties": {
-				"description": {
-					"maxLength": 256,
-					"type": "string"
-				},
 				"family": {
 					"enum": [
 						"ipv4",
@@ -35909,7 +36083,9 @@ const docTemplate = `{
 					"enum": [
 						"deny_sources",
 						"allow_sources",
-						"deny_all"
+						"deny_all",
+						"accept_sources",
+						"accept_all"
 					],
 					"type": "string"
 				},
@@ -35932,12 +36108,16 @@ const docTemplate = `{
 				"hostIP",
 				"hostPort",
 				"mode",
-				"protocol"
+				"protocol",
+				"sources"
 			],
 			"type": "object"
 		},
 		"dto.DockerPortGuardPolicyBatch": {
 			"properties": {
+				"import": {
+					"type": "boolean"
+				},
 				"policies": {
 					"items": {
 						"$ref": "#/definitions/dto.DockerPortGuardPolicy"
@@ -36194,11 +36374,26 @@ const docTemplate = `{
 		},
 		"dto.FirewallBackendFamilyStatus": {
 			"properties": {
+				"available": {
+					"type": "boolean"
+				},
 				"bound": {
 					"type": "boolean"
 				},
 				"initialized": {
 					"type": "boolean"
+				},
+				"raInterfaces": {
+					"items": {
+						"type": "string"
+					},
+					"type": "array"
+				},
+				"partial": {
+					"type": "boolean"
+				},
+				"reason": {
+					"type": "string"
 				}
 			},
 			"type": "object"
@@ -36284,14 +36479,77 @@ const docTemplate = `{
 				"name": {
 					"type": "string"
 				},
+				"supportReason": {
+					"type": "string"
+				},
 				"supported": {
 					"type": "boolean"
 				}
 			},
 			"type": "object"
 		},
+		"dto.FirewallFamilyOperation": {
+			"properties": {
+				"backend": {
+					"enum": [
+						"iptables",
+						"nftables"
+					],
+					"type": "string"
+				},
+				"family": {
+					"enum": [
+						"ipv4",
+						"ipv6"
+					],
+					"type": "string"
+				},
+				"operation": {
+					"enum": [
+						"initialize",
+						"repair",
+						"bind"
+					],
+					"type": "string"
+				},
+				"subsystem": {
+					"enum": [
+						"system",
+						"forwarding",
+						"docker"
+					],
+					"type": "string"
+				}
+			},
+			"required": [
+				"backend",
+				"family",
+				"operation",
+				"subsystem"
+			],
+			"type": "object"
+		},
+		"dto.FirewallIPv6Operation": {
+			"properties": {
+				"status": {
+					"enum": [
+						"Enable",
+						"Disable"
+					],
+					"type": "string"
+				}
+			},
+			"required": [
+				"status"
+			],
+			"type": "object"
+		},
 		"dto.FirewallInitializationTask": {
 			"properties": {
+				"backupFile": {
+					"maxLength": 255,
+					"type": "string"
+				},
 				"taskID": {
 					"maxLength": 64,
 					"type": "string"
@@ -36318,6 +36576,17 @@ const docTemplate = `{
 			"required": [
 				"operation"
 			],
+			"type": "object"
+		},
+		"dto.FirewallLifecycleOperationResponse": {
+			"properties": {
+				"queued": {
+					"type": "boolean"
+				},
+				"taskID": {
+					"type": "string"
+				}
+			},
 			"type": "object"
 		},
 		"dto.FirewallNativeDetail": {
@@ -36391,35 +36660,53 @@ const docTemplate = `{
 			],
 			"type": "object"
 		},
-		"dto.FirewallRuleAdopt": {
-			"type": "object",
-			"required": [
-				"scope",
-				"instanceKey"
-			],
+		"dto.FirewallRuleBackup": {
 			"properties": {
-				"scope": {
-					"$ref": "#/definitions/filter.Scope"
+				"modifiedAt": {
+					"type": "integer"
 				},
-				"instanceKey": {
-					"type": "string",
-					"maxLength": 128
+				"name": {
+					"type": "string"
+				},
+				"provider": {
+					"type": "string"
+				},
+				"ruleCount": {
+					"type": "integer"
 				}
-			}
+			},
+			"type": "object"
+		},
+		"dto.FirewallRuleBackups": {
+			"properties": {
+				"directory": {
+					"type": "string"
+				},
+				"files": {
+					"items": {
+						"$ref": "#/definitions/dto.FirewallRuleBackup"
+					},
+					"type": "array"
+				}
+			},
+			"type": "object"
 		},
 		"dto.FirewallRuleCreate": {
 			"properties": {
+				"backupFile": {
+					"maxLength": 255,
+					"type": "string"
+				},
+				"initialize": {
+					"type": "boolean"
+				},
 				"items": {
 					"items": {
 						"$ref": "#/definitions/dto.FirewallRuleCreateItem"
 					},
-					"minItems": 1,
 					"type": "array"
 				}
 			},
-			"required": [
-				"items"
-			],
 			"type": "object"
 		},
 		"dto.FirewallRuleCreateFailure": {
@@ -36441,11 +36728,14 @@ const docTemplate = `{
 		},
 		"dto.FirewallRuleCreateItem": {
 			"properties": {
+				"parseStatus": {
+					"$ref": "#/definitions/filter.ParseStatus"
+				},
+				"raw": {
+					"type": "string"
+				},
 				"rule": {
 					"$ref": "#/definitions/filter.FirewallRule"
-				},
-				"sourceID": {
-					"type": "string"
 				},
 				"sourceKind": {
 					"enum": [
@@ -36487,36 +36777,17 @@ const docTemplate = `{
 			"type": "object"
 		},
 		"dto.FirewallRuleDelete": {
-			"description": "Provide managed rule UUIDs, before-chain rule targets, or both.",
 			"properties": {
-				"beforeRules": {
+				"targets": {
 					"items": {
-						"$ref": "#/definitions/dto.FirewallRuleDeleteTarget"
+						"$ref": "#/definitions/dto.FirewallRuleDeleteItem"
 					},
+					"minItems": 1,
 					"type": "array"
-				},
-				"uuids": {
-					"items": {
-						"type": "string"
-					},
-					"type": "array"
-				}
-			},
-			"type": "object"
-		},
-		"dto.FirewallRuleDeleteTarget": {
-			"properties": {
-				"instanceKey": {
-					"maxLength": 128,
-					"type": "string"
-				},
-				"scope": {
-					"$ref": "#/definitions/filter.Scope"
 				}
 			},
 			"required": [
-				"scope",
-				"instanceKey"
+				"targets"
 			],
 			"type": "object"
 		},
@@ -36528,10 +36799,30 @@ const docTemplate = `{
 				"index": {
 					"type": "integer"
 				},
-				"uuid": {
+				"instanceKey": {
 					"type": "string"
 				}
 			},
+			"type": "object"
+		},
+		"dto.FirewallRuleDeleteItem": {
+			"properties": {
+				"instanceKey": {
+					"maxLength": 128,
+					"type": "string"
+				},
+				"observed": {
+					"$ref": "#/definitions/filter.ObservedRule"
+				},
+				"scope": {
+					"$ref": "#/definitions/filter.Scope"
+				}
+			},
+			"required": [
+				"instanceKey",
+				"observed",
+				"scope"
+			],
 			"type": "object"
 		},
 		"dto.FirewallRuleDeleteResponse": {
@@ -36557,14 +36848,26 @@ const docTemplate = `{
 			},
 			"type": "object"
 		},
+		"dto.FirewallRuleDeleteTarget": {
+			"properties": {
+				"instanceKey": {
+					"maxLength": 128,
+					"type": "string"
+				},
+				"scope": {
+					"$ref": "#/definitions/filter.Scope"
+				}
+			},
+			"required": [
+				"instanceKey",
+				"scope"
+			],
+			"type": "object"
+		},
 		"dto.FirewallRuleInventory": {
 			"properties": {
 				"actions": {
 					"items": {
-						"enum": [
-							"accept",
-							"deny"
-						],
 						"type": "string"
 					},
 					"type": "array"
@@ -36574,21 +36877,12 @@ const docTemplate = `{
 				},
 				"excludeChains": {
 					"items": {
-						"enum": [
-							"1PANEL_BASIC_BEFORE",
-							"1PANEL_BASIC",
-							"1PANEL_BASIC_AFTER"
-						],
 						"type": "string"
 					},
 					"type": "array"
 				},
 				"families": {
 					"items": {
-						"enum": [
-							"ipv4",
-							"ipv6"
-						],
 						"type": "string"
 					},
 					"type": "array"
@@ -36611,19 +36905,6 @@ const docTemplate = `{
 					},
 					"maxItems": 16,
 					"type": "array"
-				},
-				"states": {
-					"items": {
-						"enum": [
-							"managed",
-							"adopted",
-							"external",
-							"drifted",
-							"protected"
-						],
-						"type": "string"
-					},
-					"type": "array"
 				}
 			},
 			"required": [
@@ -36637,14 +36918,17 @@ const docTemplate = `{
 				"allTotal": {
 					"type": "integer"
 				},
+				"ipv4Range": {
+					"$ref": "#/definitions/filter.PositionRange"
+				},
+				"ipv6Range": {
+					"$ref": "#/definitions/filter.PositionRange"
+				},
 				"items": {
 					"items": {
 						"$ref": "#/definitions/filter.InventoryItem"
 					},
 					"type": "array"
-				},
-				"managedTotal": {
-					"type": "integer"
 				},
 				"notices": {
 					"items": {
@@ -36660,34 +36944,102 @@ const docTemplate = `{
 		},
 		"dto.FirewallRuleReorder": {
 			"properties": {
+				"instanceKey": {
+					"maxLength": 128,
+					"type": "string"
+				},
 				"priority": {
 					"type": "integer"
 				},
+				"scope": {
+					"$ref": "#/definitions/filter.Scope"
+				},
 				"targetPosition": {
 					"type": "integer"
+				}
+			},
+			"required": [
+				"instanceKey",
+				"scope"
+			],
+			"type": "object"
+		},
+		"dto.FirewallRuleReset": {
+			"properties": {
+				"backup": {
+					"default": true,
+					"type": "boolean"
 				},
-				"uuid": {
+				"provider": {
+					"enum": [
+						"firewalld",
+						"ufw",
+						"iptables",
+						"nftables"
+					],
 					"type": "string"
+				},
+				"subsystem": {
+					"enum": [
+						"system",
+						"forwarding",
+						"docker"
+					],
+					"type": "string"
+				},
+				"withDockerRestart": {
+					"type": "boolean"
+				}
+			},
+			"type": "object"
+		},
+		"dto.FirewallRuleResetResponse": {
+			"properties": {
+				"backupPath": {
+					"type": "string"
+				},
+				"disabled": {
+					"type": "boolean"
+				},
+				"removed": {
+					"type": "integer"
 				}
 			},
 			"type": "object"
 		},
 		"dto.FirewallRuleUpdate": {
 			"properties": {
+				"description": {
+					"type": "string"
+				},
+				"instanceKey": {
+					"maxLength": 128,
+					"type": "string"
+				},
+				"orderIndex": {
+					"type": "integer"
+				},
+				"priority": {
+					"type": "integer"
+				},
 				"rule": {
 					"$ref": "#/definitions/filter.FirewallRule"
 				},
-				"uuid": {
-					"type": "string"
+				"scope": {
+					"$ref": "#/definitions/filter.Scope"
 				}
 			},
 			"required": [
-				"rule"
+				"instanceKey",
+				"scope"
 			],
 			"type": "object"
 		},
 		"dto.FirewallSettings": {
 			"properties": {
+				"ipv6Enabled": {
+					"type": "boolean"
+				},
 				"docker": {
 					"$ref": "#/definitions/dto.FirewallBackendGroup"
 				},
@@ -36701,10 +37053,10 @@ const docTemplate = `{
 					"type": "string"
 				},
 				"portWhiteList": {
-					"type": "array",
 					"items": {
 						"$ref": "#/definitions/filter.PortWhitelist"
-					}
+					},
+					"type": "array"
 				},
 				"sshPort": {
 					"type": "string"
@@ -36717,8 +37069,20 @@ const docTemplate = `{
 		},
 		"dto.FirewallSubsystemStatus": {
 			"properties": {
+				"ipv6Enabled": {
+					"type": "boolean"
+				},
 				"backend": {
 					"type": "string"
+				},
+				"conflictBackend": {
+					"type": "string"
+				},
+				"ipv4": {
+					"$ref": "#/definitions/dto.FirewallBackendFamilyStatus"
+				},
+				"ipv6": {
+					"$ref": "#/definitions/dto.FirewallBackendFamilyStatus"
 				},
 				"isActive": {
 					"type": "boolean"
@@ -36732,13 +37096,19 @@ const docTemplate = `{
 				"isInit": {
 					"type": "boolean"
 				},
+				"lifecycleTaskID": {
+					"type": "string"
+				},
+				"message": {
+					"type": "string"
+				},
 				"name": {
 					"type": "string"
 				},
 				"pingStatus": {
 					"type": "string"
 				},
-				"syncError": {
+				"reason": {
 					"type": "string"
 				},
 				"version": {
@@ -36783,23 +37153,76 @@ const docTemplate = `{
 			},
 			"type": "object"
 		},
+		"dto.ForwardRule": {
+			"properties": {
+				"address": {
+					"type": "string"
+				},
+				"chain": {
+					"type": "string"
+				},
+				"description": {
+					"type": "string"
+				},
+				"family": {
+					"type": "string"
+				},
+				"id": {
+					"type": "integer"
+				},
+				"interface": {
+					"type": "string"
+				},
+				"isDesired": {
+					"type": "boolean"
+				},
+				"isRuntime": {
+					"type": "boolean"
+				},
+				"num": {
+					"type": "string"
+				},
+				"port": {
+					"type": "string"
+				},
+				"protocol": {
+					"type": "string"
+				},
+				"strategy": {
+					"type": "string"
+				},
+				"syncStatus": {
+					"type": "string"
+				},
+				"targetIP": {
+					"type": "string"
+				},
+				"targetPort": {
+					"type": "string"
+				},
+				"usedStatus": {
+					"type": "string"
+				}
+			},
+			"type": "object"
+		},
 		"dto.ForwardRuleOperate": {
 			"properties": {
-				"forceDelete": {
+				"import": {
 					"type": "boolean"
 				},
 				"rules": {
 					"items": {
 						"$ref": "#/definitions/dto.ForwardRuleOperation"
 					},
-					"type": "array",
-					"minItems": 1
+					"minItems": 1,
+					"type": "array"
 				}
 			},
-			"type": "object",
 			"required": [
 				"rules"
-			]
+			],
+			"type": "object"
 		},
 		"dto.ForwardRuleOperation": {
 			"properties": {
@@ -36851,6 +37274,9 @@ const docTemplate = `{
 		},
 		"dto.ForwardRuleSearch": {
 			"properties": {
+				"all": {
+					"type": "boolean"
+				},
 				"info": {
 					"type": "string"
 				},
@@ -39731,6 +40157,14 @@ const docTemplate = `{
 			],
 			"type": "object"
 		},
+		"dto.RedisCliInstall": {
+			"type": "object",
+			"properties": {
+				"taskID": {
+					"type": "string"
+				}
+			}
+		},
 		"dto.RedisConf": {
 			"properties": {
 				"containerName": {
@@ -41465,29 +41899,6 @@ const docTemplate = `{
 				"ActionReject"
 			]
 		},
-		"filter.DesiredRule": {
-			"properties": {
-				"marker": {
-					"type": "string"
-				},
-				"observedInstanceKey": {
-					"type": "string"
-				},
-				"origin": {
-					"type": "string"
-				},
-				"rule": {
-					"$ref": "#/definitions/filter.FirewallRule"
-				},
-				"ruleKey": {
-					"type": "string"
-				},
-				"uuid": {
-					"type": "string"
-				}
-			},
-			"type": "object"
-		},
 		"filter.Direction": {
 			"enum": [
 				"input"
@@ -41552,62 +41963,20 @@ const docTemplate = `{
 		},
 		"filter.InventoryItem": {
 			"properties": {
-				"desired": {
-					"$ref": "#/definitions/filter.DesiredRule"
+				"descriptionID": {
+					"type": "string"
 				},
-				"match": {
-					"$ref": "#/definitions/filter.InventoryMatch"
+				"isWhitelist": {
+					"type": "boolean"
 				},
 				"observed": {
 					"$ref": "#/definitions/filter.ObservedRule"
 				},
 				"rule": {
 					"$ref": "#/definitions/filter.FirewallRule"
-				},
-				"state": {
-					"$ref": "#/definitions/filter.InventoryState"
-				},
-				"usage": {
-					"$ref": "#/definitions/filter.RuntimeUsage"
 				}
 			},
 			"type": "object"
-		},
-		"filter.InventoryMatch": {
-			"enum": [
-				"none",
-				"exact",
-				"changed",
-				"missing",
-				"ambiguous",
-				"opaque"
-			],
-			"type": "string",
-			"x-enum-varnames": [
-				"InventoryMatchNone",
-				"InventoryMatchExact",
-				"InventoryMatchChanged",
-				"InventoryMatchMissing",
-				"InventoryMatchAmbiguous",
-				"InventoryMatchOpaque"
-			]
-		},
-		"filter.InventoryState": {
-			"enum": [
-				"managed",
-				"adopted",
-				"external",
-				"drifted",
-				"protected"
-			],
-			"type": "string",
-			"x-enum-varnames": [
-				"InventoryStateManaged",
-				"InventoryStateAdopted",
-				"InventoryStateExternal",
-				"InventoryStateDrifted",
-				"InventoryStateProtected"
-			]
 		},
 		"filter.Locator": {
 			"properties": {
@@ -41675,6 +42044,12 @@ const docTemplate = `{
 				},
 				"rule": {
 					"$ref": "#/definitions/filter.FirewallRule"
+				},
+				"uncertainFields": {
+					"items": {
+						"type": "string"
+					},
+					"type": "array"
 				}
 			},
 			"type": "object"
@@ -41714,10 +42089,10 @@ const docTemplate = `{
 					"type": "string"
 				},
 				"sources": {
-					"type": "array",
 					"items": {
 						"type": "string"
-					}
+					},
+					"type": "array"
 				},
 				"type": {
 					"type": "string"
@@ -41725,19 +42100,13 @@ const docTemplate = `{
 			},
 			"type": "object"
 		},
-		"filter.RuntimeUsage": {
+		"filter.PositionRange": {
 			"properties": {
-				"reason": {
-					"type": "string"
+				"max": {
+					"type": "integer"
 				},
-				"used": {
-					"type": "boolean"
-				},
-				"usedBy": {
-					"items": {
-						"type": "string"
-					},
-					"type": "array"
+				"min": {
+					"type": "integer"
 				}
 			},
 			"type": "object"
@@ -41781,19 +42150,47 @@ const docTemplate = `{
 		},
 		"filter.ScopeNoticeCode": {
 			"enum": [
-				"default_scope_mismatch",
 				"managed_scope_inactive",
-				"unmanaged_active_scopes",
 				"runtime_permanent_mismatch",
-				"managed_scope_missing"
+				"managed_scope_missing",
+				"family_unavailable"
 			],
 			"type": "string",
 			"x-enum-varnames": [
-				"ScopeNoticeDefaultScopeMismatch",
 				"ScopeNoticeManagedScopeInactive",
-				"ScopeNoticeUnmanagedActiveScopes",
 				"ScopeNoticeRuntimePermanentMismatch",
-				"ScopeNoticeManagedScopeMissing"
+				"ScopeNoticeManagedScopeMissing",
+				"ScopeNoticeFamilyUnavailable"
+			]
+		},
+		"github_com_1Panel-dev_1Panel_agent_utils_firewall_sync.ReasonCode": {
+			"enum": [
+				"invalid_policy",
+				"already_exists_in_target",
+				"only_exists_in_target",
+				"read_only_rule"
+			],
+			"type": "string",
+			"x-enum-varnames": [
+				"ReasonInvalidPolicy",
+				"ReasonAlreadyExists",
+				"ReasonOnlyExistsInTarget",
+				"ReasonReadOnlyRule"
+			]
+		},
+		"github_com_1Panel-dev_1Panel_agent_utils_firewall_sync.Status": {
+			"enum": [
+				"ready",
+				"existing",
+				"remove",
+				"blocked"
+			],
+			"type": "string",
+			"x-enum-varnames": [
+				"StatusReady",
+				"StatusExisting",
+				"StatusRemove",
+				"StatusBlocked"
 			]
 		},
 		"mfa.Otp": {

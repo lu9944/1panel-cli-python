@@ -140,6 +140,9 @@ ErrComposeProjectNameEmpty: 'نام پروژه از پیکربندی Docker Comp
 ErrComposeNameInvalid: 'نام پروژه Compose نامعتبر است: باید با حرف کوچک یا عدد شروع شود، فقط شامل حروف کوچک، اعداد، خط تیره و زیرخط باشد و ۱ تا ۲۵۶ نویسه داشته باشد.'
 ErrAppVersionUnavailable: 'این نسخه برنامه از سرویس راه دور حذف شده است. لطفاً نسخه دیگری را انتخاب کرده و دوباره تلاش کنید.'
 ErrVllmGB10ProOnly: 'این نسخه vLLM فقط در نسخه حرفه‌ای 1Panel در دسترس است.'
+ErrAIGatewayDatabaseTypeMismatch: 'AI Gateway فقط در همان نوع پایگاه داده (SQLite یا PostgreSQL) قابل ارتقا است.'
+ErrAIGatewayRecoverDatabaseTypeMismatch: 'نسخه پشتیبان AI Gateway و برنامه مقصد باید از یک نوع پایگاه داده (SQLite یا PostgreSQL) استفاده کنند.'
+ErrHermesUpgradeVersion: 'Hermes Agent فقط می‌تواند به نسخه جدیدتر و شناخته‌شده‌ای ارتقا یابد که تنظیمات ارتقا بین نسخه‌های اصلی اجازه می‌دهد. برای بازگشت به نسخه قدیمی، نسخه پشتیبان را بازیابی کنید.'
 ErrAppWarn: 'وضعیت برنامه غیرعادی است؛ لاگ‌ها را بررسی کنید'
 ErrAppParamKey: 'پارامتر برنامه نامعتبر است: {{ .name }}'
 ErrAppUpgrade: 'ارتقاء برنامه ناموفق بود: {{ .name }} {{ .err }}'
@@ -300,6 +303,9 @@ BuildCache: 'کش ساخت'
 Volume: 'حجم'
 Network: "شبکه"
 PruneStart: 'پاک‌سازی در حال انجام است'
+NetworkCleanupConnected: "از شبکه [{{ .name }}] ({{ .id }}) صرف‌نظر شد: کانتینر متصل دارد یا در حال استفاده است؛ حذف نشد"
+NetworkCleanupSummary: "پاک‌سازی شبکه‌ها پایان یافت: حذف‌شده {{ .deleted }}، ردشده {{ .skipped }}، ناموفق {{ .failed }}"
+NetworkCleanupPartialFailure: "پاک‌سازی برخی شبکه‌ها ناموفق بود؛ گزارش وظیفه را بررسی کنید"
 ContainerBackupPrepare: 'آماده‌سازی فضای کاری پشتیبان کانتینر'
 ContainerBackupStop: 'توقف کانتینر قبل از پشتیبان‌گیری'
 ContainerBackupInspect: 'بررسی و شبکه کانتینر پشتیبان'
@@ -628,14 +634,15 @@ AppAttributesNotMatch: 'نوع یا نام برنامه مطابقت ندارد'
 # هشدار
 ErrAlertMethodNotSupported: 'این نسخه از این روش هشدار پشتیبانی نمی‌کند'
 ErrAlertSync: 'همگام‌سازی پیام هشدار ناموفق بود'
+ErrWebhookTestFailed: 'لطفاً پیکربندی وب‌هوک را بررسی کنید. برای جزئیات، گزارش‌های سیستم را ببینید.'
 
 # وظیفه - محیط اجرا
 ErrInstallExtension: 'وظیفه نصب پسوند دیگری در حال اجراست'
 
 # قالب ایمیل هشدار
 PanelAlertTitle: "اعلان هشدار پنل"
-TestAlertTitle: "ایمیل آزمایشی - تأیید اتصال ایمیل"
-TestAlert: "این یک ایمیل آزمایشی برای تأیید صحت پیکربندی ارسال ایمیل شما است."
+TestAlertTitle: "اعلان آزمایشی پنل"
+TestAlertMessage: "این یک اعلان آزمایشی برای بررسی پیکربندی و اتصال کانال اعلان است."
 LicenseExpirationAlert: "پنل {{ .node }}{{ .ip }}: مجوز در {{ .day }} روز منقضی می‌شود. برای مشاهده جزئیات وارد شوید."
 CronJobFailedAlert: "پنل {{ .node }}{{ .ip }}: وظیفه زمان‌بندی {{ .name }} ناموفق بود. برای مشاهده جزئیات وارد شوید."
 ClamAlert: "پنل {{ .node }}{{ .ip }}: اسکن ویروس {{ .num }} فایل آلوده پیدا کرد. برای مشاهده جزئیات وارد شوید."
@@ -649,6 +656,8 @@ CommonAlert: "پنل {{ .node }}{{ .ip }}: {{ .msg }}. برای مشاهده ج�
 NodeExceptionAlert: "پنل {{ .node }}{{ .ip }}: {{ .num }} گره غیرعادی هستند. برای مشاهده جزئیات وارد شوید."
 LicenseExceptionAlert: "پنل {{ .node }}{{ .ip }}: {{ .num }} مجوز غیرعادی است. برای مشاهده جزئیات وارد شوید."
 SSHAndPanelLoginAlert: "پنل {{ .node }}{{ .ip }}: ورود غیرعادی {{ .name }} از {{ .loginIp }}. برای مشاهده جزئیات وارد شوید."
+CronJobSuccessAlert: "پنل {{ .node }}{{ .ip }}: وظیفه زمان‌بندی‌شده {{ .name }} با موفقیت تکمیل شد. برای مشاهده جزئیات وارد شوید."
+
 
 # دیسک
 DeviceNotFound: "دستگاه {{ .name }} یافت نشد"
@@ -682,8 +691,7 @@ AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
 # Firewall
 ErrDockerIptablesChainUnavailable: 'زنجیره DOCKER-USER داکر یافت نشد. داکر را راه‌اندازی مجدد کنید و دوباره تلاش کنید'
 ErrDockerNftablesChainUnavailable: 'زنجیره فایروال IPv4 مربوط به nftables داکر یافت نشد. بررسی کنید نسخه فعلی داکر از بک‌اند فایروال nftables پشتیبانی کند، سپس داکر را راه‌اندازی مجدد کرده و دوباره تلاش کنید'
-ErrDockerForwardPolicyDrop: 'سیاست پیش‌فرض FORWARD برای {{ .family }} برابر DROP است. آن را تغییر دهید و دوباره تلاش کنید'
-ErrUFWRuleAdopt: 'مدیریت قانون UFW ناموفق بود: {{ .detail }}. اگر نسخه فعلی UFW قدیمی‌تر از 0.35 است، ابتدا UFW را ارتقا دهید و دوباره تلاش کنید'
+ErrDockerForwardPolicyDrop: 'این سرور هدایت ترافیک شبکه را محدود کرده است. در حال حاضر امکان فعال‌سازی محافظت از پورت کانتینرها وجود ندارد.'
 Firewall: 'فایروال'
 FirewallTaskHost: 'دیواره آتش میزبان'
 FirewallTaskForwarding: 'هدایت پورت'
@@ -697,28 +705,15 @@ FirewallCreateRulesStep: 'ایجاد قوانین دیوار آتش'
 FirewallCreateRulesResult: 'نتیجه ایجاد: {{ .succeeded }} موفق، {{ .failed }} ناموفق، {{ .skipped }} اجرا نشده'
 FirewallRuleOperationResult: 'نتیجه عملیات: {{ .succeeded }} موفق، {{ .failed }} ناموفق'
 FirewallCreateRuleSkipped: 'اجرا نشده'
-FirewallCreateBatchStep: 'ارسال {{ .count }} قانون به صورت دسته‌ای به {{ .backend }}'
 FirewallImportRuleConversion: '[{{ .index }}/{{ .total }}] {{ .source }} → {{ .target }}: {{ .rule }}؛ به {{ .count }} قانون تبدیل شد'
-FirewallCreateRuleExecutionFailed: 'ایجاد قانون ناموفق بود. هیچ رکوردی در پایگاه داده ذخیره نشد و دستورات اجراشده بازگردانی نشدند'
-FirewallCreateRulePersistenceFailed: 'قانون ایجاد شد، اما ذخیره رکورد مدیریتی آن ناموفق بود'
-FirewallAdoptRulePersistenceFailed: 'دستور پذیرش قانون برای مدیریت اجرا شد، اما اطلاعات مدیریت ذخیره نشد'
-FirewallSyncOperationsResult: 'عملیات همگام‌سازی: {{ .removed }} حذف‌شده، {{ .created }} ایجادشده، {{ .failed }} ناموفق، {{ .skipped }} اجرا‌نشده، {{ .unchanged }} از قبل مطابق (بدون نیاز به تغییر)'
-FirewallSyncRuleUnchanged: 'از قبل مطابق است؛ نیازی به تغییر نیست'
-FirewallSyncStep: 'همگام‌سازی قوانین با {{ .name }}'
-FirewallSyncFailed: 'همگام‌سازی {{ .failed }} قانون فایروال ناموفق بود'
-FirewallResetSourceStep: 'بازنشانی و غیرفعال‌کردن فایروال مبدأ {{ .name }}'
-FirewallResetSourceResult: 'فایروال مبدأ بازنشانی شد و {{ .removed }} قانون پایگاه داده حذف شد'
+FirewallCreateRuleExecutionFailed: 'ایجاد قانون ناموفق بود. دستورات اجراشده بازگردانی نشدند'
 FirewallInitializeChainsStep: 'راه‌اندازی و اتصال زنجیره‌های پایه {{ .name }}'
-FirewallRestoreRulesStep: 'بازیابی قوانین پایگاه داده در {{ .name }}'
 FirewallSyncWhitelistStep: 'همگام‌سازی فهرست مجاز پورت‌های فایروال'
 FirewallEnableForwardingStep: 'فعال‌سازی و اتصال زنجیره‌های هدایت پورت'
 FirewallRestoreForwardingRulesStep: 'بازیابی قوانین هدایت پورت پایگاه داده'
 FirewallInspectDockerGuardStep: 'بررسی پشتیبان فایروال Docker و سیاست‌ها'
 FirewallInitializeDockerGuardStep: 'راه‌اندازی و اتصال زنجیره‌های محافظت پورت {{ .name }}'
 FirewallPersistDockerGuardStep: 'ذخیره وضعیت محافظت پورت Docker'
-ErrFirewallRuleScopeChange: "فایروال فعلی از تغییر محدودهٔ قانون (مانند خانوادهٔ آدرس IPv4/IPv6) پشتیبانی نمی‌کند. لطفاً یک قانون جدید ایجاد کنید."
-FirewallWhitelistReleased: "{{ .name }}: حفاظت فهرست مجاز برداشته شد؛ قانون اجازه حفظ می‌شود. برای بستن پورت، قانون را به‌صورت دستی از فهرست قوانین حذف کنید"
-FirewallWhitelistRequired: "{{ .name }}: توسط قوانین پورت‌های ضروری سیستم محافظت می‌شود"
 FileTaskCopy: 'کپی فایل‌ها به {{ .dst }}'
 FileTaskMove: 'انتقال فایل‌ها به {{ .dst }}'
 FileTaskCompress: 'فشرده‌سازی فایل‌ها در {{ .dst }}'
@@ -726,7 +721,56 @@ FileTaskDecompress: 'استخراج فایل‌ها در {{ .dst }}'
 FileTaskSource: 'مسیر مبدأ: {{ .path }}'
 FileTaskFormat: 'قالب بایگانی: {{ .format }}'
 FileTaskRename: 'نام فایل مقصد: {{ .name }}'
-
 ErrFirewallBackendCleanupRequired: "بک‌اند فعلی {{ .current }} هنوز شامل قوانین 1Panel است. پیش از تغییر به {{ .target }} آن‌ها را پاک کنید."
 ErrDockerIPv4ForwardingDisabled: "ارسال IPv4 غیرفعال است. پیش از استفاده از بک‌اند فایروال Docker، مقدار net.ipv4.ip_forward=1 را تنظیم کنید."
 ErrFirewallRuleSavedApplyFailed: "پیکربندی قانون جدید ذخیره شد، اما اعمال آن در دیوار آتش ناموفق بود. با همگام‌سازی دوباره تلاش کنید: {{ .detail }}"
+ErrFirewallRuleConflict: "یک قانون UFW با شرایط تطبیق یکسان و عملکرد متفاوت از قبل وجود دارد. قانون موجود را ویرایش کنید."
+ErrForwardInterfaceNotFound: "رابط شبکه {{ .name }} مشخص‌شده در قانون انتقال وجود ندارد. نام رابط را بررسی کرده و دوباره تلاش کنید."
+ErrIPv6RARisk: "فعال‌سازی هدایت IPv6 به دلیل خطر قطع شبکه مسدود شد. مستندات و گزارش‌های سیستم را بررسی کنید."
+ErrIPv6RACheckFailed: "فعال‌سازی هدایت IPv6 به دلیل عدم امکان بررسی پیکربندی شبکه مسدود شد. جزئیات در گزارش‌های سیستم موجود است."
+
+ErrSSHPublicKey: "یک کلید عمومی SSH معتبر وارد کنید"
+ErrSSHPrivateKey: "کلید خصوصی SSH نامعتبر یا عبارت عبور نادرست است؛ کلیدهای رمزگذاری‌شده به عبارت عبور اصلی نیاز دارند"
+ErrSSHKeyMismatch: "کلید عمومی و خصوصی SSH مطابقت ندارند"
+
+# ماشین مجازی
+ErrVMNotFound: "ماشین مجازی وجود ندارد"
+ErrVMAlreadyExists: "ماشین مجازی از قبل وجود دارد"
+ErrVMCountLimit: "در نسخه Professional می‌توانید حداکثر {{ .limit }} ماشین مجازی ایجاد کنید. یک ماشین مجازی موجود را حذف کنید یا به نسخه Enterprise ارتقا دهید و دوباره تلاش کنید."
+ErrVMImageAlreadyExists: "فایل ایمیج ماشین مجازی از قبل وجود دارد: {{ .detail }}"
+ErrVMStoragePathInUse: "مسیر استخر ذخیره‌سازی قبلاً توسط [{{ .name }}] استفاده شده است"
+ErrVMHelperNotFound: "1panel-kvm یافت نشد"
+ErrVMBridgeManaged: "نام bridge از قبل توسط libvirt یا Docker مدیریت می‌شود"
+ErrVMNetworkInUse: "شبکه در حال استفاده است و قابل حذف نیست"
+ErrVMStorageInUse: "مخزن ذخیره‌سازی در حال استفاده است و قابل حذف نیست"
+ErrVMStorageNameCannotChange: "نام مخزن ذخیره‌سازی قابل تغییر نیست"
+ErrVMStoragePathCannotChange: "مسیر مخزن ذخیره‌سازی قابل تغییر نیست"
+ErrVMRunning: "ماشین مجازی در حال اجرا است"
+ErrVMLibvirtConnect: "اتصال به libvirt ناموفق بود: {{ .detail }}"
+ErrVMPermission: "مجوز عملیات ماشین مجازی وجود ندارد: {{ .detail }}"
+ErrVMNetworkNotFound: "شبکه ماشین مجازی وجود ندارد: {{ .detail }}"
+ErrVMInvalidPath: "مسیر ماشین مجازی نامعتبر است: {{ .detail }}"
+ErrVMInvalidInput: "پارامتر ماشین مجازی نامعتبر است: {{ .detail }}"
+ErrVMCommandFailed: "اجرای دستور ماشین مجازی ناموفق بود: {{ .err }}"
+ErrVMDiskResizeBlocked: "دیسک شرایط افزایش ظرفیت را ندارد یا دستگاه دیگری به آن ارجاع می‌دهد. وضعیت دیسک را بررسی کنید."
+ErrVMDiskReferenced: "این دیسک مجازی توسط ماشین مجازی یا دستگاه دیگری استفاده می‌شود؛ افزایش ظرفیت فعلاً پشتیبانی نمی‌شود."
+ErrVMDiskReferenceCheck: "بررسی ارجاع‌های دیسک مجازی کامل نشد. افزایش ظرفیت ممکن نیست؛ دیسک‌های سایر ماشین‌های مجازی را بررسی کنید."
+ErrVMSnapshotMetadataSync: "اسنپ‌شات بازیابی شد، اما همگام‌سازی اطلاعات دیسک ناموفق بود. تازه‌سازی و بررسی کنید؛ نیازی به بازیابی دوباره اسنپ‌شات نیست."
+VMCreateTask: "ایجاد ماشین مجازی [{{ .name }}]"
+VMCreateFromTemplateTask: "ایجاد ماشین مجازی [{{ .name }}] از قالب"
+VMUpdateTask: "به‌روزرسانی ماشین مجازی [{{ .name }}]"
+VMDiskResizeTask: "افزایش ظرفیت دیسک [{{ .disk }}] ماشین مجازی [{{ .name }}]"
+VMRenameTask: "تغییر نام ماشین مجازی [{{ .name }}] به [{{ .newName }}]"
+VMDeleteTask: "حذف ماشین مجازی [{{ .name }}]"
+VMTemplateCreateTask: "ذخیره ماشین مجازی [{{ .name }}] به عنوان قالب [{{ .template }}]"
+VMTemplateDeleteTask: "حذف قالب ماشین مجازی [{{ .name }}]"
+VMForceDeleteMetadataOnly: "1panel-kvm پیدا نشد، فقط فراداده ماشین مجازی [{{ .name }}] به اجبار حذف می‌شود"
+VMForceDeleteMetadataAfterLibvirtFailed: "حذف ماشین مجازی [{{ .name }}] از libvirt ناموفق بود، فراداده به اجبار حذف می‌شود: {{ .err }}"
+VMForceDeleteDiskFailed: "حذف اجباری فایل دیسک ماشین مجازی [{{ .path }}] ناموفق بود: {{ .err }}"
+VMForceDeleteDiskSuccess: "فایل دیسک ماشین مجازی [{{ .path }}] به اجبار حذف شد"
+VMSnapshotCreateTask: "ایجاد اسنپ‌شات [{{ .snapshot }}] برای ماشین مجازی [{{ .vm }}]"
+VMSnapshotCreateStep: "ایجاد اسنپ‌شات ماشین مجازی [{{ .snapshot }}]"
+VMSnapshotRecoverTask: "بازیابی اسنپ‌شات [{{ .snapshot }}] برای ماشین مجازی [{{ .vm }}]"
+VMSnapshotRecoverStep: "بازیابی اسنپ‌شات ماشین مجازی [{{ .snapshot }}]"
+VMSnapshotDeleteTask: "حذف اسنپ‌شات [{{ .snapshot }}] برای ماشین مجازی [{{ .vm }}]"
+VMSnapshotDeleteStep: "حذف اسنپ‌شات ماشین مجازی [{{ .snapshot }}]"

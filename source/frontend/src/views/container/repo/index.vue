@@ -59,8 +59,9 @@
 </template>
 
 <script lang="ts" setup>
+import { useSearchReset } from '@/composables/useSearchReset';
 import OperatorDialog from '@/views/container/repo/operator/index.vue';
-import { reactive, ref } from 'vue';
+import { toRef, reactive, ref } from 'vue';
 import { dateFormat } from '@/utils/date';
 import { Container } from '@/api/interface/container';
 import { checkRepoStatus, deleteImageRepo, searchImageRepo } from '@/api/modules/container';
@@ -77,6 +78,7 @@ const paginationConfig = reactive({
     total: 0,
 });
 const searchName = ref();
+useSearchReset({ search: searchName, page: toRef(paginationConfig, 'currentPage') }, { onRevisit: () => search() });
 
 const opRef = ref();
 const confirmDialog = ref();

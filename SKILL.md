@@ -8,18 +8,18 @@ description: >-
   nginx 配置、配置 HTTPS/SSL、上传解压网站文件、管理 MySQL/MariaDB 数据库与用户、
   管理 Redis、防火墙端口/IP/转发规则,或发现和调用面板 API 时使用本 skill。执行前先
   运行 `1panel-cli doctor`;原始 API 调用前先用 `api list` / `api describe` 查询,不要猜测路径。
-  请求失败或参数不确定时,阅读随技能附带的 1Panel v2.3.2 完整源码(技能目录内 `source/`)。
+  请求失败或参数不确定时,阅读随技能附带的 1Panel v2.4.0 完整源码(技能目录内 `source/`)。
 compatibility: opencode
 metadata:
   tool: 1panel-cli
   panel: 1Panel
   language: python
-  verified-panel-version: v2.3.2
+  verified-panel-version: v2.4.0
 ---
 
 # 1panel-cli — 1Panel v2 面板管理(Python)
 
-通过 1Panel 官方 API 管理面板。当前验证基线是 **1Panel v2.3.2 stable**;内置 API 路由清单即由随技能附带的 v2.3.2 源码 `source/` 生成(787 条)。代码同时保留了旧版统一防火墙接口(带规则检查)与 v2.2.x 旧防火墙接口的自动探测:连接 v2.3.2 及更新版本时使用统一规则接口(写操作为异步任务,CLI 自动轮询并汇报结果),连接旧版面板时自动回退旧接口。
+通过 1Panel 官方 API 管理面板。当前验证基线是 **1Panel v2.4.0 stable**;内置 API 路由清单即由随技能附带的 v2.4.0 源码 `source/` 生成(788 条)。代码同时保留了旧版统一防火墙接口(带规则检查)与 v2.2.x 旧防火墙接口的自动探测:连接 v2.4.0 时使用统一规则接口(删除提交 `scope + instanceKey + observed`,写操作为异步任务,CLI 自动轮询并汇报结果),连接 v2.3.2 / 中间版本 / 旧版面板时自动回退对应接口。
 
 实现为**纯 Python 标准库**,无需安装任何第三方包。
 
@@ -51,11 +51,11 @@ metadata:
 1panel-cli api post websites/templates/search --body '{"page":1,"pageSize":20}'
 ```
 
-`api list` 基于 1Panel v2.3.2 源码(技能目录内 `source/`)生成的 787 条路由清单,并尝试读取当前面板 Swagger;它能显示 Swagger 未收录但源码已注册的路由。
+`api list` 基于 1Panel v2.4.0 源码(技能目录内 `source/`)生成的 788 条路由清单,并尝试读取当前面板 Swagger;它能显示 Swagger 未收录但源码已注册的路由。
 
 ## 源码参考 `source/`
 
-技能目录内附带 **1Panel v2.3.2 完整源码** `source/`(与内置 787 条路由清单同源)。当请求失败(404、方法不符、参数校验错误、返回 HTML)或参数不确定时,**先查源码再重试,不要猜测**:
+技能目录内附带 **1Panel v2.4.0 完整源码** `source/`(与内置 788 条路由清单同源)。当请求失败(404、方法不符、参数校验错误、返回 HTML)或参数不确定时,**先查源码再重试,不要猜测**:
 
 | 查阅内容 | 位置 |
 |---|---|
@@ -115,7 +115,7 @@ metadata:
 1panel-cli web upload example.com ./site.zip --to index
 1panel-cli web extract example.com index/site.zip --to index
 
-# 防火墙(v2.3.2 统一规则接口:写操作为异步任务,CLI 自动等待并汇报结果)
+# 防火墙(v2.4.0 统一规则接口:写操作为异步任务,CLI 自动等待并汇报结果)
 1panel-cli firewall status
 1panel-cli firewall port add 8080 --protocol tcp
 1panel-cli firewall port del 8080
@@ -128,6 +128,11 @@ metadata:
 1panel-cli firewall docker ports
 1panel-cli firewall docker allow 8080 --sources 1.2.3.4 --desc web
 1panel-cli firewall docker deny 0.0.0.0:8080 --desc '对外关闭'
+
+# IPv6 防火墙开关(v2.4.0+)
+1panel-cli firewall ipv6 status
+1panel-cli firewall ipv6 enable
+1panel-cli firewall ipv6 disable
 
 # API 发现与调用
 1panel-cli api list --filter openclaw
@@ -144,10 +149,10 @@ metadata:
 2. `api` 路径相对 `/api/v2`;也接受完整的 `/api/v2/...` 路径。
 3. 登录使用本地密码源 `authSource=local`;LDAP/OIDC/SAML 等企业认证登录不由此 CLI 代办。
 4. 多节点面板务必选择正确的 `PANEL_NODE` / `--node`;未指定时发送 `CurrentNode: local`。
-5. 防火墙接口有三种形态,由 CLI 自动探测:1Panel v2.3.2+ 走统一规则接口(`/hosts/firewall/rules*`),写操作为异步任务(返回 `taskID`,CLI 自动轮询 `logs/tasks/search` 并在任务失败时报错);中间版本创建前会先调用 `rules/check`(`checkFlag` 签名);v2.2.x 走旧门面接口。不要绕过探测手拼写请求。
+5. 防火墙接口有四种形态,由 CLI 自动探测:1Panel v2.4.0 走统一规则接口(`/hosts/firewall/rules*`,删除提交 `targets` = `scope + instanceKey + observed`,并自动跳过白名单/受保护规则);v2.3.2 仍按 `uuids` 删除;中间版本创建前会先调用 `rules/check`(`checkFlag` 签名);v2.2.x 走旧门面接口。v2.3.2+ 写操作均为异步任务(返回 `taskID`,CLI 自动轮询 `logs/tasks/search` 并在任务失败时报错)。不要绕过探测手拼写请求。
 6. nginx 配置保存后面板会 reload;写入前先读取原配置。生产密码与 Cookie 不应写入日志或提交仓库。
-7. Swagger 不是完整路由清单;以 `source/` 的 1Panel v2.3.2 源码为准(内置清单 `panel_cli/data/api-v2.3.2.json` 即由其生成)。企业版闭源扩展接口不在该清单内。
-8. `firewall docker` 等接口仅在 v2.3.x+ 面板存在;v2.2.x 会自动回退旧防火墙接口。v2.3.2 的 Docker 守护策略只对 `managementTarget=container_guard` 的端口生效,流量由宿主机防火墙接管的端口要用 `firewall port/ip` 规则(`firewall docker ports` 会标注)。
+7. Swagger 不是完整路由清单;以 `source/` 的 1Panel v2.4.0 源码为准(内置清单 `panel_cli/data/api-v2.4.0.json` 即由其生成)。企业版闭源扩展接口不在该清单内。
+8. `firewall docker` 等接口仅在 v2.3.x+ 面板存在;v2.2.x 会自动回退旧防火墙接口。v2.4.0 的 Docker 守护策略只对 `managementTarget=container_guard` 的端口生效,流量由宿主机防火墙接管的端口要用 `firewall port/ip` 规则(`firewall docker ports` 会标注)。v2.4.0 已移除 `docker/sync`、`rules/adopt`、`rules/sync*`,新增 `rules/backups`、`family/operate`、`settings/ipv6`;`firewall ipv6` 已封装 IPv6 开关。
 9. 请求失败或参数不确定时,按上表到 `source/` 阅读对应 router / DTO / service 源码确认路径、字段与行为,再修正调用。
 10. 应用 key 与实例名自动兼容 `local` 前缀:配套离线包(patched agent)的本地应用以规范 key 注册
     (`openresty`/`mysql`/`redis`);历史面板数据可能是 `localopenresty`/`localmysql` 等写法,

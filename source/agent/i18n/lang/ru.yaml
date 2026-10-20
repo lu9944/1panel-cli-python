@@ -140,6 +140,9 @@ ErrComposeProjectNameEmpty: 'Не удалось получить имя про�
 ErrComposeNameInvalid: 'Недопустимое имя проекта Compose: оно должно начинаться со строчной буквы или цифры, содержать только строчные буквы, цифры, дефисы и подчёркивания и иметь длину от 1 до 256 символов.'
 ErrAppVersionUnavailable: 'Эта версия приложения удалена из удаленного сервиса. Выберите другую версию и повторите попытку.'
 ErrVllmGB10ProOnly: 'Эта версия vLLM доступна только в профессиональной редакции 1Panel.'
+ErrAIGatewayDatabaseTypeMismatch: 'AI Gateway можно обновлять только в пределах одного типа базы данных (SQLite или PostgreSQL).'
+ErrAIGatewayRecoverDatabaseTypeMismatch: 'Резервная копия AI Gateway и целевое приложение должны использовать один и тот же тип базы данных (SQLite или PostgreSQL).'
+ErrHermesUpgradeVersion: 'Hermes Agent можно обновить только до более нового распознанного выпуска, разрешённого настройкой обновления между основными версиями. Для возврата к старой версии восстановите резервную копию.'
 ErrAppWarn: 'Ненормальное состояние, проверьте журнал'
 ErrAppParamKey: 'Поле параметра {{ .name }} ненормально'
 ErrAppUpgrade: 'Обновление приложения {{ .name }} не удалось {{ .err }}'
@@ -300,6 +303,9 @@ BuildCache: 'Кэш сборки'
 Volume: 'Том хранилища'
 Network: 'Сеть'
 PruneStart: 'Очистка выполняется, пожалуйста, подождите...'
+NetworkCleanupConnected: "Сеть [{{ .name }}] ({{ .id }}) пропущена: подключены контейнеры или сеть используется; не удалена"
+NetworkCleanupSummary: "Очистка сетей завершена: удалено {{ .deleted }}, пропущено {{ .skipped }}, ошибок {{ .failed }}"
+NetworkCleanupPartialFailure: "Не удалось очистить некоторые сети; проверьте журнал задачи"
 ContainerBackupPrepare: 'Подготовить рабочую область резервной копии контейнера'
 ContainerBackupStop: 'Остановить контейнер перед резервным копированием'
 ContainerBackupInspect: 'Сделать резервную копию inspect и сети контейнера'
@@ -628,14 +634,15 @@ AppAttributesNotMatch: 'Тип или имя приложения не совп�
 # оповещение
 ErrAlertMethodNotSupported: 'Эта версия не поддерживает данный способ оповещения'
 ErrAlertSync: 'Ошибка синхронизации информации о тревоге, проверьте и повторите попытку'
+ErrWebhookTestFailed: 'Проверьте конфигурацию Webhook. Подробности доступны в системных журналах.'
 
 # задача - среда выполнения
 ErrInstallExtension: 'Уже выполняется задача установки, подождите, пока задача завершится'
 
 # шаблон письма оповещения
 PanelAlertTitle: 'Уведомление панели'
-TestAlertTitle: 'Тестовое письмо - проверка подключения'
-TestAlert: 'Это тестовое письмо для проверки правильности настройки отправки писем.'
+TestAlertTitle: 'Тестовое уведомление панели'
+TestAlertMessage: 'Это тестовое уведомление для проверки настроек канала уведомлений и подключения.'
 LicenseExpirationAlert: 'Ваш панель {{ .node }}{{ .ip }}, лицензия истечет через {{ .day }} дней. Войдите в панель для получения деталей.'
 CronJobFailedAlert: 'Ваш панель {{ .node }}{{ .ip }}, выполнение запланированной задачи {{ .name }} не удалось. Войдите в панель для получения деталей.'
 ClamAlert: 'Ваш панель {{ .node }}{{ .ip }}, задача сканирования на вирусы обнаружила {{ .num }} зараженных файлов. Войдите в панель для получения деталей.'
@@ -649,6 +656,7 @@ CommonAlert: 'Ваш панель {{ .node }}{{ .ip }}, {{ .msg }}. Войдит
 NodeExceptionAlert: 'Ваш панель {{ .node }}{{ .ip }}, {{ .num }} узлов работают с ошибками. Войдите в панель для получения деталей.'
 LicenseExceptionAlert: 'Ваш панель {{ .node }}{{ .ip }}, {{ .num }} лицензий имеют ошибки. Войдите в панель для получения деталей.'
 SSHAndPanelLoginAlert: 'Ваш панель {{ .node }}{{ .ip }}, вход {{ .name }} с адреса {{ .loginIp }} является аномальным. Войдите в панель для получения деталей.'
+CronJobSuccessAlert: 'Панель {{ .node }}{{ .ip }}: запланированная задача {{ .name }} успешно завершена. Войдите для просмотра подробностей.'
 
 # диск
 DeviceNotFound: 'Устройство {{ .name }} не найдено'
@@ -682,8 +690,7 @@ AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
 # Firewall
 ErrDockerIptablesChainUnavailable: 'Цепочка Docker DOCKER-USER не найдена. Перезапустите Docker и повторите попытку'
 ErrDockerNftablesChainUnavailable: 'Цепочка IPv4 брандмауэра nftables Docker не найдена. Убедитесь, что текущая версия Docker поддерживает бэкенд брандмауэра nftables, перезапустите Docker и повторите попытку'
-ErrDockerForwardPolicyDrop: 'Политика FORWARD по умолчанию для {{ .family }} — DROP. Измените её и повторите попытку'
-ErrUFWRuleAdopt: 'Не удалось принять правило UFW под управление: {{ .detail }}. Если текущая версия UFW ниже 0.35, обновите UFW и повторите попытку'
+ErrDockerForwardPolicyDrop: 'На этом сервере ограничена пересылка сетевого трафика. Сейчас невозможно включить защиту портов контейнеров.'
 Firewall: 'Межсетевой экран'
 FirewallTaskHost: 'Межсетевой экран хоста'
 FirewallTaskForwarding: 'Перенаправление портов'
@@ -697,28 +704,15 @@ FirewallCreateRulesStep: 'Создание правил межсетевого �
 FirewallCreateRulesResult: 'Результат создания: успешно — {{ .succeeded }}, ошибок — {{ .failed }}, не выполнено — {{ .skipped }}'
 FirewallRuleOperationResult: 'Результат операции: успешно — {{ .succeeded }}, ошибок — {{ .failed }}'
 FirewallCreateRuleSkipped: 'Не выполнено'
-FirewallCreateBatchStep: 'Отправка {{ .count }} правил одним пакетом в {{ .backend }}'
 FirewallImportRuleConversion: '[{{ .index }}/{{ .total }}] {{ .source }} → {{ .target }}: {{ .rule }}; преобразовано в {{ .count }} правил'
-FirewallCreateRuleExecutionFailed: 'Не удалось создать правило. Запись в базе данных не сохранена, выполненные команды не отменены'
-FirewallCreateRulePersistenceFailed: 'Правило создано, но не удалось сохранить запись управления'
-FirewallAdoptRulePersistenceFailed: 'Команды принятия правила под управление выполнены, но сохранить запись управления не удалось'
-FirewallSyncOperationsResult: 'Операции синхронизации: удалено {{ .removed }}, создано {{ .created }}, ошибок {{ .failed }}, не выполнено {{ .skipped }}, уже совпадают (изменения не нужны): {{ .unchanged }}'
-FirewallSyncRuleUnchanged: 'Уже совпадает; изменения не нужны'
-FirewallSyncStep: 'Синхронизировать правила с {{ .name }}'
-FirewallSyncFailed: 'Не удалось синхронизировать правил межсетевого экрана: {{ .failed }}'
-FirewallResetSourceStep: 'Сбросить и отключить исходный межсетевой экран {{ .name }}'
-FirewallResetSourceResult: 'Исходный межсетевой экран сброшен; удалено правил из базы данных: {{ .removed }}'
+FirewallCreateRuleExecutionFailed: 'Не удалось создать правило. Выполненные команды не отменены'
 FirewallInitializeChainsStep: 'Инициализировать и привязать базовые цепочки {{ .name }}'
-FirewallRestoreRulesStep: 'Восстановить правила базы данных в {{ .name }}'
 FirewallSyncWhitelistStep: 'Синхронизировать белый список портов межсетевого экрана'
 FirewallEnableForwardingStep: 'Включить и привязать цепочки перенаправления портов'
 FirewallRestoreForwardingRulesStep: 'Восстановить правила перенаправления портов из базы данных'
 FirewallInspectDockerGuardStep: 'Проверить бэкенд межсетевого экрана Docker и политики'
 FirewallInitializeDockerGuardStep: 'Инициализировать и привязать цепочки защиты портов {{ .name }}'
 FirewallPersistDockerGuardStep: 'Сохранить состояние защиты портов Docker'
-ErrFirewallRuleScopeChange: "Текущий межсетевой экран не поддерживает изменение области действия правила (например, семейства адресов IPv4/IPv6). Создайте новое правило."
-FirewallWhitelistReleased: "{{ .name }}: защита списка разрешённых портов снята; разрешающее правило сохранено. Чтобы закрыть порт, удалите правило вручную из списка правил"
-FirewallWhitelistRequired: "{{ .name }}: защищён обязательными правилами системных портов"
 FileTaskCopy: 'Копирование файлов в {{ .dst }}'
 FileTaskMove: 'Перемещение файлов в {{ .dst }}'
 FileTaskCompress: 'Сжатие файлов в {{ .dst }}'
@@ -726,7 +720,56 @@ FileTaskDecompress: 'Распаковка файлов в {{ .dst }}'
 FileTaskSource: 'Исходный путь: {{ .path }}'
 FileTaskFormat: 'Формат архива: {{ .format }}'
 FileTaskRename: 'Имя целевого файла: {{ .name }}'
-
 ErrFirewallBackendCleanupRequired: "В текущем бэкенде {{ .current }} остались правила 1Panel. Удалите их перед переключением на {{ .target }}."
 ErrDockerIPv4ForwardingDisabled: "Пересылка IPv4 отключена. Перед использованием бэкенда межсетевого экрана Docker установите net.ipv4.ip_forward=1."
 ErrFirewallRuleSavedApplyFailed: "Настройки нового правила сохранены, но применить их к межсетевому экрану не удалось. Повторите попытку с помощью синхронизации: {{ .detail }}"
+ErrFirewallRuleConflict: "В UFW уже есть правило с такими же условиями и другим действием. Отредактируйте существующее правило."
+ErrForwardInterfaceNotFound: "Сетевой интерфейс {{ .name }}, указанный в правиле перенаправления, не существует. Проверьте имя и повторите попытку."
+ErrIPv6RARisk: "Включение переадресации IPv6 заблокировано из-за риска потери связи. См. документацию и системные журналы."
+ErrIPv6RACheckFailed: "Включение переадресации IPv6 заблокировано: не удалось проверить настройки сети. Подробности в системных журналах."
+
+ErrSSHPublicKey: "Введите действительный открытый ключ SSH"
+ErrSSHPrivateKey: "Недопустимый закрытый ключ SSH или неверная парольная фраза; для зашифрованных ключей требуется исходная парольная фраза"
+ErrSSHKeyMismatch: "Открытый и закрытый ключи SSH не соответствуют друг другу"
+
+# виртуальная машина
+ErrVMNotFound: "Виртуальная машина не существует"
+ErrVMAlreadyExists: "Виртуальная машина уже существует"
+ErrVMCountLimit: "В редакции Professional можно создать не более {{ .limit }} виртуальных машин. Удалите существующую виртуальную машину или перейдите на Enterprise и повторите попытку."
+ErrVMImageAlreadyExists: "Файл образа виртуальной машины уже существует: {{ .detail }}"
+ErrVMStoragePathInUse: "Путь пула хранения уже используется [{{ .name }}]"
+ErrVMHelperNotFound: "1panel-kvm не найден"
+ErrVMBridgeManaged: "Имя моста уже управляется libvirt или Docker"
+ErrVMNetworkInUse: "Сеть используется и не может быть удалена"
+ErrVMStorageInUse: "Пул хранилища используется и не может быть удалён"
+ErrVMStorageNameCannotChange: "Имя пула хранилища нельзя изменить"
+ErrVMStoragePathCannotChange: "Путь к пулу хранилища нельзя изменить"
+ErrVMRunning: "Виртуальная машина запущена"
+ErrVMLibvirtConnect: "Не удалось подключиться к libvirt: {{ .detail }}"
+ErrVMPermission: "Нет разрешения на операцию с виртуальной машиной: {{ .detail }}"
+ErrVMNetworkNotFound: "Сеть виртуальной машины не существует: {{ .detail }}"
+ErrVMInvalidPath: "Недопустимый путь виртуальной машины: {{ .detail }}"
+ErrVMInvalidInput: "Недопустимые параметры виртуальной машины: {{ .detail }}"
+ErrVMCommandFailed: "Ошибка выполнения команды виртуальной машины: {{ .err }}"
+ErrVMDiskResizeBlocked: "Диск не соответствует условиям расширения или используется другим устройством. Проверьте состояние диска."
+ErrVMDiskReferenced: "Этот виртуальный диск используется другой виртуальной машиной или устройством; расширение пока недоступно."
+ErrVMDiskReferenceCheck: "Не удалось проверить ссылки на виртуальный диск. Расширение недоступно; проверьте диски других виртуальных машин."
+ErrVMSnapshotMetadataSync: "Снимок восстановлен, но синхронизация данных диска не удалась. Обновите данные и проверьте их; повторно восстанавливать снимок не нужно."
+VMCreateTask: "Создать виртуальную машину [{{ .name }}]"
+VMCreateFromTemplateTask: "Создать виртуальную машину [{{ .name }}] из шаблона"
+VMUpdateTask: "Обновить виртуальную машину [{{ .name }}]"
+VMDiskResizeTask: "Расширить диск [{{ .disk }}] виртуальной машины [{{ .name }}]"
+VMRenameTask: "Переименовать виртуальную машину [{{ .name }}] в [{{ .newName }}]"
+VMDeleteTask: "Удалить виртуальную машину [{{ .name }}]"
+VMTemplateCreateTask: "Сохранить виртуальную машину [{{ .name }}] как шаблон [{{ .template }}]"
+VMTemplateDeleteTask: "Удалить шаблон виртуальной машины [{{ .name }}]"
+VMForceDeleteMetadataOnly: "1panel-kvm не найден, принудительно удаляются только метаданные виртуальной машины [{{ .name }}]"
+VMForceDeleteMetadataAfterLibvirtFailed: "Не удалось удалить виртуальную машину [{{ .name }}] из libvirt, принудительно удаляются метаданные: {{ .err }}"
+VMForceDeleteDiskFailed: "Не удалось принудительно удалить файл диска виртуальной машины [{{ .path }}]: {{ .err }}"
+VMForceDeleteDiskSuccess: "Файл диска виртуальной машины [{{ .path }}] принудительно удален"
+VMSnapshotCreateTask: "Создать снимок [{{ .snapshot }}] для виртуальной машины [{{ .vm }}]"
+VMSnapshotCreateStep: "Создать снимок виртуальной машины [{{ .snapshot }}]"
+VMSnapshotRecoverTask: "Восстановить снимок [{{ .snapshot }}] виртуальной машины [{{ .vm }}]"
+VMSnapshotRecoverStep: "Восстановить снимок виртуальной машины [{{ .snapshot }}]"
+VMSnapshotDeleteTask: "Удалить снимок [{{ .snapshot }}] виртуальной машины [{{ .vm }}]"
+VMSnapshotDeleteStep: "Удалить снимок виртуальной машины [{{ .snapshot }}]"

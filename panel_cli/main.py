@@ -13,7 +13,7 @@ from . import apps, catalog, commands, config, db, doctor
 from . import firewall, initcmd, redis, web, auth, redact
 from .errors import CliError
 
-VERSION = "2.3.2"
+VERSION = "2.4.0"
 
 EPILOG = (
     "示例:\n"
@@ -125,7 +125,7 @@ def _add_api(subparsers, common) -> None:
     p = subparsers.add_parser("api", parents=[common], help="使用已保存的凭据调用面板 API")
     sub = p.add_subparsers(dest="api_action", metavar="<ACTION>", required=True)
 
-    q = sub.add_parser("list", help="列出 API 路由(内置 v2.3.2 清单 + 当前面板 Swagger)")
+    q = sub.add_parser("list", help="列出 API 路由(内置 v2.4.0 清单 + 当前面板 Swagger)")
     q.add_argument("--filter", default="", help="按路径、处理器、摘要或标签过滤")
     q.set_defaults(func=lambda a: catalog.list_routes(a.profile, a.filter))
 
@@ -597,6 +597,15 @@ def _add_firewall(subparsers, common) -> None:
     r = docker_sub.add_parser("policy-del", help="删除 Docker 端口守护策略")
     r.add_argument("--uuid", required=True, help="策略 UUID(firewall docker ports 中查看)")
     r.set_defaults(func=lambda a: firewall.docker_policy_del(a.profile, a.uuid))
+
+    q = sub.add_parser("ipv6", help="IPv6 防火墙开关(1Panel v2.4.0+)")
+    ipv6_sub = q.add_subparsers(dest="ipv6_action", metavar="<ACTION>", required=True)
+    r = ipv6_sub.add_parser("status", help="查看 IPv6 防火墙是否启用")
+    r.set_defaults(func=lambda a: firewall.ipv6_status(a.profile))
+    r = ipv6_sub.add_parser("enable", help="启用 IPv6 防火墙(异步任务)")
+    r.set_defaults(func=lambda a: firewall.ipv6_operate(a.profile, True))
+    r = ipv6_sub.add_parser("disable", help="禁用 IPv6 防火墙(异步任务)")
+    r.set_defaults(func=lambda a: firewall.ipv6_operate(a.profile, False))
 
     q = sub.add_parser("batch", help="批量添加端口放行")
     q.add_argument("ports", help="添加多个端口,逗号分隔,如 8080,9090")

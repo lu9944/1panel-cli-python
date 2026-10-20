@@ -739,7 +739,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { useSearchReset } from '@/composables/useSearchReset';
+import { toRef, computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import {
     addFavorite,
     batchGetFileRemarks,
@@ -984,6 +985,10 @@ const paginationConfig = reactive({
     pageSize: Number(localStorage.getItem('file-page-size')) || 100,
     total: 0,
 });
+useSearchReset(
+    { search: toRef(req, 'search'), page: toRef(paginationConfig, 'currentPage') },
+    { onRevisit: () => search() },
+);
 
 const btnWrapperRefs = ref<Record<string, any>>({});
 
@@ -2847,6 +2852,36 @@ onBeforeUnmount(() => {
 }
 :deep(.file-tabs .el-tabs__nav .el-tabs__item:last-child) {
     border-bottom: 1px solid var(--el-border-color-light) !important;
+}
+
+/* Keep the closable tab width stable so switching tabs does not reflow the tab bar */
+:deep(.file-tabs .el-tabs__header .el-tabs__item.is-closable) {
+    padding: 0 20px;
+
+    .is-icon-close {
+        width: 14px;
+        margin-left: 5px;
+        right: 0;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--el-transition-duration);
+    }
+
+    &.is-active,
+    &:hover,
+    &:focus-within {
+        .is-icon-close {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    }
+
+    @media (hover: none), (pointer: coarse) {
+        .is-icon-close {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    }
 }
 
 :deep(.file-tabs .el-tabs--card > .el-tabs__header .el-tabs__item.is-active) {

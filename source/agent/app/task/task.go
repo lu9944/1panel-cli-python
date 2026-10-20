@@ -99,6 +99,7 @@ const (
 	TaskScopeTamper           = "Tamper"
 	TaskScopeFileConvert      = "Convert"
 	TaskScopeTask             = "Task"
+	TaskScopeVm               = "VirtualMachine"
 )
 
 func GetTaskName(resourceName, operate, scope string) string {
@@ -154,7 +155,7 @@ func NewTask(name, operate, taskScope, taskID string, resourceID uint) (*Task, e
 	logPath := path.Join(global.Dir.TaskDir, taskScope, taskID+".log")
 	logger := logrus.New()
 	logger.SetFormatter(&SimpleFormatter{})
-	logFile, err := os.OpenFile(logPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, constant.FilePerm)
+	logFile, err := os.OpenFile(logPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY|os.O_APPEND, constant.FilePerm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
@@ -257,7 +258,15 @@ func (s *SubTask) Execute() error {
 		case <-ctx.Done():
 			s.RootTask.Log(i18n.GetWithName("TaskTimeout", subTaskName))
 			err = errors.New("timeout!")
+			if s.RootTask.Task.Type == TaskScopeVm {
+				<-done
+			}
 		case err = <-done:
+			if s.RootTask.Task.Type == TaskScopeVm && ctx.Err() != nil {
+				s.RootTask.Log(i18n.GetWithName("TaskTimeout", subTaskName))
+				err = errors.New("timeout!")
+				break
+			}
 			if err != nil {
 				s.RootTask.Log(i18n.GetWithNameAndErr("SubTaskFailed", subTaskName, err))
 				if err.Error() == i18n.GetMsgByKey("ErrShutDown") {

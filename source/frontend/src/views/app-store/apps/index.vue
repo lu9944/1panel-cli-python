@@ -70,8 +70,9 @@
 </template>
 
 <script lang="ts" setup>
+import { useSearchReset } from '@/composables/useSearchReset';
 import { App } from '@/api/interface/app';
-import { onMounted, reactive, ref } from 'vue';
+import { toRef, onMounted, reactive, ref } from 'vue';
 import { searchApp, syncApp, syncCutomAppStore, syncLocalApp, getCurrentNodeCustomAppConfig } from '@/api/modules/app';
 import Install from '../detail/install/index.vue';
 import router from '@/routers';
@@ -104,6 +105,10 @@ const req = reactive({
     resource: 'all',
     showCurrentArch: false,
 });
+useSearchReset(
+    { search: toRef(req, 'name'), page: toRef(paginationConfig, 'currentPage') },
+    { onRevisit: () => search(req) },
+);
 
 const apps = ref<App.AppItem[]>([]);
 const loading = ref(false);

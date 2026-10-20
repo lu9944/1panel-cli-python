@@ -45,14 +45,7 @@
                 <el-select v-model="req.websiteGroupId" @change="search()" class="p-w-200" :disabled="disabledConfig">
                     <template #prefix>{{ $t('commons.table.group') }}</template>
                     <el-option :label="$t('commons.table.all')" :value="0"></el-option>
-                    <div v-for="item in groups" :key="item.id">
-                        <el-option
-                            v-if="item.name === 'Default'"
-                            :label="$t('commons.table.default')"
-                            :value="item.id"
-                        />
-                        <el-option v-else :label="item.name" :value="item.id" />
-                    </div>
+                    <el-option v-for="item in groups" :key="item.id" :label="item.name" :value="item.id" />
                 </el-select>
                 <TableSearch @search="search()" v-model:searchName="req.name" :disabled="disabledConfig" />
                 <TableRefresh @search="search()" :disabled="disabledConfig" />
@@ -66,6 +59,8 @@
             </template>
             <template v-if="!openNginxConfig" #main>
                 <ComplexTable
+                    :selection-context="() => [req.name, req.type, req.websiteGroupId]"
+                    row-key="id"
                     :pagination-config="paginationConfig"
                     :default-sort="tableSort.order ? tableSort : undefined"
                     v-model:view-mode="viewMode"
@@ -344,6 +339,7 @@
 </template>
 
 <script lang="ts" setup>
+import { useSearchReset } from '@/composables/useSearchReset';
 import Backups from '@/components/backup/index.vue';
 import UploadDialog from '@/components/upload/index.vue';
 import DefaultServer from '@/views/website/website/default/index.vue';
@@ -358,7 +354,7 @@ import BatchSetGroup from '@/views/website/website/batch-op/group.vue';
 import BatchSetHttps from '@/views/website/website/batch-op/https.vue';
 
 import i18n from '@/lang';
-import { onMounted, reactive, ref, computed } from 'vue';
+import { toRef, onMounted, reactive, ref, computed } from 'vue';
 import { batchOperate, opWebsite, searchWebsites, updateWebsite } from '@/api/modules/website';
 import { Website } from '@/api/interface/website';
 import { App } from '@/api/interface/app';
@@ -448,6 +444,10 @@ const pageState = usePageState(() => ({
 }));
 const paginationConfig = pageState.paginationConfig;
 const req = pageState.req;
+useSearchReset(
+    { search: toRef(req, 'name'), page: toRef(paginationConfig, 'currentPage') },
+    { onRevisit: () => search() },
+);
 const tableSort = pageState.tableSort;
 
 const goRouter = async (key: string) => {
@@ -496,7 +496,6 @@ const search = async () => {
     req.pageSize = paginationConfig.pageSize;
 
     loading.value = true;
-    data.value = [];
     await searchWebsites(req)
         .then((res) => {
             data.value = res.data.items;

@@ -1,10 +1,10 @@
-# 1panel-cli v2.3.2 命令速查(Python / 1Panel v2.3.2)
+# 1panel-cli v2.4.0 命令速查(Python / 1Panel v2.4.0)
 
 首次使用先运行 `1panel-cli init` 自动生成 `.env`(无需手填账号);然后运行 `1panel-cli doctor`,确认六项检查通过。所有命令支持全局参数 `--env <PATH>`、`--profile <NAME>`、`--node <NODE>`;节点也可由 `PANEL_NODE` 设置。全局参数放在子命令前后均可。
 
-> 本清单面向 1Panel v2.3.2 验证;旧版面板(v2.2.x)的旧防火墙接口与中间版本(带 `rules/check` 的统一接口)会自动探测并回退。
+> 本清单面向 1Panel v2.4.0 验证;旧版面板(v2.2.x)的旧防火墙接口与中间版本(带 `rules/check` 的统一接口)会自动探测并回退。
 >
-> 请求失败或参数不确定时,阅读随技能附带的 1Panel v2.3.2 完整源码 `source/`:`api describe` 输出的 `sourcePath` 可直接定位文件(路由 `source/*/router/`、DTO `source/*/app/dto/`、行为 `source/*/app/service/`)。内置路由清单 `panel_cli/data/api-v2.3.2.json` 即由该源码生成。
+> 请求失败或参数不确定时,阅读随技能附带的 1Panel v2.4.0 完整源码 `source/`:`api describe` 输出的 `sourcePath` 可直接定位文件(路由 `source/*/router/`、DTO `source/*/app/dto/`、行为 `source/*/app/service/`)。内置路由清单 `panel_cli/data/api-v2.4.0.json` 即由该源码生成。
 
 ## 会话
 
@@ -79,15 +79,16 @@
 
 ## firewall
 
-CLI 会自动探测三种接口形态:
+CLI 会自动探测四种接口形态:
 
 | 形态 | 探测依据 | 说明 |
 |---|---|---|
-| `v231`(1Panel v2.3.2+) | 有 `GET /hosts/firewall/settings`,无 `POST /hosts/firewall/rules/check` | 统一规则接口;写操作返回 `taskID`,CLI 自动轮询 `logs/tasks/search` 并汇报结果 |
+| `v240`(1Panel v2.4.0+) | `GET /hosts/firewall/rules/backups` 可用 | 删除规则提交 `targets`(`scope` + `instanceKey` + `observed`);新增 IPv6 开关/分族操作与规则备份 |
+| `v231`(1Panel v2.3.2) | 有 `GET /hosts/firewall/settings`,无 `rules/check`、无 `rules/backups` | 统一规则接口;删除按 `uuids`;写操作返回 `taskID` |
 | `checked`(中间版本) | 有 `GET /hosts/firewall/settings` 且有 `rules/check` | 创建前先规则检查(`checkFlag`) |
 | `legacy`(v2.2.x) | 无 `/hosts/firewall/settings` | 旧门面接口(`/firewall/search|port|ip|forward|batch`) |
 
-v2.3.2 面板的写操作均为异步任务(规则创建/删除、端口转发、Docker 端口策略、防火墙启停),CLI 默认等待任务完成(轮询超时 60 秒)并显示成功或失败原因。
+v2.3.2+ 面板的写操作均为异步任务(规则创建/删除、端口转发、Docker 端口策略、防火墙启停),CLI 默认等待任务完成(轮询超时 60 秒)并显示成功或失败原因。v2.4.0 的规则清单项不再返回 `desired/state`,CLI 从 `observed.instanceKey` 与完整 `observed` 构造删除请求,并自动跳过白名单/受保护规则。
 
 | 命令 | 说明 |
 |---|---|
@@ -102,8 +103,12 @@ v2.3.2 面板的写操作均为异步任务(规则创建/删除、端口转发�
 | `firewall ip del <address> [--strategy drop]` | 删除匹配的托管 IP 规则 |
 | `firewall forward add <port> --to IP:PORT [--protocol P] [--interface X]` | 添加端口转发 |
 | `firewall forward del <port> --to IP:PORT [--num N]` | 删除端口转发 |
+| `firewall ipv6 status` | 查看 IPv6 防火墙开关(需 v2.4.0+) |
+| `firewall ipv6 enable\|disable` | 启用/禁用 IPv6 防火墙(异步任务,需 v2.4.0+) |
 
-> v2.3.2 的 `POST /hosts/firewall/port` 仅供面板内部使用(从面板探针调用返回 403),统一接口下不要通过 `api post` 直接调用旧接口。
+> v2.3.2+ 的 `POST /hosts/firewall/port` 仅供面板内部使用(从面板探针调用返回 403),统一接口下不要通过 `api post` 直接调用旧接口。v2.4.0 新增 `/hosts/firewall/rules/backups`、`/hosts/firewall/family/operate`、`/hosts/firewall/settings/ipv6`,并移除 `rules/adopt`、`rules/sync*`、`docker/sync`;这些新接口可用 `api` 透传调用。
+>
+> 若 `firewall forward add` 返回任务失败 `firewall provider is unavailable`,说明端口转发链尚未初始化:请先在面板「防火墙 → 端口转发」启用转发,或执行 `api post hosts/firewall/forward/enable`(v2.3.2+)。
 
 ### firewall docker(Docker 端口守护,需 v2.3.x+)
 
@@ -111,17 +116,18 @@ v2.3.2 面板的写操作均为异步任务(规则创建/删除、端口转发�
 |---|---|
 | `firewall docker status` | 守护状态(后端/初始化/绑定/生效) |
 | `firewall docker ports` | 列出容器已发布端口、防护策略、管控目标与策略 UUID |
-| `firewall docker sync` | 同步 Docker 端口防护规则 |
+| `firewall docker sync` | 同步 Docker 端口防护规则(v2.4.0 已移除该接口,命令会提示无需同步) |
 | `firewall docker operate [--operation init\|bind\|unbind]` | 初始化/绑定/解绑守护(初始化等待异步任务) |
 | `firewall docker allow <PORT> --sources a,b [--protocol P] [--desc X]` | 仅允许指定来源访问已发布端口 |
 | `firewall docker deny <PORT> [--sources a,b] [--protocol P] [--desc X]` | 拒绝指定来源;省略 --sources 时拒绝所有来源 |
 | `firewall docker policy-del --uuid <UUID>` | 删除一条防护策略(等待异步任务) |
 
-v2.3.2 的 Docker 端口守护注意事项:
+v2.4.0 的 Docker 端口守护注意事项:
 
-- 写操作请求体为 `policies` 列表(按 `family/hostIP/hostPort/protocol/mode/sources/description`),CLI 已按端口地址族拆分 `--sources`;某个已发布地址族没有对应来源时会报错而不是静默跳过。
+- 写操作请求体为 `policies` 列表(按 `family/hostIP/hostPort/protocol/mode/sources`),CLI 已按端口地址族拆分 `--sources`;某个已发布地址族没有对应来源时会报错而不是静默跳过。v2.4.0 移除了策略 `description` 字段,CLI 不再提交该字段,`--desc` 在 v2.4.0 上不生效(旧版仍保留备注)。
+- v2.4.0 新增 `accept_sources` / `accept_all` 两种导入策略模式,`firewall docker ports` 会显示对应中文说明。
 - 若端口流量由宿主机防火墙接管(`managementTarget=host_firewall`,例如宿主防火墙启用后 Docker userland proxy 处理的 IPv6 映射),Docker 守护策略对其无效;CLI 会跳过该端口并提示改用 `firewall port/ip` 规则。
-- v2.2.x 面板上执行 `firewall docker *` 会明确提示不支持。更高级的规则同步(`rules/sync`)、重置(`rules/reset`)、排序(`rules/reorder`)与规则检查可通过 `api` 命令调用。
+- v2.2.x 面板上执行 `firewall docker *` 会明确提示不支持。规则备份(`rules/backups`)、重置(`rules/reset`)、排序(`rules/reorder`)、分族操作(`family/operate`)与规则检查可通过 `api` 命令调用;v2.4.0 已移除规则同步(`rules/sync*`)。
 
 ## api — 发现和调用 API
 
@@ -134,7 +140,7 @@ v2.3.2 的 Docker 端口守护注意事项:
 | `api put <PATH> [--body JSON] [--body-file PATH]` | PUT,`--body-file -` 从标准输入读取 |
 | `api delete <PATH>` | DELETE |
 
-路径相对 `/api/v2`,请求自动带 Cookie、CSRF、`Accept-Language` 和 `CurrentNode`。内置清单由 1Panel `v2.3.2` 源码生成(787 条路由,Swagger 收录 756 条)。已在 v2.3.2 面板上全量核验:787 条路由全部注册可调用。`api describe` 支持用真实取值匹配参数路由(如 `websites/ca/1` 可匹配 `websites/ca/:id`);调用不存在的路由或方法不符时会给出明确报错,而不是打印 HTML。
+路径相对 `/api/v2`,请求自动带 Cookie、CSRF、`Accept-Language` 和 `CurrentNode`。内置清单由 1Panel `v2.4.0` 源码生成(788 条路由,Swagger 收录 759 条)。已在 v2.4.0 面板上全量核验:788 条路由全部注册可调用。`api describe` 支持用真实取值匹配参数路由(如 `websites/ca/1` 可匹配 `websites/ca/:id`);调用不存在的路由或方法不符时会给出明确报错,而不是打印 HTML。
 
 响应默认脱敏:字段名命中 `privateKey` / `password` / `passwd` / `token` / `secret` / `accessKey` / `hmacKey` / `authorization` / `credential` 等,或值中出现 PEM 私钥块(`RSA/EC/OPENSSH/PGP ... PRIVATE KEY`),输出统一替换为 `***REDACTED***` / `***REDACTED PRIVATE KEY***`。确需原值(如读取证书私钥)时显式加全局参数 `--show-secrets`(或环境变量 `PANEL_CLI_SHOW_SECRETS=1`),并自行承担泄露风险;请求体含敏感内容时优先用 `--body-file`,不要让私钥出现在命令行参数里。
 

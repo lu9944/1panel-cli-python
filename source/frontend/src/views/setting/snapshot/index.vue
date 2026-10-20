@@ -19,6 +19,8 @@
             </template>
             <template #main>
                 <ComplexTable
+                    :selection-context="() => [searchName]"
+                    row-key="id"
                     :pagination-config="paginationConfig"
                     v-model:selects="selects"
                     :data="data"
@@ -223,6 +225,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSearchReset } from '@/composables/useSearchReset';
 import {
     searchSnapshotPage,
     snapshotDelete,
@@ -230,7 +233,7 @@ import {
     snapshotRollback,
     updateSnapshotDescription,
 } from '@/api/modules/setting';
-import { onMounted, reactive, ref } from 'vue';
+import { toRef, onMounted, reactive, ref } from 'vue';
 import { computeSize } from '@/utils/size';
 import { dateFormat } from '@/utils/date';
 import { newUUID } from '@/utils/id';
@@ -258,6 +261,7 @@ const paginationConfig = reactive({
     order: 'null',
 });
 const searchName = ref();
+useSearchReset({ search: searchName, page: toRef(paginationConfig, 'currentPage') }, { onRevisit: () => search() });
 
 const opRef = ref();
 

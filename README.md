@@ -1,16 +1,16 @@
-# 1panel-cli (Python) v2.3.2 — 1Panel v2.3.2 面板管理
+# 1panel-cli (Python) v2.4.0 — 1Panel v2.4.0 面板管理
 
 通过命令行工具 `1panel-cli` 管理 [1Panel](https://1panel.cn) 面板。所有操作均通过面板官方 API 完成,效果与面板管理页面一致。
 
-本仓库是 [tech-1panel-cli](../tech-1panel-cli)(Rust 实现)的 **Python 移植版**,面向 **1Panel v2.3.2** 验证:
-API 路由清单由 1Panel `v2.3.2` 源码生成(787 条),完整源码随仓库附带于 [`source/`](source/),请求失败或参数不确定时可直接对照 router / DTO / service 排障。登录 / 应用商店 / 数据库 / Redis / 网站 / 防火墙 / 终端执行等命令与 Rust 版逐项对齐,并对 v2.3.2 的异步防火墙接口与旧版(v2.2.x)接口做自动适配。
+本仓库是 [tech-1panel-cli](../tech-1panel-cli)(Rust 实现)的 **Python 移植版**,面向 **1Panel v2.4.0** 验证:
+API 路由清单由 1Panel `v2.4.0` 源码生成(788 条),完整源码随仓库附带于 [`source/`](source/),请求失败或参数不确定时可直接对照 router / DTO / service 排障。登录 / 应用商店 / 数据库 / Redis / 网站 / 防火墙等命令与 Rust 版逐项对齐,并对 v2.4.0 统一防火墙接口(v2.3.2 删除语义变化、IPv6 开关、Docker 策略字段调整)与旧版(v2.2.x)接口做自动适配。
 
 ## 特点
 
 - **零第三方依赖**:仅使用 Python 标准库(`urllib` / `http.cookiejar` / `socket` / `ssl`),无需 `pip install`;系统自带的 `python3`(3.9+)即可运行。
 - **纯 Python 实现**:RSA PKCS#1 v1.5 公钥加密、AES-256-CBC、multipart 上传均为内置实现。
 - **与 Rust 版输出对齐**:命令树、参数、表格排版与输出文本保持一致,可直接替换使用。
-- **源码参考**:随仓库/技能附带 1Panel v2.3.2 完整源码 `source/`;请求失败或参数不确定时,可按 `api describe` 输出的 `sourcePath` 阅读 router / DTO / service 源码。
+- **源码参考**:随仓库/技能附带 1Panel v2.4.0 完整源码 `source/`;请求失败或参数不确定时,可按 `api describe` 输出的 `sourcePath` 阅读 router / DTO / service 源码。
 - **Agent Skill**:符合 [Agent Skills](https://opencode.ai/docs/skills/) 标准的 `SKILL.md`,可直接用于 opencode / Claude Code 等工具。
 
 ## 功能
@@ -21,8 +21,8 @@ API 路由清单由 1Panel `v2.3.2` 源码生成(787 条),完整源码随仓库�
 - **数据库 `db`**:MySQL/MariaDB 数据库/用户增删改查、root 密码
 - **Redis `redis`**:实例状态/配置读写/密码
 - **网站 `web`**:网站列表、新建网站(支持一步完成反代 + HTTPS + SPA 回退,如 `web create app.example.com --proxy http://127.0.0.1:3500 --ssl-id 1 --spa`)、删除网站、SPA 前端路由回退配置、nginx 配置读写(保存后自动 reload)、HTTPS/SSL 证书、文件上传与解压、本地应用路径兼容修复(`web repair`)
-- **防火墙 `firewall`**:自动探测三种接口形态——v2.3.2+ 统一规则接口(写操作为异步任务,CLI 自动等待并汇报结果)、中间版本(带 `rules/check`)与 v2.2.x 旧接口;支持状态/启停/Ping、端口/IP/转发规则增删查、批量放行,以及 v2.3.x+ 的 Docker 端口守护(`firewall docker`,含流量接管识别)
-- **API `api`**:内置 v2.3.2 源码生成的 787 条路由目录,可 list/describe 并调用 GET/POST/PUT/DELETE,自动携带 Cookie、CSRF、语言和节点头;`describe` 会给出 `source/` 内对应的源码路径
+- **防火墙 `firewall`**:自动探测四种接口形态——v2.4.0 统一规则接口(删除改为提交 `scope + instanceKey + observed`)、v2.3.2 统一规则接口、中间版本(带 `rules/check`)与 v2.2.x 旧接口;写操作均为异步任务,CLI 自动等待并汇报结果。支持状态/启停/Ping、端口/IP/转发规则增删查、批量放行、IPv6 开关(`firewall ipv6`,v2.4.0+),以及 v2.3.x+ 的 Docker 端口守护(`firewall docker`,含流量接管识别)
+- **API `api`**:内置 v2.4.0 源码生成的 788 条路由目录,可 list/describe 并调用 GET/POST/PUT/DELETE,自动携带 Cookie、CSRF、语言和节点头;`describe` 会给出 `source/` 内对应的源码路径
 - **敏感信息脱敏**:所有 `api` 响应默认脱敏——命中 `privateKey` / `password` / `token` / `secret` 等字段(及任意位置出现的 PEM 私钥块)输出为 `***REDACTED***`,避免私钥、口令进入终端日志或智能体上下文;确需原值时显式使用 `--show-secrets` 或 `PANEL_CLI_SHOW_SECRETS=1`,`api post/put --body-file` 可从文件/标准输入读取请求体,避免敏感内容出现在命令行
 
 ## 已知问题(1Panel 本地应用)
@@ -76,7 +76,8 @@ API 路由清单由 1Panel `v2.3.2` 源码生成(787 条),完整源码随仓库�
    1panel-cli db list                   # 列出数据库
    1panel-cli redis info redis          # Redis 状态与配置
    1panel-cli web list                  # 列出网站/域名
-   1panel-cli firewall status           # 防火墙状态
+   1panel-cli firewall status           # 防火墙状态(含 IPv6 开关)
+   1panel-cli firewall ipv6 status      # IPv6 防火墙状态(v2.4.0+)
    1panel-cli api get core/auth/current # 调用面板任意 API
    1panel-cli api list --filter templates # 发现源码注册的 API
    ```
@@ -104,7 +105,7 @@ scripts/install_skill.sh                 # 更新到默认技能目录
 scripts/install_skill.sh /path/to/skill  # 或指定目录
 ```
 
-脚本会同步 `SKILL.md` / `commands.md` / `README.md` / `bin/1panel-cli` / `panel_cli/`、v2.3.2
+脚本会同步 `SKILL.md` / `commands.md` / `README.md` / `bin/1panel-cli` / `panel_cli/`、v2.4.0
 参考资料以及完整源码 `source/`,并**保留目标目录已有的 `.env` 与 `bin/.env`**(真实凭据不被覆盖)。
 
 安装后技能中的 CLI 入口是纯 Python 启动器,可直接执行:
@@ -157,8 +158,8 @@ CLI 启动时依次从当前目录、入口脚本所在目录、仓库根目录�
 ├── pyproject.toml         # 可选的 pip 安装配置(控制台入口 1panel-cli)
 ├── .github/workflows/skill-package.yml  # Actions:打包可下载的技能包(手动运行 / v* tag 发 Release)
 ├── references/
-│   └── compatibility-v2.3.2.md  # v2.3.2 接口兼容性核对
-├── source/                # 1Panel v2.3.2 完整源码(路由 / DTO / service,排障权威参考)
+│   └── compatibility-v2.4.0.md  # v2.4.0 接口兼容性核对
+├── source/                # 1Panel v2.4.0 完整源码(路由 / DTO / service,排障权威参考)
 ├── scripts/
 │   ├── generate_api_catalog.py  # 从 1Panel 源码生成 API 清单
 │   ├── verify_api_routes.py     # 逐条核验内置路由在真实面板上的注册情况
@@ -175,21 +176,21 @@ CLI 启动时依次从当前目录、入口脚本所在目录、仓库根目录�
 │   ├── catalog.py         #   API 清单 + Swagger 合并
 │   ├── apps.py / db.py / redis.py / web.py / firewall.py
 │   ├── doctor.py          #   6 项环境体检
-│   └── data/api-v2.3.2.json   # v2.3.2 源码生成的 787 条路由
+│   └── data/api-v2.4.0.json   # v2.4.0 源码生成的 788 条路由
 ├── bin/
 │   └── 1panel-cli         # 可执行入口(#!/usr/bin/env python3)
-└── tests/                 # unittest 单元测试(130 个用例)
+└── tests/                 # unittest 单元测试(142 个用例)
 ```
 
 ## 更新 API 清单(可选)
 
-仓库附带的 `source/` 即 v2.3.2 源码,可直接重新生成内置路由清单:
+仓库附带的 `source/` 即 v2.4.0 源码,可直接重新生成内置路由清单:
 
 ```sh
 python3 scripts/generate_api_catalog.py \
   --source source \
-  --version v2.3.2 \
-  --output panel_cli/data/api-v2.3.2.json
+  --version v2.4.0 \
+  --output panel_cli/data/api-v2.4.0.json
 ```
 
 1Panel 源码升级后,把新版源码放到 `source/`(或指定其他路径)再执行同一命令即可。
@@ -200,11 +201,11 @@ python3 scripts/generate_api_catalog.py \
 python3 -m unittest discover -s tests -v
 ```
 
-覆盖:密码加密(RSA/AES 已知向量与往返)、验证码 ID 解析、URL 解码、命令组装与哨兵匹配、输出清洗、请求头/SSL 上下文、防火墙规则构造、路由清单与路径归一化、API 调用结果归类、.env 解析等。
+覆盖:密码加密(RSA/AES 已知向量与往返)、验证码 ID 解析、URL 解码、命令组装与哨兵匹配、输出清洗、请求头/SSL 上下文、防火墙规则构造、v2.4.0 删除 target 载荷、路由清单与路径归一化、API 调用结果归类、.env 解析等。
 
 ### 核验 API 路由
 
-对已登录的面板逐条核验内置 787 条路由是否注册可用。写操作发送畸形 JSON 请求体,在参数校验阶段即失败,不会产生业务副作用;有副作用且无法用请求体拦截的路由自动跳过并标注。
+对已登录的面板逐条核验内置 788 条路由是否注册可用。写操作发送畸形 JSON 请求体,在参数校验阶段即失败,不会产生业务副作用;有副作用且无法用请求体拦截的路由自动跳过并标注。v2.4.0 面板实测:788/788 全部注册,无 404/HTML/方法不符。
 
 ```sh
 python3 scripts/verify_api_routes.py

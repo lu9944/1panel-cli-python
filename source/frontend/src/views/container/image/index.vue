@@ -157,7 +157,8 @@
 </template>
 
 <script lang="ts" setup>
-import { reactive, ref, computed } from 'vue';
+import { useSearchReset } from '@/composables/useSearchReset';
+import { toRef, reactive, ref, computed } from 'vue';
 import { dateFormat } from '@/utils/date';
 import { newUUID } from '@/utils/id';
 import { computeSize2 } from '@/utils/size';
@@ -199,6 +200,10 @@ const paginationConfig = reactive({
     orderBy: 'createdAt',
     order: 'null',
 });
+useSearchReset(
+    { search: toRef(paginationConfig, 'name'), page: toRef(paginationConfig, 'currentPage') },
+    { onRevisit: () => search() },
+);
 const columns = ref([]);
 
 const isActive = ref(false);

@@ -140,6 +140,9 @@ ErrComposeProjectNameEmpty: 'Nama projek tidak dapat diperoleh daripada konfigur
 ErrComposeNameInvalid: 'Nama projek Compose tidak sah: mesti bermula dengan huruf kecil atau nombor, hanya mengandungi huruf kecil, nombor, tanda sempang dan garis bawah, serta sepanjang 1-256 aksara.'
 ErrAppVersionUnavailable: 'Versi aplikasi ini telah dialih keluar daripada perkhidmatan jauh. Sila pilih versi lain dan cuba lagi.'
 ErrVllmGB10ProOnly: 'Versi vLLM ini hanya tersedia dalam 1Panel Edisi Profesional.'
+ErrAIGatewayDatabaseTypeMismatch: 'AI Gateway hanya boleh dinaik taraf dalam jenis pangkalan data yang sama (SQLite atau PostgreSQL).'
+ErrAIGatewayRecoverDatabaseTypeMismatch: 'Sandaran AI Gateway dan aplikasi sasaran mesti menggunakan jenis pangkalan data yang sama (SQLite atau PostgreSQL).'
+ErrHermesUpgradeVersion: 'Hermes Agent hanya boleh dinaik taraf kepada keluaran lebih baharu yang dikenal pasti dan dibenarkan oleh tetapan naik taraf antara versi utama. Untuk kembali kepada versi lama, pulihkan sandaran.'
 ErrAppWarn: 'Status tidak normal, sila semak log'
 ErrAppParamKey: 'Parameter {{ .name }} medan tidak normal'
 ErrAppUpgrade: 'Peningkatan {{ .name }} aplikasi gagal {{ .err }}'
@@ -300,6 +303,9 @@ BuildCache: 'Cache binaan'
 Volume: 'Jilid storan'
 Network: 'Rangkaian'
 PruneStart: 'Pembersihan sedang dijalankan, sila tunggu...'
+NetworkCleanupConnected: "Rangkaian [{{ .name }}] ({{ .id }}) dilangkau: terdapat kontena yang disambungkan atau rangkaian sedang digunakan; tidak dipadamkan"
+NetworkCleanupSummary: "Pembersihan rangkaian selesai: dipadamkan {{ .deleted }}, dilangkau {{ .skipped }}, gagal {{ .failed }}"
+NetworkCleanupPartialFailure: "Sesetengah rangkaian tidak dapat dibersihkan; semak log tugas"
 ContainerBackupPrepare: 'Sediakan ruang kerja sandaran kontena'
 ContainerBackupStop: 'Hentikan kontena sebelum sandaran'
 ContainerBackupInspect: 'Sandarkan inspect dan rangkaian kontena'
@@ -628,14 +634,15 @@ AppAttributesNotMatch: 'Jenis atau nama aplikasi tidak sepadan'
 # amaran
 ErrAlertMethodNotSupported: 'Versi ini tidak menyokong kaedah amaran ini'
 ErrAlertSync: 'Ralat penyegerakan maklumat penggera, sila semak dan cuba lagi'
+ErrWebhookTestFailed: 'Sila semak konfigurasi Webhook. Lihat log sistem untuk butiran lanjut.'
 
 # tugas - runtime
 ErrInstallExtension: 'Tugas pemasangan sudah sedang berjalan, silakan tunggu tugas selesai'
 
 # templat mel amaran
 PanelAlertTitle: 'Notifikasi Amaran Panel'
-TestAlertTitle: 'E-mel Ujian - Sahkan Sambungan E-mel'
-TestAlert: 'Ini adalah e-mel ujian untuk mengesahkan konfigurasi penghantaran e-mel anda betul.'
+TestAlertTitle: 'Notifikasi Ujian Panel'
+TestAlertMessage: 'Ini ialah notifikasi ujian untuk mengesahkan konfigurasi dan kesambungan saluran notifikasi.'
 LicenseExpirationAlert: 'Panel {{ .node }}{{ .ip }} Anda, lesen akan tamat tempoh dalam {{ .day }} hari. Sila log masuk ke panel untuk butiran lanjut.'
 CronJobFailedAlert: 'Panel {{ .node }}{{ .ip }} Anda, tugas jadual {{ .name }} gagal dilaksanakan. Sila log masuk ke panel untuk butiran lanjut.'
 ClamAlert: 'Panel {{ .node }}{{ .ip }} Anda, tugas imbasan virus mengesan {{ .num }} fail yang dijangkiti. Sila log masuk ke panel untuk butiran lanjut.'
@@ -649,6 +656,7 @@ CommonAlert: 'Panel {{ .node }}{{ .ip }} Anda, {{ .msg }}. Sila log masuk ke pan
 NodeExceptionAlert: 'Panel {{ .node }}{{ .ip }} Anda, {{ .num }} nod tidak normal. Sila log masuk ke panel untuk butiran lanjut.'
 LicenseExceptionAlert: 'Panel {{ .node }}{{ .ip }} Anda, {{ .num }} lesen tidak normal. Sila log masuk ke panel untuk butiran lanjut.'
 SSHAndPanelLoginAlert: 'Panel {{ .node }}{{ .ip }} Anda, log masuk {{ .name }} dari {{ .loginIp }} tidak normal. Sila log masuk ke panel untuk butiran lanjut.'
+CronJobSuccessAlert: 'Panel {{ .node }}{{ .ip }}: tugas berjadual {{ .name }} berjaya diselesaikan. Log masuk untuk melihat butiran.'
 
 # cakera
 DeviceNotFound: 'Peranti {{ .name }} tidak ditemui'
@@ -682,8 +690,7 @@ AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
 # Firewall
 ErrDockerIptablesChainUnavailable: 'Rantaian DOCKER-USER Docker tidak ditemui. Mulakan semula Docker dan cuba lagi'
 ErrDockerNftablesChainUnavailable: 'Rantaian firewall IPv4 nftables Docker tidak ditemui. Pastikan versi Docker semasa menyokong bahagian belakang firewall nftables, mulakan semula Docker dan cuba lagi'
-ErrDockerForwardPolicyDrop: 'Dasar lalai FORWARD {{ .family }} ialah DROP. Laraskan dasar dan cuba lagi'
-ErrUFWRuleAdopt: 'Gagal mengurus peraturan UFW: {{ .detail }}. Jika versi UFW semasa lebih lama daripada 0.35, tingkatkan UFW dan cuba lagi'
+ErrDockerForwardPolicyDrop: 'Pelayan ini mengehadkan pemajuan rangkaian. Perlindungan port kontena tidak dapat diaktifkan buat masa ini.'
 Firewall: 'Firewall'
 FirewallTaskHost: 'Tembok api hos'
 FirewallTaskForwarding: 'Pemajuan port'
@@ -697,28 +704,15 @@ FirewallCreateRulesStep: 'Cipta peraturan tembok api'
 FirewallCreateRulesResult: 'Hasil penciptaan: {{ .succeeded }} berjaya, {{ .failed }} gagal, {{ .skipped }} tidak dilaksanakan'
 FirewallRuleOperationResult: 'Hasil operasi: {{ .succeeded }} berjaya, {{ .failed }} gagal'
 FirewallCreateRuleSkipped: 'Tidak dilaksanakan'
-FirewallCreateBatchStep: 'Hantar {{ .count }} peraturan secara kelompok ke {{ .backend }}'
 FirewallImportRuleConversion: '[{{ .index }}/{{ .total }}] {{ .source }} → {{ .target }}: {{ .rule }}; ditukar kepada {{ .count }} peraturan'
-FirewallCreateRuleExecutionFailed: 'Penciptaan peraturan gagal. Tiada rekod disimpan dalam pangkalan data dan arahan yang dilaksanakan tidak dibatalkan'
-FirewallCreateRulePersistenceFailed: 'Peraturan telah dicipta, tetapi rekod pengurusannya tidak dapat disimpan'
-FirewallAdoptRulePersistenceFailed: 'Arahan pengambilalihan peraturan telah dilaksanakan, tetapi rekod pengurusannya tidak dapat disimpan'
-FirewallSyncOperationsResult: 'Operasi penyegerakan: {{ .removed }} dipadam, {{ .created }} dicipta, {{ .failed }} gagal, {{ .skipped }} tidak dilaksanakan, {{ .unchanged }} sudah sepadan (tiada perubahan diperlukan)'
-FirewallSyncRuleUnchanged: 'Sudah sepadan; tiada perubahan diperlukan'
-FirewallSyncStep: 'Segerakkan peraturan ke {{ .name }}'
-FirewallSyncFailed: '{{ .failed }} peraturan firewall gagal disegerakkan'
-FirewallResetSourceStep: 'Tetapkan semula dan nyahdayakan firewall sumber {{ .name }}'
-FirewallResetSourceResult: 'Firewall sumber ditetapkan semula; {{ .removed }} peraturan pangkalan data dipadamkan'
+FirewallCreateRuleExecutionFailed: 'Penciptaan peraturan gagal. Arahan yang dilaksanakan tidak dibatalkan'
 FirewallInitializeChainsStep: 'Mulakan dan ikat rantai asas {{ .name }}'
-FirewallRestoreRulesStep: 'Pulihkan peraturan pangkalan data ke {{ .name }}'
 FirewallSyncWhitelistStep: 'Segerakkan senarai putih port firewall'
 FirewallEnableForwardingStep: 'Aktifkan dan ikat rantai pemajuan port'
 FirewallRestoreForwardingRulesStep: 'Pulihkan peraturan pemajuan port pangkalan data'
 FirewallInspectDockerGuardStep: 'Periksa backend firewall Docker dan polisi'
 FirewallInitializeDockerGuardStep: 'Mulakan dan ikat rantai perlindungan port {{ .name }}'
 FirewallPersistDockerGuardStep: 'Simpan status perlindungan port Docker'
-ErrFirewallRuleScopeChange: "Tembok api semasa tidak menyokong perubahan skop peraturan (seperti keluarga alamat IPv4/IPv6). Sila cipta peraturan baharu."
-FirewallWhitelistReleased: "{{ .name }}: perlindungan senarai dibenarkan telah dilepaskan; peraturan izin dikekalkan. Untuk menutup port, padamkan peraturan secara manual daripada senarai peraturan"
-FirewallWhitelistRequired: "{{ .name }}: dilindungi oleh peraturan port wajib sistem"
 FileTaskCopy: 'Salin fail ke {{ .dst }}'
 FileTaskMove: 'Pindahkan fail ke {{ .dst }}'
 FileTaskCompress: 'Mampatkan fail ke {{ .dst }}'
@@ -726,7 +720,56 @@ FileTaskDecompress: 'Ekstrak fail ke {{ .dst }}'
 FileTaskSource: 'Laluan sumber: {{ .path }}'
 FileTaskFormat: 'Format arkib: {{ .format }}'
 FileTaskRename: 'Nama fail sasaran: {{ .name }}'
-
 ErrFirewallBackendCleanupRequired: "Bahagian belakang semasa {{ .current }} masih mengandungi peraturan 1Panel. Buangkannya sebelum beralih kepada {{ .target }}."
 ErrDockerIPv4ForwardingDisabled: "Pemajuan IPv4 dilumpuhkan. Tetapkan net.ipv4.ip_forward=1 sebelum menggunakan bahagian belakang tembok api Docker."
 ErrFirewallRuleSavedApplyFailed: "Konfigurasi peraturan baharu telah disimpan, tetapi gagal digunakan pada tembok api. Cuba lagi melalui penyegerakan: {{ .detail }}"
+ErrFirewallRuleConflict: "Peraturan UFW dengan syarat padanan yang sama tetapi tindakan berbeza sudah wujud. Sila edit peraturan sedia ada."
+ErrForwardInterfaceNotFound: "Antara muka rangkaian {{ .name }} yang dinyatakan dalam peraturan pemajuan tidak wujud. Semak namanya dan cuba lagi."
+ErrIPv6RARisk: "Pemajuan IPv6 disekat bagi mengelakkan risiko kehilangan sambungan rangkaian. Rujuk dokumentasi dan log sistem."
+ErrIPv6RACheckFailed: "Pemajuan IPv6 disekat kerana konfigurasi rangkaian tidak dapat diperiksa. Lihat log sistem untuk butiran."
+
+ErrSSHPublicKey: "Masukkan kunci awam SSH yang sah"
+ErrSSHPrivateKey: "Kunci peribadi SSH tidak sah atau frasa laluan salah; kunci yang disulitkan memerlukan frasa laluan asal"
+ErrSSHKeyMismatch: "Kunci awam dan peribadi SSH tidak sepadan"
+
+# mesin maya
+ErrVMNotFound: "Mesin maya tidak wujud"
+ErrVMAlreadyExists: "Mesin maya sudah wujud"
+ErrVMCountLimit: "Edisi Professional membenarkan penciptaan sehingga {{ .limit }} mesin maya. Padamkan mesin maya sedia ada atau naik taraf kepada Enterprise dan cuba lagi."
+ErrVMImageAlreadyExists: "Fail imej mesin maya sudah wujud: {{ .detail }}"
+ErrVMStoragePathInUse: "Laluan kolam storan sudah digunakan oleh [{{ .name }}]"
+ErrVMHelperNotFound: "1panel-kvm tidak ditemui"
+ErrVMBridgeManaged: "Nama bridge telah diurus oleh libvirt atau Docker"
+ErrVMNetworkInUse: "Rangkaian sedang digunakan dan tidak boleh dipadamkan"
+ErrVMStorageInUse: "Kumpulan storan sedang digunakan dan tidak boleh dipadamkan"
+ErrVMStorageNameCannotChange: "Nama kumpulan storan tidak boleh diubah"
+ErrVMStoragePathCannotChange: "Laluan kumpulan storan tidak boleh diubah"
+ErrVMRunning: "Mesin maya sedang berjalan"
+ErrVMLibvirtConnect: "Gagal menyambung ke libvirt: {{ .detail }}"
+ErrVMPermission: "Tiada kebenaran untuk mengendalikan mesin maya: {{ .detail }}"
+ErrVMNetworkNotFound: "Rangkaian mesin maya tidak wujud: {{ .detail }}"
+ErrVMInvalidPath: "Laluan mesin maya tidak sah: {{ .detail }}"
+ErrVMInvalidInput: "Parameter mesin maya tidak sah: {{ .detail }}"
+ErrVMCommandFailed: "Arahan mesin maya gagal: {{ .err }}"
+ErrVMDiskResizeBlocked: "Cakera tidak memenuhi syarat pembesaran atau dirujuk oleh peranti lain. Semak status cakera."
+ErrVMDiskReferenced: "Cakera maya ini digunakan oleh mesin maya atau peranti lain; pembesaran belum disokong."
+ErrVMDiskReferenceCheck: "Rujukan cakera maya tidak dapat disahkan. Pembesaran tidak tersedia; semak cakera mesin maya lain."
+ErrVMSnapshotMetadataSync: "Syot kilat telah dipulihkan, tetapi maklumat cakera gagal disegerakkan. Muat semula dan semak; tidak perlu memulihkan syot kilat sekali lagi."
+VMCreateTask: "Cipta mesin maya [{{ .name }}]"
+VMCreateFromTemplateTask: "Cipta mesin maya [{{ .name }}] daripada templat"
+VMUpdateTask: "Kemas kini mesin maya [{{ .name }}]"
+VMDiskResizeTask: "Besarkan cakera [{{ .disk }}] mesin maya [{{ .name }}]"
+VMRenameTask: "Namakan semula mesin maya [{{ .name }}] kepada [{{ .newName }}]"
+VMDeleteTask: "Padam mesin maya [{{ .name }}]"
+VMTemplateCreateTask: "Simpan mesin maya [{{ .name }}] sebagai templat [{{ .template }}]"
+VMTemplateDeleteTask: "Padam templat mesin maya [{{ .name }}]"
+VMForceDeleteMetadataOnly: "1panel-kvm tidak ditemui, memadam metadata mesin maya [{{ .name }}] sahaja secara paksa"
+VMForceDeleteMetadataAfterLibvirtFailed: "Gagal memadam mesin maya [{{ .name }}] daripada libvirt, memadam metadata secara paksa: {{ .err }}"
+VMForceDeleteDiskFailed: "Gagal memadam fail cakera mesin maya [{{ .path }}] secara paksa: {{ .err }}"
+VMForceDeleteDiskSuccess: "Fail cakera mesin maya [{{ .path }}] telah dipadam secara paksa"
+VMSnapshotCreateTask: "Cipta syot kilat [{{ .snapshot }}] untuk mesin maya [{{ .vm }}]"
+VMSnapshotCreateStep: "Cipta syot kilat mesin maya [{{ .snapshot }}]"
+VMSnapshotRecoverTask: "Pulihkan syot kilat [{{ .snapshot }}] untuk mesin maya [{{ .vm }}]"
+VMSnapshotRecoverStep: "Pulihkan syot kilat mesin maya [{{ .snapshot }}]"
+VMSnapshotDeleteTask: "Padam syot kilat [{{ .snapshot }}] untuk mesin maya [{{ .vm }}]"
+VMSnapshotDeleteStep: "Padam syot kilat mesin maya [{{ .snapshot }}]"

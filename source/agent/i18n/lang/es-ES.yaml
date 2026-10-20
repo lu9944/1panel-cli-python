@@ -140,6 +140,9 @@ ErrComposeProjectNameEmpty: 'No se pudo derivar un nombre de proyecto desde la c
 ErrComposeNameInvalid: 'Nombre de proyecto Compose no válido: debe comenzar con una letra minúscula o un número, contener solo letras minúsculas, números, guiones y guiones bajos, y tener entre 1 y 256 caracteres.'
 ErrAppVersionUnavailable: 'Esta versión de la aplicación se ha eliminado del servicio remoto. Seleccione otra versión e inténtelo de nuevo.'
 ErrVllmGB10ProOnly: 'Esta versión de vLLM solo está disponible en 1Panel Professional Edition.'
+ErrAIGatewayDatabaseTypeMismatch: 'AI Gateway solo puede actualizarse dentro del mismo tipo de base de datos (SQLite o PostgreSQL).'
+ErrAIGatewayRecoverDatabaseTypeMismatch: 'La copia de seguridad de AI Gateway y la aplicación de destino deben usar el mismo tipo de base de datos (SQLite o PostgreSQL).'
+ErrHermesUpgradeVersion: 'Hermes Agent solo puede actualizarse a una versión reconocida más reciente permitida por la configuración de actualización entre versiones principales. Para volver a una versión anterior, restaure una copia de seguridad.'
 ErrAppWarn: 'Estado anómalo, revise el log'
 ErrAppParamKey: 'El campo de parámetro {{ .name }} es anómalo'
 ErrAppUpgrade: 'La actualización de la aplicación {{ .name }} falló {{ .err }}'
@@ -300,6 +303,9 @@ BuildCache: 'Caché de compilación'
 Volume: 'Volumen de almacenamiento'
 Network: 'Red'
 PruneStart: 'Limpiando en progreso espere...'
+NetworkCleanupConnected: "Se omitió la red [{{ .name }}] ({{ .id }}): hay contenedores conectados o la red está en uso; no se eliminó"
+NetworkCleanupSummary: "Limpieza de redes finalizada: eliminadas {{ .deleted }}, omitidas {{ .skipped }}, fallidas {{ .failed }}"
+NetworkCleanupPartialFailure: "No se pudieron limpiar algunas redes; consulte el registro de la tarea"
 ContainerBackupPrepare: 'Preparar espacio de respaldo del contenedor'
 ContainerBackupStop: 'Detener contenedor antes del respaldo'
 ContainerBackupInspect: 'Respaldar inspect y red del contenedor'
@@ -628,14 +634,15 @@ AppAttributesNotMatch: 'El tipo o nombre de la aplicación no coincide'
 # alerta
 ErrAlertMethodNotSupported: 'Esta versión no admite este método de alerta'
 ErrAlertSync: 'Error en la sincronización de la alerta, revise e intente de nuevo'
+ErrWebhookTestFailed: 'Revisa la configuración del Webhook. Consulta los registros del sistema para más detalles.'
 
 # tarea - entorno de ejecución
 ErrInstallExtension: 'Ya hay una tarea de instalación en curso, espere a que termine'
 
 # plantilla de correo de alerta
 PanelAlertTitle: 'Notificación de alerta del panel'
-TestAlertTitle: 'Correo de prueba - Verificar conectividad de correo'
-TestAlert: 'Este es un correo de prueba para verificar que la configuración de envío de correos es correcta.'
+TestAlertTitle: 'Notificación de prueba del panel'
+TestAlertMessage: 'Esta es una notificación de prueba para verificar la configuración y la conectividad del canal de notificaciones.'
 LicenseExpirationAlert: 'Su Panel {{ .node }}{{ .ip }}, la licencia expirará en {{ .day }} días. Inicie sesión en el panel para ver los detalles.'
 CronJobFailedAlert: 'Su Panel {{ .node }}{{ .ip }}, la ejecución de la tarea programada {{ .name }} falló. Inicie sesión en el panel para ver los detalles.'
 ClamAlert: 'Su Panel {{ .node }}{{ .ip }}, la tarea de escaneo antivirus detectó {{ .num }} archivos infectados. Inicie sesión en el panel para ver los detalles.'
@@ -649,6 +656,7 @@ CommonAlert: 'Su Panel {{ .node }}{{ .ip }}, {{ .msg }}. Inicie sesión en el pa
 NodeExceptionAlert: 'Su Panel {{ .node }}{{ .ip }}, {{ .num }} nodos son anómalos. Inicie sesión en el panel para ver los detalles.'
 LicenseExceptionAlert: 'Su Panel {{ .node }}{{ .ip }}, {{ .num }} licencias son anómalas. Inicie sesión en el panel para ver los detalles.'
 SSHAndPanelLoginAlert: 'Su Panel {{ .node }}{{ .ip }}, el inicio de sesión {{ .name }} desde {{ .loginIp }} es anómalo. Inicie sesión en el panel para ver los detalles.'
+CronJobSuccessAlert: 'Panel {{ .node }}{{ .ip }}: la tarea programada {{ .name }} se completó correctamente. Inicie sesión para ver los detalles.'
 
 # disco
 DeviceNotFound: 'Dispositivo {{ .name }} no encontrado'
@@ -682,8 +690,7 @@ AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
 # Firewall
 ErrDockerIptablesChainUnavailable: 'No se encontró la cadena DOCKER-USER de Docker. Reinicie Docker y vuelva a intentarlo'
 ErrDockerNftablesChainUnavailable: 'No se encontró la cadena de firewall IPv4 de nftables de Docker. Compruebe que la versión actual de Docker admita el backend de firewall nftables, reinicie Docker y vuelva a intentarlo'
-ErrDockerForwardPolicyDrop: 'La política predeterminada de FORWARD para {{ .family }} es DROP. Ajústela y vuelva a intentarlo'
-ErrUFWRuleAdopt: 'No se pudo administrar la regla UFW: {{ .detail }}. Si la versión actual de UFW es anterior a 0.35, actualice UFW y vuelva a intentarlo'
+ErrDockerForwardPolicyDrop: 'Este servidor restringe el reenvío de red. Por ahora no se puede habilitar la protección de puertos de contenedores.'
 Firewall: 'Firewall'
 FirewallTaskHost: 'Cortafuegos del host'
 FirewallTaskForwarding: 'Reenvío de puertos'
@@ -697,28 +704,15 @@ FirewallCreateRulesStep: 'Crear reglas de cortafuegos'
 FirewallCreateRulesResult: 'Resultado de creación: {{ .succeeded }} correctas, {{ .failed }} fallidas, {{ .skipped }} sin ejecutar'
 FirewallRuleOperationResult: 'Resultado de la operación: {{ .succeeded }} correctas, {{ .failed }} fallidas'
 FirewallCreateRuleSkipped: 'Sin ejecutar'
-FirewallCreateBatchStep: 'Enviar {{ .count }} reglas en un lote a {{ .backend }}'
 FirewallImportRuleConversion: '[{{ .index }}/{{ .total }}] {{ .source }} → {{ .target }}: {{ .rule }}; convertido en {{ .count }} reglas'
-FirewallCreateRuleExecutionFailed: 'Error al crear la regla. No se guardó ningún registro en la base de datos ni se revirtieron los comandos ejecutados'
-FirewallCreateRulePersistenceFailed: 'La regla se creó, pero no se pudo guardar su registro de gestión'
-FirewallAdoptRulePersistenceFailed: 'Se ejecutó la adopción de la regla, pero no se pudo guardar su registro de gestión'
-FirewallSyncOperationsResult: 'Operaciones de sincronización: {{ .removed }} eliminadas, {{ .created }} creadas, {{ .failed }} fallidas, {{ .skipped }} sin ejecutar, {{ .unchanged }} ya coinciden (sin cambios necesarios)'
-FirewallSyncRuleUnchanged: 'Ya coincide; no requiere cambios'
-FirewallSyncStep: 'Sincronizar reglas con {{ .name }}'
-FirewallSyncFailed: 'No se pudieron sincronizar {{ .failed }} reglas del firewall'
-FirewallResetSourceStep: 'Restablecer y desactivar el firewall de origen {{ .name }}'
-FirewallResetSourceResult: 'Firewall de origen restablecido; se eliminaron {{ .removed }} reglas de la base de datos'
+FirewallCreateRuleExecutionFailed: 'Error al crear la regla. Los comandos ejecutados no se revirtieron'
 FirewallInitializeChainsStep: 'Inicializar y vincular las cadenas base de {{ .name }}'
-FirewallRestoreRulesStep: 'Restaurar las reglas de la base de datos en {{ .name }}'
 FirewallSyncWhitelistStep: 'Sincronizar la lista de puertos permitidos del firewall'
 FirewallEnableForwardingStep: 'Habilitar y vincular las cadenas de reenvío de puertos'
 FirewallRestoreForwardingRulesStep: 'Restaurar las reglas de reenvío de puertos de la base de datos'
 FirewallInspectDockerGuardStep: 'Inspeccionar el backend del firewall de Docker y las políticas'
 FirewallInitializeDockerGuardStep: 'Inicializar y vincular las cadenas de protección de puertos de {{ .name }}'
 FirewallPersistDockerGuardStep: 'Guardar el estado de protección de puertos de Docker'
-ErrFirewallRuleScopeChange: "El cortafuegos actual no permite cambiar el ámbito de una regla (como su familia de direcciones IPv4/IPv6). Cree una regla nueva."
-FirewallWhitelistReleased: "{{ .name }}: protección de la lista de permitidos retirada; se conserva la regla de permiso. Para cerrar el puerto, elimine la regla manualmente de la lista"
-FirewallWhitelistRequired: "{{ .name }}: protegido por las reglas de puertos obligatorios del sistema"
 FileTaskCopy: 'Copiar archivos a {{ .dst }}'
 FileTaskMove: 'Mover archivos a {{ .dst }}'
 FileTaskCompress: 'Comprimir archivos en {{ .dst }}'
@@ -726,7 +720,56 @@ FileTaskDecompress: 'Extraer archivos a {{ .dst }}'
 FileTaskSource: 'Ruta de origen: {{ .path }}'
 FileTaskFormat: 'Formato del archivo: {{ .format }}'
 FileTaskRename: 'Nombre del archivo de destino: {{ .name }}'
-
 ErrFirewallBackendCleanupRequired: "El backend actual {{ .current }} aún contiene reglas de 1Panel. Elimínelas antes de cambiar a {{ .target }}."
 ErrDockerIPv4ForwardingDisabled: "El reenvío IPv4 está desactivado. Configure net.ipv4.ip_forward=1 antes de usar el backend de cortafuegos de Docker."
 ErrFirewallRuleSavedApplyFailed: "Se guardó la configuración de la nueva regla, pero no se pudo aplicar al cortafuegos. Vuelva a intentarlo mediante la sincronización: {{ .detail }}"
+ErrFirewallRuleConflict: "Ya existe una regla UFW con las mismas condiciones y una acción diferente. Edite la regla existente."
+ErrForwardInterfaceNotFound: "La interfaz de red {{ .name }} indicada en la regla de reenvío no existe. Compruebe el nombre e inténtelo de nuevo."
+ErrIPv6RARisk: "El reenvío IPv6 está bloqueado para evitar una posible pérdida de conectividad. Consulte la documentación y los registros del sistema."
+ErrIPv6RACheckFailed: "El reenvío IPv6 está bloqueado porque no se pudo comprobar la configuración de red. Consulte los registros del sistema."
+
+ErrSSHPublicKey: "Introduce una clave pública SSH válida"
+ErrSSHPrivateKey: "Clave privada SSH no válida o contraseña incorrecta; las claves cifradas requieren la contraseña original"
+ErrSSHKeyMismatch: "Las claves pública y privada SSH no coinciden"
+
+# máquina virtual
+ErrVMNotFound: "La máquina virtual no existe"
+ErrVMAlreadyExists: "La máquina virtual ya existe"
+ErrVMCountLimit: "La edición Professional permite crear hasta {{ .limit }} máquinas virtuales. Elimina una máquina virtual existente o actualiza a Enterprise y vuelve a intentarlo."
+ErrVMImageAlreadyExists: "La imagen de la máquina virtual ya existe: {{ .detail }}"
+ErrVMStoragePathInUse: "La ruta del pool de almacenamiento ya está usada por [{{ .name }}]"
+ErrVMHelperNotFound: "No se encontró 1panel-kvm"
+ErrVMBridgeManaged: "El nombre del bridge ya está administrado por libvirt o Docker"
+ErrVMNetworkInUse: "La red está en uso y no se puede eliminar"
+ErrVMStorageInUse: "El pool de almacenamiento está en uso y no se puede eliminar"
+ErrVMStorageNameCannotChange: "El nombre del pool de almacenamiento no se puede cambiar"
+ErrVMStoragePathCannotChange: "La ruta del pool de almacenamiento no se puede cambiar"
+ErrVMRunning: "La máquina virtual está en ejecución"
+ErrVMLibvirtConnect: "Error al conectar con libvirt: {{ .detail }}"
+ErrVMPermission: "Sin permiso para operar la máquina virtual: {{ .detail }}"
+ErrVMNetworkNotFound: "La red de la máquina virtual no existe: {{ .detail }}"
+ErrVMInvalidPath: "Ruta de máquina virtual no válida: {{ .detail }}"
+ErrVMInvalidInput: "Parámetro de máquina virtual no válido: {{ .detail }}"
+ErrVMCommandFailed: "Error al ejecutar el comando de la máquina virtual: {{ .err }}"
+ErrVMDiskResizeBlocked: "El disco no cumple los requisitos de ampliación o está referenciado por otro dispositivo. Compruebe su estado."
+ErrVMDiskReferenced: "Otro equipo virtual o dispositivo utiliza este disco virtual; la ampliación aún no se admite."
+ErrVMDiskReferenceCheck: "No se pueden comprobar las referencias al disco virtual. La ampliación no está disponible; revise los discos de otras máquinas virtuales."
+ErrVMSnapshotMetadataSync: "La instantánea se restauró, pero falló la sincronización de los datos del disco. Actualice y compruebe; no restaure de nuevo la instantánea."
+VMCreateTask: "Crear máquina virtual [{{ .name }}]"
+VMCreateFromTemplateTask: "Crear máquina virtual [{{ .name }}] desde plantilla"
+VMUpdateTask: "Actualizar máquina virtual [{{ .name }}]"
+VMDiskResizeTask: "Ampliar disco [{{ .disk }}] de la máquina virtual [{{ .name }}]"
+VMRenameTask: "Renombrar máquina virtual [{{ .name }}] a [{{ .newName }}]"
+VMDeleteTask: "Eliminar máquina virtual [{{ .name }}]"
+VMTemplateCreateTask: "Guardar máquina virtual [{{ .name }}] como plantilla [{{ .template }}]"
+VMTemplateDeleteTask: "Eliminar plantilla de máquina virtual [{{ .name }}]"
+VMForceDeleteMetadataOnly: "1panel-kvm no encontrado, eliminando solo los metadatos de la máquina virtual [{{ .name }}]"
+VMForceDeleteMetadataAfterLibvirtFailed: "Error al eliminar la máquina virtual [{{ .name }}] de libvirt, eliminando metadatos: {{ .err }}"
+VMForceDeleteDiskFailed: "Error al forzar la eliminación del archivo de disco de la máquina virtual [{{ .path }}]: {{ .err }}"
+VMForceDeleteDiskSuccess: "Archivo de disco de la máquina virtual [{{ .path }}] eliminado forzosamente"
+VMSnapshotCreateTask: "Crear instantánea [{{ .snapshot }}] para la máquina virtual [{{ .vm }}]"
+VMSnapshotCreateStep: "Crear instantánea de máquina virtual [{{ .snapshot }}]"
+VMSnapshotRecoverTask: "Restaurar instantánea [{{ .snapshot }}] para la máquina virtual [{{ .vm }}]"
+VMSnapshotRecoverStep: "Restaurar instantánea de máquina virtual [{{ .snapshot }}]"
+VMSnapshotDeleteTask: "Eliminar instantánea [{{ .snapshot }}] de la máquina virtual [{{ .vm }}]"
+VMSnapshotDeleteStep: "Eliminar instantánea de máquina virtual [{{ .snapshot }}]"

@@ -10,6 +10,9 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/app/dto"
 	"github.com/1Panel-dev/1Panel/agent/app/repo"
 	"github.com/1Panel-dev/1Panel/agent/constant"
+	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/i18n"
+	"github.com/1Panel-dev/1Panel/agent/utils/webhook_sender"
 	"github.com/gin-gonic/gin"
 )
 
@@ -290,7 +293,7 @@ func (b *BaseApi) PageAlertConfig(c *gin.Context) {
 // @Security ApiKeyAuth
 // @Security Timestamp
 // @Router /alert/config/update [post]
-// @x-panel-log {"bodyKeys":["id","displayName"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"更新告警配置 [id][displayName]","formatEN":"update alert config [id][displayName]"}
+// @x-panel-log {"bodyKeys":["displayName"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"更新告警配置 [displayName]","formatEN":"update alert config [displayName]"}
 func (b *BaseApi) UpdateAlertConfig(c *gin.Context) {
 	var req dto.AlertConfigUpdate
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -318,13 +321,15 @@ func (b *BaseApi) UpdateAlertConfig(c *gin.Context) {
 // @Security ApiKeyAuth
 // @Security Timestamp
 // @Router /alert/config/status [post]
-// @x-panel-log {"bodyKeys":["id","status"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"更新告警配置状态 [id][status]","formatEN":"update alert config status [id][status]"}
+// @x-panel-log {"bodyKeys":["status"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"更新告警配置状态 [name][status]","formatEN":"update alert config status [name][status]"}
 func (b *BaseApi) UpdateAlertConfigStatus(c *gin.Context) {
 	var req dto.AlertConfigStatusUpdate
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
 		return
 	}
-	if err := alertService.UpdateAlertConfigStatus(req, loadAuditUser(c)); err != nil {
+	name, err := alertService.UpdateAlertConfigStatus(req, loadAuditUser(c))
+	helper.SetOperationLogValues(c, map[string]string{"name": name})
+	if err != nil {
 		helper.InternalServer(c, err)
 		return
 	}
@@ -350,13 +355,14 @@ func loadAuditUser(c *gin.Context) string {
 // @Security ApiKeyAuth
 // @Security Timestamp
 // @Router /alert/config/del [post]
-// @x-panel-log {"bodyKeys":["id"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"删除告警配置 [id]","formatEN":"delete alert config [id]"}
+// @x-panel-log {"bodyKeys":[],"paramKeys":[],"BeforeFunctions":[],"formatZH":"删除告警配置 [name]","formatEN":"delete alert config [name]"}
 func (b *BaseApi) DeleteAlertConfig(c *gin.Context) {
 	var req dto.DeleteRequest
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
 		return
 	}
-	err := alertService.DeleteAlertConfig(req.ID)
+	name, err := alertService.DeleteAlertConfig(req.ID)
+	helper.SetOperationLogValues(c, map[string]string{"name": name})
 	if err != nil {
 		helper.InternalServer(c, err)
 		return
@@ -378,10 +384,24 @@ func (b *BaseApi) TestAlertConfig(c *gin.Context) {
 		return
 	}
 	if req.Type == constant.Custom {
-		result, err := alertService.TestCustomAlertConfig(req)
+		lang := strings.TrimSpace(c.GetHeader("Accept-Language"))
+		if lang == "" {
+			lang = i18n.GetLanguageFromDB()
+		}
+		result, err := alertService.TestCustomAlertConfig(req, lang)
 		if err != nil {
-			helper.InternalServer(c, err)
-			return
+			if global.LOG != nil {
+				global.LOG.Warnf("webhook test preparation failed: configID=%d error=%q", req.ID,
+					webhook_sender.DiagnosticText(err.Error(), webhook_sender.Request{
+						Format: webhook_sender.BodyJSON, Body: []byte(req.Config),
+					}))
+			}
+			result = dto.AlertConfigTestResult{Success: false}
+		}
+		result.Response = ""
+		result.Message = ""
+		if !result.Success {
+			result.Message = i18n.GetMsgByKeyAndLang(lang, "ErrWebhookTestFailed")
 		}
 		helper.SuccessWithData(c, result)
 		return

@@ -26,12 +26,6 @@
                 </div>
             </template>
             <div class="dropdown-menu" v-loading="loading || switchingNode">
-                <div class="dropdown-item" v-if="currentUser" @click="changeUserInfo">
-                    <SvgIcon class="icon" iconName="p-gerenzhongxin1" />
-                    {{ currentUser.name }}
-                </div>
-                <el-divider class="divider" />
-
                 <div class="dropdown-item" @click="openTask">
                     <SvgIcon class="icon" iconName="p-renwuzhongxin1" />
                     {{ $t('menu.msgCenter') }}
@@ -73,11 +67,6 @@
                             <ArrowRight />
                         </el-icon>
                     </div>
-                </div>
-                <el-divider class="divider" />
-                <div class="dropdown-item" @click="logout">
-                    <SvgIcon class="icon" iconName="p-tuichudenglu3" />
-                    {{ $t('commons.login.logout') }}
                 </div>
             </div>
         </el-popover>
@@ -129,7 +118,7 @@ const props = defineProps({
 
 const defaultNodeLimit = 8;
 
-const emit = defineEmits(['openTask', 'refresh']);
+const emit = defineEmits(['openTask', 'refresh', 'userChange']);
 bus.on('refreshTask', () => {
     checkTask();
 });
@@ -272,6 +261,7 @@ const openNodeDashboard = () => {
 };
 
 const logout = () => {
+    popoverVisible.value = false;
     ElMessageBox.confirm(i18n.global.t('commons.msg.sureLogOut'), i18n.global.t('commons.msg.infoTitle'), {
         confirmButtonText: i18n.global.t('commons.button.confirm'),
         cancelButtonText: i18n.global.t('commons.button.cancel'),
@@ -297,12 +287,16 @@ const loadCurrentUser = async (currentNode?: string) => {
     const authInfo = await syncAuthInfo(currentNode);
     if (authInfo) {
         currentUser.value = authInfo;
+        emit('userChange', authInfo);
     }
 };
 const changeUserInfo = () => {
+    popoverVisible.value = false;
     loadCurrentUser();
     userInfoRef.value?.openDrawer();
 };
+
+defineExpose({ openUserInfo: changeUserInfo, logout });
 
 onMounted(() => {
     loadNodes();

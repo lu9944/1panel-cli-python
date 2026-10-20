@@ -75,8 +75,9 @@
 </template>
 
 <script lang="ts" setup>
+import { useSearchReset } from '@/composables/useSearchReset';
 import { dateFormat } from '@/utils/date';
-import { onMounted, reactive, ref } from 'vue';
+import { toRef, onMounted, reactive, ref } from 'vue';
 import { deleteCheckDatabase, searchDatabases } from '@/api/modules/database';
 import AppResources from '@/views/database/postgresql/check/index.vue';
 import OperateDialog from '@/views/database/mongodb/remote/operate/index.vue';
@@ -100,6 +101,7 @@ const paginationConfig = reactive({
     order: 'null',
 });
 const searchName = ref();
+useSearchReset({ search: searchName, page: toRef(paginationConfig, 'currentPage') }, { onRevisit: () => search() });
 
 const search = async (column?: any) => {
     paginationConfig.orderBy = column?.order ? column.prop : paginationConfig.orderBy;

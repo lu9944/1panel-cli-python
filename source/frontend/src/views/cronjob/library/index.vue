@@ -45,14 +45,7 @@
             <template #rightToolBar>
                 <el-select v-model="group" @change="search()" clearable class="p-w-200">
                     <template #prefix>{{ $t('commons.table.group') }}</template>
-                    <div v-for="item in groupOptions" :key="item.id">
-                        <el-option
-                            v-if="item.name === 'Default'"
-                            :label="$t('commons.table.default')"
-                            :value="item.id"
-                        />
-                        <el-option v-else :label="item.name" :value="item.id" />
-                    </div>
+                    <el-option v-for="item in groupOptions" :key="item.id" :label="item.name" :value="item.id" />
                 </el-select>
                 <TableSearch @search="search()" v-model:searchName="searchInfo" />
                 <TableRefresh @search="search()" />
@@ -60,6 +53,8 @@
             </template>
             <template #main>
                 <ComplexTable
+                    :selection-context="() => [searchInfo, group]"
+                    row-key="id"
                     v-model:selects="selects"
                     :pagination-config="paginationConfig"
                     :data="data"
@@ -67,7 +62,12 @@
                     :heightDiff="300"
                 >
                     <el-table-column type="selection" fix />
-                    <el-table-column :label="$t('commons.table.name')" show-overflow-tooltip prop="name" min-width="60">
+                    <el-table-column
+                        :label="$t('commons.table.name')"
+                        show-overflow-tooltip
+                        prop="name"
+                        min-width="140"
+                    >
                         <template #default="{ row }">
                             <el-text type="primary" class="cursor-pointer" @click="showScript(row)">
                                 {{ row.name }}
@@ -76,21 +76,15 @@
                     </el-table-column>
                     <el-table-column :label="$t('cronjob.library.isInteractive')" prop="isInteractive" min-width="60">
                         <template #default="{ row }">
-                            <div class="-mb-1">
-                                <el-icon v-if="row.isInteractive"><Check /></el-icon>
-                                <el-icon v-else><Minus /></el-icon>
-                            </div>
+                            {{ $t(row.isInteractive ? 'commons.true' : 'commons.false') }}
                         </template>
                     </el-table-column>
-                    <el-table-column :label="$t('commons.table.group')" min-width="120" prop="group">
+                    <el-table-column :label="$t('commons.table.group')" min-width="100" prop="group">
                         <template #default="{ row }">
                             <el-button class="mr-3" size="small" v-if="row.isSystem">{{ $t('menu.system') }}</el-button>
                             <span v-if="row.groupBelong">
                                 <el-button size="small" v-for="(item, index) in row.groupBelong" :key="index">
-                                    <span v-if="item === 'Default'">
-                                        {{ $t('commons.table.default') }}
-                                    </span>
-                                    <span v-else>{{ item }}</span>
+                                    {{ item }}
                                 </el-button>
                             </span>
                         </template>
@@ -130,6 +124,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSearchReset } from '@/composables/useSearchReset';
 import { dateFormat, getCurrentDateFormatted } from '@/utils/date';
 import { deepCopy } from '@/utils/misc';
 import { newUUID } from '@/utils/id';
@@ -138,7 +133,7 @@ import TaskLog from '@/components/log/task/index.vue';
 import OperateDialog from '@/views/cronjob/library/operate/index.vue';
 import TerminalDialog from '@/views/cronjob/library/run/index.vue';
 import { deleteScript, searchScript, syncScript } from '@/api/modules/cronjob';
-import { onMounted, reactive, ref } from 'vue';
+import { toRef, onMounted, reactive, ref } from 'vue';
 import { Cronjob } from '@/api/interface/cronjob';
 import i18n from '@/lang';
 import { useGlobalStore } from '@/composables/useGlobalStore';
@@ -167,6 +162,7 @@ const paginationConfig = reactive({
     total: 0,
 });
 const searchInfo = ref<string>('');
+useSearchReset({ search: searchInfo, page: toRef(paginationConfig, 'currentPage') }, { onRevisit: () => search() });
 const group = ref<string>('');
 const groupOptions = ref();
 

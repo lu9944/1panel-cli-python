@@ -570,6 +570,8 @@ const message = {
         cancelKeepAlive: 'Dejar de mantener la sesión de la página',
     },
     header: {
+        userCenter: 'Centro de usuario',
+        exitSystem: 'Cerrar sesión',
         logout: 'Cerrar sesión',
     },
     database: {
@@ -1069,6 +1071,13 @@ const message = {
             whiteListHelper: 'Restringir el acceso solo a las IP incluidas en la lista blanca',
         },
         aiProxy: {
+            deploymentNoticeTitle: 'AI Gateway admite la implementación independiente',
+            deploymentNoticeDescription:
+                'AI Gateway ahora admite la implementación independiente. AI Gateway integrado en 1Panel dejará de recibir actualizaciones. Recomendamos instalar la versión independiente desde la tienda de aplicaciones. También puede seguir usando la versión actual.',
+            deploymentNoticeContinue: 'Entendido, seguir usando',
+            deploymentNoticeAppStore: 'Ir a la tienda de aplicaciones',
+            deploymentNoticeNoAppPermission:
+                'No tiene acceso a la tienda de aplicaciones. Contacte con su administrador para instalar la versión independiente.',
             title: 'Gateway de IA',
             apiReference: 'Referencia de API',
             notInstalled: 'No instalado',
@@ -1516,7 +1525,115 @@ const message = {
             ignoreEos: 'Ignorar EOS',
             extraHeaders: 'Encabezados adicionales',
         },
+        vllmMonitor: {
+            concurrency: 'Concurrencia actual',
+            sampleMoment: 'Al tomar la muestra',
+            sampleWindow: 'Intervalo de muestreo',
+            requestUnit: 'solicitudes',
+            processing: 'En proceso',
+            queued: 'En cola',
+            requestTiming: 'Tiempo de las solicitudes',
+            completedRequests: 'Solicitudes completadas en el intervalo',
+            tokensPerSecond: 'tokens/s',
+            requestsPerSecond: 'Solicitudes/s',
+            finishReasonLabels: {
+                stop: 'Finalización normal',
+                length: 'Límite de longitud alcanzado',
+                abort: 'Cancelada',
+                error: 'Error',
+                repetition: 'Repetición',
+            },
+            requestAnalysis: 'Análisis de solicitudes',
+            promptDistribution: 'Distribución de longitud de tokens de entrada',
+            generationDistribution: 'Distribución de longitud de tokens de salida',
+            finishReasons: 'Motivos de finalización de solicitudes',
+            queueTime: 'Tiempo medio en cola',
+            averageGenerationTokens: 'Tokens de salida medios por solicitud',
+            prefixCacheHitRate: 'Tasa de aciertos de caché de prefijos',
+            distributionHelper:
+                'Las distribuciones de longitud muestran tasas de solicitudes y no cambian al seleccionar media o pico.',
+            cleanHelper:
+                '¿Borrar solo el historial de monitoreo de esta instancia de vLLM? No afecta a otras instancias ni al monitoreo del host o de GPU.',
+            overview: 'Resumen',
+            latencyAnalysis: 'Análisis de latencia',
+            requests: 'Solicitudes',
+            tokenThroughput: 'Rendimiento de tokens',
+            running: 'Solicitudes en ejecución',
+            waiting: 'Solicitudes en espera',
+            cacheUsage: 'Uso de caché KV',
+            promptThroughput: 'Rendimiento de tokens de entrada',
+            generationThroughput: 'Rendimiento de tokens de salida',
+            requestThroughput: 'Solicitudes completadas',
+            timeToFirstToken: 'Latencia media del primer token',
+            timePerOutputToken: 'Latencia media entre tokens',
+            requestLatency: 'Latencia media de solicitud',
+            unavailable:
+                'Métricas no disponibles. Compruebe que la instancia esté en ejecución y que /metrics sea accesible.',
+            loadFailed: 'No se pudieron cargar los datos. Inténtelo de nuevo.',
+            helper: 'Configura la recopilación, el intervalo y la retención en los ajustes de monitorización.',
+            cache: 'Caché KV',
+            throughput: 'Solicitudes/s',
+            phaseTime: 'Tiempo de precarga y decodificación',
+            prefillTime: 'Tiempo medio de precarga',
+            decodeTime: 'Tiempo medio de decodificación',
+            requestLatencyChart: 'Latencia de solicitud de extremo a extremo',
+            timeToFirstTokenChart: 'Tiempo hasta el primer token',
+            timePerOutputTokenChart: 'Latencia entre tokens',
+        },
         gpu: {
+            memoryActivity: 'Actividad de lectura/escritura de memoria',
+            hotspotTemperature: 'Temperatura del punto caliente',
+            fanRPM: 'Velocidad del ventilador (RPM)',
+            eccCorrectable: 'Errores corregibles',
+            eccUncorrectable: 'Errores no corregibles',
+            eccPending: 'Modo ECC pendiente',
+            engineUtil: 'Utilización de motores',
+            cpuUtil: 'CPU · utilización',
+            aiCore: 'AICore · utilización',
+            aiCPUUtil: 'AICPU · utilización',
+            ctrlCPUUtil: 'CtrlCPU · utilización',
+            mediaFrequency: 'Medios · frecuencia',
+            encoderUtil: 'Codificador · utilización',
+            decoderUtil: 'Decodificador · utilización',
+            jpegUtil: 'JPEG · utilización',
+            ofaUtil: 'OFA · utilización',
+            mediaUtil: 'Medios · utilización',
+            computeUtil: 'Cómputo · utilización',
+            copyUtil: 'Copia · utilización',
+            ddrUsage: 'DDR · capacidad',
+            ddrUsed: 'DDR · usado',
+            ddrTotal: 'DDR · total',
+            ddrBandwidth: 'DDR · utilización del ancho de banda',
+            hbmUsage: 'HBM · capacidad',
+            hbmUsed: 'HBM · usado',
+            hbmTotal: 'HBM · total',
+            hbmBandwidth: 'HBM · utilización del ancho de banda',
+            hugepagesUsage: 'Páginas grandes · cantidad',
+            hugepagesUsed: 'Páginas grandes · usado',
+            hugepagesTotal: 'Páginas grandes · total',
+
+            historyAverage: 'Promedio',
+            historyPeak: 'Máximo',
+            historyAggregated:
+                '{count} muestras agrupadas en intervalos de {seconds} segundos; los procesos solo muestran cantidades.',
+            historyRaw: '{count} muestras originales.',
+            historyMetricEmpty: 'No hay datos de esta métrica en el período seleccionado',
+            historyLoadFailed: 'No se pudo cargar el historial. Inténtelo de nuevo.',
+            collectedAt: 'Fecha de recopilación',
+            processUnavailable: 'Información de procesos no disponible',
+            architecture: 'Arquitectura',
+            memoryFrequency: 'Frecuencia de memoria',
+            memoryTemperature: 'Temperatura de memoria',
+            memoryReserved: 'Memoria reservada',
+            powerDefaultLimit: 'Límite de potencia predeterminado',
+            powerMaxLimit: 'Potencia máxima configurable',
+            clockEvents: 'Motivos de limitación de frecuencia',
+            memoryBandwidth: 'Uso del ancho de banda de memoria',
+            legacyDevice: 'Registro antiguo',
+            legacyHistory:
+                'Estos registros no tienen un ID de dispositivo estable. No se pueden verificar su identidad ni los valores ausentes.',
+            pcieGeneration: 'Generación PCIe (actual / máxima)',
+            pcieWidth: 'Ancho PCIe (actual / máximo)',
             gpu: 'Monitoreo de GPU',
             gpuHelper:
                 'No se detectó ningún comando de administración de GPU/XPU/NPU compatible. ¡Compruebe e inténtelo de nuevo!',
@@ -1532,7 +1649,7 @@ const message = {
             temperature: 'Temperatura',
             performanceState: 'Estado de Rendimiento',
             powerUsage: 'Consumo de Energía',
-            memoryUsage: 'Utilización de Memoria',
+            memoryUsage: 'Uso de capacidad de memoria',
             fanSpeed: 'Velocidad del Ventilador',
             power: 'Energía',
             powerCurrent: 'Energía Actual',
@@ -1811,6 +1928,12 @@ const message = {
         imageName: 'Nombre de la imagen',
         pull: 'Descargar',
         path: 'Ruta',
+        imageUploadDrop: 'Arrastre un archivo de imagen aquí o haga clic para subirlo',
+        imageUploadHelper:
+            'Se permite cualquier formato de archivo. Docker valida el contenido. Los archivos subidos se conservan para reintentar la importación o eliminarlos manualmente.',
+        imageUploadEmpty: 'El archivo está vacío. Seleccione un archivo de imagen válido.',
+        imageImportSubmitted:
+            'Tarea de importación de imagen enviada. Consulte el registro de la tarea para ver el resultado.',
         importImage: 'Importar',
         buildArgs: 'Argumentos de Construcción',
         imageBuild: 'Construir',
@@ -2102,6 +2225,9 @@ const message = {
         cleanLogscope: 'Retención de logs',
     },
     monitor: {
+        hostMonitor: 'Monitoreo del host',
+        gpuMonitor: 'Monitoreo de GPU',
+        vllmMonitor: 'Monitoreo de vLLM',
         globalFilter: 'Filtro Global',
         enableMonitor: 'Estado de Monitoreo',
         storeDays: 'Días de Retención',
@@ -2111,7 +2237,7 @@ const message = {
         defaultIO: 'Disco Predeterminado',
         defaultIOHelper: 'Opción de disco predeterminada mostrada en las interfaces de monitoreo y resumen',
         cleanMonitor: 'Limpiar Registros de Monitoreo',
-        cleanHelper: 'Esta operación borrará todos los registros de monitoreo, incluidos los de GPU. ¿Continuar?',
+        cleanHelper: 'Esta operación borrará todo el historial de {0}. ¿Continuar?',
         avgLoad: 'Carga promedio',
         loadDetail: 'Detalle de carga',
         resourceUsage: 'Utilización',
@@ -2170,6 +2296,22 @@ const message = {
         profileMutexDesc:
             'Mide el tiempo de espera causado por la contención de mutex para localizar bloqueos disputados.',
         profileBlockDesc: 'Mide los bloqueos en canales, select y primitivas de sincronización.',
+        exportRange: 'Intervalo de tiempo',
+        exportMetrics: 'Métricas',
+        exportMetricsHelper: 'Las métricas de CPU, memoria y carga se combinan en una sola tabla.',
+        exportAllDevices: 'Cada dispositivo (detalle por dispositivo)',
+        exportAllInterfaces: 'Cada interfaz (detalle por interfaz)',
+        exportFormat: 'Formato',
+        exportCsvHelper: 'Al seleccionar varias métricas se generan CSV separados empaquetados en un ZIP.',
+        exportJsonHelper: 'Exportar como un único archivo JSON estructurado.',
+        exportXlsxHelper: 'Cada métrica se exporta en una hoja independiente.',
+        exportTruncated: 'Se superó el límite de filas de Excel; estos conjuntos se truncaron: {0}',
+        exportEmptyTables: 'Sin datos en el rango seleccionado para: {0}',
+        exportAggregate: 'Total combinado (todos los dispositivos)',
+        exportAllGPUs: 'Cada modelo (detalle por modelo)',
+        exportOptionsFailed: 'No se pudo cargar la lista de dispositivos para: {0}. Actualiza la página y reintenta.',
+        selectMetrics: 'Selecciona al menos una métrica para exportar',
+        selectTimeRange: 'Selecciona el intervalo de tiempo a exportar',
     },
     terminal: {
         showTerminalButton: 'Acceso rápido al terminal',
@@ -2829,6 +2971,9 @@ const message = {
         privateKey: 'Clave privada',
         publicKey: 'Clave pública',
         password: 'Contraseña',
+        existingPassPhrase: 'Contraseña actual de la clave privada',
+        existingPassPhraseHelper:
+            'Introduce la contraseña original si la clave privada está cifrada; en caso contrario, deja el campo vacío. Esto no cambia la contraseña.',
         createMode: 'Método de creación',
         generate: 'Autogenerar',
         unSyncPass: 'La contraseña de la clave no se puede sincronizar',
@@ -4112,6 +4257,9 @@ const message = {
             'Habilitar esto puede evitar la fuga de certificados, establecer un sitio web predeterminado invalidará esta configuración',
     },
     ssl: {
+        deleteConfirm:
+            'Se eliminarán los siguientes certificados. Los certificados ACME se revocarán automáticamente. ¿Desea continuar?',
+        deleteAndRevoke: 'Eliminar y revocar',
         create: 'Solicitar',
         provider: 'Tipo',
         manualCreate: 'Creado manualmente',
@@ -4191,48 +4339,50 @@ const message = {
         useEAB: 'Usar autenticación EAB',
     },
     firewall: {
+        ipv6Support: 'Compatibilidad con IPv6',
+        ipv6SupportHelper:
+            'Controla la gestión y aplicación de las reglas IPv6 del cortafuegos sin afectar a la conectividad IPv6 del servidor.',
+        ipv6DisableContainerHelper: 'Ocultar la información de los puertos IPv6 de los contenedores.',
+        ipv6DisableWhitelistHelper:
+            'Eliminar las reglas IPv6 de la lista de permitidos y conservar las demás reglas IPv6 existentes.',
+        ipv6DisableRulesHelper: 'Desactivar las reglas IPv6 de iptables y nftables gestionadas por 1Panel.',
+        ipv6DisableNetworkHelper: 'Esto no desactiva la conectividad IPv6 del servidor.',
+        ipv6DisableEffectHelper:
+            'Las restricciones de acceso IPv6 y el reenvío de puertos afectados dejarán de aplicarse.',
+        ipv6Disabled: 'IPv6 está desactivado. Actívelo primero en la configuración del cortafuegos.',
+        familyRepair: 'Reparar',
+        familyIncomplete: 'Las cadenas de {0} están incompletas',
+        resetWithBackup: 'Guardar reglas y restablecer',
+        resetOnly: 'Solo restablecer',
+        resetWithBackupHelper:
+            'Guarde las reglas del módulo actual en JSON para restaurarlas al inicializar o iniciar el cortafuegos.',
+        resetOnlyHelper: 'Borrar las reglas actuales sin crear una copia nueva. Se conservan las copias existentes.',
+        backupDirectoryHelper:
+            'Se muestran las copias válidas de reglas en {0}. Se selecciona la más reciente por defecto.',
+        startOnly: 'Solo iniciar',
+        startAndRestore: 'Iniciar y restaurar desde una copia de seguridad',
+        startWithBackupHelper:
+            'Inicie el cortafuegos normalmente o elija una copia JSON existente para iniciar y restaurar reglas.',
+        restoreAllRules: 'Inicializar y restaurar reglas',
+        importRuleBackup: 'Importar desde copia de seguridad',
+        initializeOnly: 'Solo inicializar',
+        backupRuleCount: 'Número de reglas',
+        noRuleBackup: 'No hay copias de reglas para restaurar',
+        ruleBackupLoadFailed:
+            'No se pudieron cargar las copias de las reglas. Reintenta o inicializa sin restaurar una copia.',
         create: 'Crear regla',
         edit: 'Editar regla',
         quickJump: 'Acceso rápido',
         used: 'En uso',
         unUsed: 'No usado',
-        managed: 'Creada por el panel',
-        managedHelper: 'Creada y mantenida por 1Panel. Se puede editar o eliminar.',
-        adopted: 'Externa gestionada',
-        adoptedHelper: 'Una regla existente del sistema que ahora mantiene 1Panel.',
-        external: 'Regla externa',
-        externalHelper:
-            'Regla existente del sistema que aún no gestiona 1Panel. Se puede adoptar cuando sea necesario.',
-        protected: 'Protegida por el sistema',
-        protectedHelper:
-            'Las reglas integradas y las que coinciden exactamente con la lista blanca no se pueden editar ni eliminar.',
-        stateShort: {
-            managed: 'Panel',
-            adopted: 'Gestionada',
-            external: 'Externa',
-            protected: 'Protegida',
-            drifted: 'Desviada',
-        },
+        whitelist: 'Lista de permitidos',
+        builtinRuleProtected: 'Regla de protección integrada del sistema. No se puede editar ni eliminar.',
+        whitelistRuleProtected:
+            'Solo se pueden cambiar el orden y la descripción de las reglas permitidas. Para otros cambios, vaya a Configuración → Lista de puertos permitidos.',
         ruleTargetRequired: 'Introduce al menos una dirección IP o un puerto',
-        resolution_adopt: 'Asumir la gestión',
-        plan_duplicate_rules:
-            'No se pueden gestionar reglas duplicadas con las mismas condiciones y acciones. Elimine manualmente los duplicados y vuelva a intentarlo.',
-        adoptRuleConfirm: 'Después de asumirla, 1Panel podrá mantener y eliminar esta regla existente. ¿Continuar?',
-        plan_exact_rule_conflict:
-            'Ya existe una regla con las mismas condiciones, pero con una acción opuesta de permitir o denegar.',
-        allRulesAlreadyExist: 'Las {0} reglas comprobadas ya existen. No hay reglas nuevas que crear.',
-        plan_managed_rule_drifted:
-            'La regla gestionada no coincide con el firewall activo. Resuelve primero la diferencia.',
-        plan_opaque_rule_in_target_scope:
-            'El ámbito contiene una regla que no puede analizarse con seguridad. La operación se detuvo.',
-        plan_runtime_permanent_mismatch: 'Las configuraciones activa y permanente difieren. Sincronízalas primero.',
-        plan_protected_rule: 'Esta regla está protegida y no se puede asumir, modificar ni eliminar.',
-        plan_blocked: 'La regla no puede aplicarse de forma segura. Actualiza la lista e inténtalo de nuevo.',
         largeRuleSet:
             'Demasiadas reglas de cortafuegos pueden ralentizar las operaciones. Se recomienda usar iptables o nftables.',
-        scopeDefaultMismatch: 'La zona predeterminada es {0}; esta página solo gestiona la zona public.',
         scopeMissing: 'Falta el ámbito gestionado {0}; se creará de forma segura al aplicar la primera regla.',
-        scopeUnmanagedActive: 'Se detectaron otros ámbitos activos: {0}. 1Panel no modificará sus reglas.',
         dockerRestart: 'Las operaciones del firewall requieren reiniciar el servicio de Docker',
         firewallHelper: 'Firewall del sistema {0}',
         firewallNotStart: 'El firewall del sistema no está habilitado actualmente. Actívalo primero.',
@@ -4255,8 +4405,6 @@ const message = {
         dockerGuard: 'Protección de puertos de contenedores',
         systemFirewall: 'Firewall del host',
         systemFirewallHelper: 'Controla el acceso a los puertos del host y las reglas de entrada.',
-        forwardPolicyDropWarning:
-            'La política predeterminada de FORWARD para {0} es DROP. El tráfico reenviado a otros hosts puede bloquearse si las reglas de iptables/ip6tables no lo permiten explícitamente. Revise las reglas de permiso de la versión IP correspondiente.',
         forwardingHelper: 'Gestiona las reglas de reenvío de puertos.',
         dockerFirewallHelper: 'Selecciona cómo gestiona 1Panel la protección de puertos de contenedores.',
         dockerNftablesRequirement: 'Docker ≥ 29.0.0, experimental',
@@ -4265,6 +4413,8 @@ const message = {
         addressFamily: 'Versión de IP',
         portOrRange: 'Puerto / rango',
         batchLimit: 'Puede crear o importar hasta {0} reglas por lote, después de expandirlas.',
+        importDuplicatesRemoved:
+            'Se eliminaron {0} reglas duplicadas, incluidas las repetidas en el archivo y las que ya existen.',
         importLimit: 'Importe hasta {0} reglas (contadas después de expandirlas), con un archivo de hasta {1} KB.',
         ruleSyncTitle: 'Sincronizar reglas',
         ruleSyncAction: 'Sincronizar reglas',
@@ -4282,19 +4432,9 @@ const message = {
         ruleSyncBlocked: 'No disponibles',
         ruleSyncReason: 'Resultado de comprobación',
         ruleSyncReasonDetail: {
-            matchesDatabasePolicy: 'La regla ya coincide con la política de la base de datos.',
-            managedOrderDiffers: 'El orden de las reglas gestionadas difiere del orden de la base de datos.',
-            managedOnlyInTarget: 'La regla gestionada solo existe en el firewall de destino.',
-            managedRuntimeCannotRemove: 'La regla activa gestionada no se puede eliminar de forma segura.',
             missingFromTarget: 'La regla no existe en el firewall de destino.',
-            targetDiffers: 'La regla de destino difiere de la política de la base de datos.',
             alreadyExistsInTarget: 'La regla ya existe en el firewall de destino.',
             onlyInTarget: 'La regla solo existe en el firewall de destino.',
-            stale: 'El estado de la regla está desactualizado. Actualiza e inténtalo de nuevo.',
-            protectedRule: 'Esta regla protegida del firewall no se puede modificar.',
-            dockerAcceptReadOnly:
-                'Esta regla ACCEPT es de solo lectura y se conservará al sincronizar las demás reglas. Para eliminarla, bórrela manualmente en el host.',
-            cannotReconcile: 'No se puede sincronizar la regla de destino: {0}',
         },
         ruleSyncPartial: 'Sincronización completada: {0} correctas, {1} ya existían y {2} fallaron.',
         ruleSyncSuccess: 'Sincronización completada: {0} correctas, {1} ya existían y {2} eliminadas.',
@@ -4304,17 +4444,20 @@ const message = {
             remove: 'Para eliminar',
             blocked: 'No disponible',
         },
+        initializeFromFile: 'Inicializar desde archivo',
+        downloadRuleBackup: 'Descargar copia de reglas',
+        importFileHelper:
+            'Importa archivos JSON de hasta 64 MB por lotes y en el orden del archivo. Las reglas que no se puedan convertir se indicarán como errores.',
         resetDirectRulesHelper:
-            'Elimina de {0} las cadenas, reglas activas y archivos persistentes del firewall de 1Panel; se conservan las políticas de la base de datos',
+            'Eliminar todas las cadenas del cortafuegos del host de 1Panel, reglas activas y archivos persistentes de {0}.',
         resetWhitelistRulesHelper:
-            'Restablece la configuración personalizada activa en {0}, restaura los valores iniciales y desactiva {0}; las políticas de la base de datos se conservan y pueden volver a sincronizarse.',
+            'Restablecer la configuración personalizada de {0}, restaurar los valores predeterminados y desactivarlo.',
         cleanupForwardingBackendHelper:
-            'Restablece las reglas de ejecución del reenvío de puertos de 1Panel en {0}: elimina todas las reglas y cadenas relacionadas y conserva los datos de la base de datos',
+            'Elimina de {0} todas las reglas y cadenas de reenvío de 1Panel y los archivos de recuperación automática. Se conservan las copias JSON.',
         cleanupDockerBackendHelper:
-            'Restablece las reglas de ejecución de protección de puertos Docker de 1Panel en {0}: elimina todas las reglas y cadenas relacionadas y conserva los datos de la base de datos',
+            'Elimina de {0} todas las reglas y cadenas de protección Docker de 1Panel y los archivos de recuperación automática. Se conservan las copias JSON.',
         cleanupBeforeBackendSwitch:
-            'El backend actual {0} todavía contiene reglas de ejecución de 1Panel. Restablézcalo antes de cambiar a {1}. El restablecimiento solo elimina las reglas de ejecución; las políticas de la base de datos se conservan y pueden inicializarse o sincronizarse después del cambio.',
-        cleanupAction: 'Restablecer',
+            'Restablece el {0} actual antes de cambiar a {1} y confirma cómo se restaurarán sus reglas.',
         backendSwitchNotice:
             'Se recomienda utilizar un único método de gestión de firewall. Ejecutar varios firewalls al mismo tiempo puede causar conflictos de reglas, estados inconsistentes o problemas de acceso a los puertos de los contenedores.',
         switchBackendHelper: '¿Cambiar a {0}?',
@@ -4346,9 +4489,9 @@ const message = {
             'Las reglas INPUT del host no protegen directamente este puerto publicado por Docker. Haz clic para abrir la protección de puertos de contenedores.',
         notInitialized: 'No inicializado',
         ipv6RARisk:
-            'El reenvío IPv6 está bloqueado: las interfaces {0} tienen accept_ra=1 y pueden depender de RA/SLAAC. Revise la configuración de red, configure accept_ra=2 de forma persistente en las interfaces que necesitan RA y vuelva a intentarlo.',
+            'El reenvío IPv6 está bloqueado para evitar una posible pérdida de conectividad. Consulte la documentación y los registros del sistema.',
         ipv6RACheckFailed:
-            'No se puede comprobar la configuración RA de IPv6. Se ha bloqueado la activación del reenvío IPv6. Revise la configuración de red y vuelva a intentarlo.',
+            'El reenvío IPv6 está bloqueado porque no se pudo comprobar la configuración de red. Consulte los registros del sistema.',
         ipv6ForwardingOnDemand:
             'El reenvío IPv6 no está habilitado. Se comprobará y habilitará al añadir o restaurar reglas IPv6.',
         familyUnsupported: 'El sistema no admite {0}',
@@ -4363,8 +4506,7 @@ const message = {
         portDetails: 'Detalles del puerto',
         orphanEndpoints: 'Puntos de conexión sin asociar',
         orphanPolicies: 'Reglas sin asociar',
-        orphanPoliciesHelper:
-            'Las siguientes {0} regla(s) no están vinculadas a ningún puerto Docker. Se vincularán automáticamente cuando se detecte un puerto coincidente.',
+        orphanPoliciesHelper: 'Estas {0} reglas del sistema no tienen un puerto publicado de Docker coincidente.',
         composeOrApp: 'Compose / Aplicación',
         sources: 'Orígenes',
         deniedSources: 'Orígenes denegados',
@@ -4373,6 +4515,8 @@ const message = {
         protectionMode: 'Modo de protección',
         denySources: 'Denegar orígenes especificados',
         allowSources: 'Permitir solo los orígenes especificados',
+        acceptSources: 'Aceptar directamente los orígenes especificados',
+        acceptAll: 'Aceptar directamente todo el tráfico',
         denyAll: 'Denegar todo acceso',
         dockerGuardMixedFamilyHelper:
             'Se han seleccionado IPv4 e IPv6. Configura por separado las políticas basadas en el origen; denegar todo puede aplicarse directamente.',
@@ -4419,7 +4563,7 @@ const message = {
             'Desvincular: al desvincular, todas las reglas de firewall agregadas se volverán inválidas. Proceda con precaución. ¿Confirmar?',
         portWhiteList: 'Lista blanca de puertos',
         whitelistConfigHelper:
-            'La lista de permitidos solo guarda la configuración y protege las reglas de acceso coincidentes. Las reglas que falten se añaden al iniciar, reiniciar, inicializar o sincronizar. Editar o eliminar entradas no elimina las reglas existentes.',
+            'Guardar la lista de permitidos añade las reglas de permiso que faltan y protege las coincidentes. Editar o eliminar entradas de la lista no elimina las reglas existentes.',
         whitelistDeleteConfirm:
             'Solo se eliminará esta entrada de la lista blanca. Se conservarán las reglas existentes del firewall. ¿Continuar?',
         portWhiteListHelper:
@@ -4437,7 +4581,7 @@ const message = {
         whitelistServicePortsHelper:
             'Introduzca un único puerto (1-65535). Esto no cambia el puerto de escucha del servicio. Al cambiar el puerto en los ajustes del servicio, también se actualiza esta entrada de la lista blanca.',
         whitelistSourcesHelper:
-            'Introduzca direcciones IP o rangos CIDR separados por comas o saltos de línea. Déjelo en blanco para permitir todos los orígenes IPv4 e IPv6.',
+            'Introduzca direcciones IP o rangos CIDR separados por comas o saltos de línea. Déjelo en blanco para permitir {0}.',
         destinationPortPlaceholder: 'p. ej. 80, 80,443 o 8080-8089',
         deleteRuleConfirm: 'Se eliminarán {0} reglas. ¿Continuar?',
         deleteUsedRuleConfirm:
@@ -6835,6 +6979,15 @@ const message = {
             snapshot: 'Snapshot del sistema',
             clamsRulesHelper: 'Tareas de escaneo antivirus que requieren alerta',
             cronJobRulesHelper: 'Este tipo de tareas programadas necesita configuración',
+            alertTriggerMode: 'Notificar cuando',
+            alertTriggerFailed: 'Solo falle',
+            alertTriggerSuccess: 'Solo tenga éxito',
+            alertTriggerBoth: 'Tenga éxito o falle',
+            alertNotificationHelper:
+                'Notificar al finalizar la ejecución, no durante los reintentos. Las notificaciones de éxito y fallo comparten el límite diario y el horario de envío.',
+            notificationTitle: 'Tarea programada - {0} 「{1}」 notificación de ejecución',
+            notificationSuccessTitle: 'Tarea programada - {0} 「{1}」 completada correctamente',
+            notificationRule: '{0}: {1}, hasta {2} notificaciones al día',
             clamsTitle: 'Tarea antivirus 「 {0} 」 detectó archivo infectado',
             cronJobAppTitle: 'Cronjob - Backup de app 「 {0} 」 falló',
             cronJobWebsiteTitle: 'Cronjob - Backup de sitio 「 {0} 」 falló',
@@ -6937,16 +7090,17 @@ const message = {
             webhookPreset: 'Preajuste',
             genericJsonPreset: 'JSON genérico',
             customPreset: 'Personalizado',
-            webhookUrlSecretHelper: 'La URL del Webhook se almacena cifrada y se puede ver y editar aquí',
             webhookPublicAddressHelper:
                 'Solo se admiten direcciones HTTP/HTTPS accesibles públicamente; se bloquean las direcciones locales, privadas y reservadas',
             customWebhookRecoveryRequired:
-                'Esta configuración no es válida o procede de una versión anterior. Vuelve a introducir la URL del Webhook y las cabeceras secretas necesarias y guarda los cambios.',
+                'No se puede leer la configuración guardada del Webhook. Vuelve a introducir la URL y las cabeceras sensibles necesarias y realiza una prueba satisfactoria antes de guardar.',
             clearSecret: 'Borrar',
-            keepSecret: 'Mantener sin cambios',
-            secretCleared: 'Este secreto se borrará al guardar',
+            keepSecret: 'Restaurar valor guardado',
             bodyType: 'Tipo de Body',
             bodyTemplate: 'Plantilla del Body',
+            formatJson: 'Formatear',
+            jsonFormatTooLarge:
+                'El contenido formateado supera el límite de tamaño. Se ha conservado el contenido original.',
             formFieldName: 'Nombre del campo',
             formFieldValue: 'Valor del campo',
             addFormField: 'Añadir campo',
@@ -7197,9 +7351,34 @@ const message = {
                 orphan_snapshot: 'Instantánea huérfana',
                 partial_file: 'Archivo incompleto',
             },
+            disks: 'Discos',
+            resizeDisk: 'Ampliar',
+            diskTarget: 'Dispositivo',
+            diskCapacityAfterResize: 'Capacidad total tras la ampliación',
+            diskResizeHelper:
+                'La ampliación solo aumenta la capacidad del disco virtual. Después, amplíe las particiones y los sistemas de archivos dentro de la máquina virtual.',
+            diskResizeLimit:
+                'La máquina virtual debe estar apagada y el disco qcow2 debe ser independiente y escribible, sin instantáneas ni cadena de imágenes de respaldo. No se admite reducir el tamaño.',
+            diskResizeReason: {
+                referenceCheck:
+                    'No se pueden comprobar las referencias al disco virtual. La ampliación no está disponible; revise los discos de otras máquinas virtuales.',
+                referenced:
+                    'Otro equipo virtual o dispositivo utiliza este disco virtual; la ampliación aún no se admite.',
+                running: 'Apague la máquina virtual antes de ampliar el disco.',
+                saved: 'Reanude la máquina virtual y apáguela normalmente antes de ampliar.',
+                snapshots: 'No se admite la ampliación con instantáneas para no afectar a su restauración.',
+                backing: 'El disco depende de otra imagen; la ampliación aún no se admite.',
+                shared: 'El disco está marcado como compartido; no se permite ampliarlo para no afectar a otros usuarios.',
+                unsupported: 'El formato, la ubicación o los permisos del disco no permiten ampliarlo.',
+                unavailable: 'No se puede verificar el estado del disco. Revise y actualice.',
+            },
             diskSize: 'Tamaño del disco',
             isoHelper:
                 'Puede montar varios ISO. Seleccione primero el instalador del sistema operativo y después las imágenes de controladores, como VirtIO. Cada imagen usa una unidad de CD-ROM independiente.',
+            windowsDriverHelper:
+                'Es posible que la imagen de Windows no incluya el controlador de red VirtIO (NetKVM). Monte una ISO de controladores VirtIO e instale el controlador en Windows. Omita este aviso si la imagen ya incluye el controlador.',
+            windowsDiskDriverHelper:
+                'Los discos VirtIO también pueden requerir que se cargue el controlador de disco (viostor); de lo contrario, el instalador de Windows podría no detectar el disco.',
             osType: 'Tipo de sistema operativo',
             osOther: 'Otro',
             diskBus: 'Bus de disco',
@@ -7211,12 +7390,17 @@ const message = {
                 'El pool de almacenamiento guarda los discos de las máquinas virtuales y los archivos ISO.',
             network: 'Red',
             bridgeName: 'Nombre del bridge',
+            sourceInterface: 'Interfaz de red del anfitrión',
+            macvtapNetworkHelper:
+                'La VM funciona como otro ordenador de la LAN. Otros dispositivos pueden acceder directamente a su IP sin cambiar la configuración IP del anfitrión. Nota: de forma predeterminada, el anfitrión y la VM no pueden comunicarse directamente por esta conexión.',
+            macvtapInterfaceHelper:
+                'Seleccione una interfaz cableada conectada a la LAN deseada; puede compartirla con el anfitrión. La LAN asigna la IP de la VM, o puede configurarla manualmente en ella. La red debe permitir varios dispositivos en esta interfaz (varias direcciones MAC).',
             natNetworkHelper:
-                'Las VM pueden acceder a la red a través del host, pero los dispositivos externos normalmente no pueden acceder a ellas directamente.',
+                'Adecuado para VM que necesitan acceso a Internet o publican pocos servicios. La VM sale a Internet a través del anfitrión. Para acceder a sus servicios desde otros dispositivos, normalmente debe configurar el reenvío de puertos por separado.',
             bridgeNetworkHelper:
-                'Conecta las VM a un bridge existente del host (como br0). Si el host tiene una NIC adicional sin usar, puedes crear un bridge para ella y utilizarlo.',
+                'La VM funciona como un ordenador independiente conectado a un conmutador. Tanto el anfitrión como otros dispositivos de la LAN pueden acceder directamente. Primero debe configurar un puente en el anfitrión.',
             bridgeNameHelper:
-                'Seleccione un Linux bridge existente en el host, como br0. Las NIC físicas no son bridges, y los bridges gestionados por docker/libvirt no pueden seleccionarse aquí.',
+                'Seleccione un puente configurado, como br0. Si no hay ninguno, créelo primero en el anfitrión. No puede seleccionar interfaces físicas ni puentes administrados por Docker/libvirt.',
             natCIDRHelper: 'CIDR, puerta de enlace y rango DHCP se usarán en la nueva red virtual NAT.',
             networkCIDR: 'CIDR de red',
             gateway: 'Puerta de enlace',
@@ -7234,6 +7418,7 @@ const message = {
             available: 'Disponible',
             vmCount: 'VM vinculadas',
             usedIPs: 'IP usadas',
+            usedIPsUnavailable: 'Obtención aún no disponible',
             monitor: 'Supervisión',
             monitorNotReady: 'La máquina virtual no está en ejecución. Los datos de supervisión no están disponibles.',
             monitorLoadFailed: 'No se pudieron obtener los datos de supervisión de la VM.',
@@ -7252,6 +7437,10 @@ const message = {
             rx: 'RX',
             tx: 'TX',
             console: 'Consola',
+            consoleShortcutKeys: 'Atajos de teclado',
+            consoleCustomKeys: 'Combinación personalizada',
+            consoleMainKey: 'Seleccionar tecla',
+            consoleSendKeys: 'Enviar',
             consoleNotReady:
                 'La consola VNC no está disponible. Inicie la VM y compruebe su configuración gráfica VNC.',
             consoleDisconnected: 'La consola VNC se ha desconectado.',

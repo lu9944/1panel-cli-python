@@ -59,8 +59,8 @@ jobs:
           scripts/build_skill_package.sh "$PWD/dist"
           dist/1panel-skill/bin/1panel-cli --version
 
-      - name: 发布 Release(仅 tag;curl 调 API,兼容 Gitea/GitHub)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: 发布 Release(tag 或手动运行;curl 调 API,兼容 Gitea/GitHub)
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -69,19 +69,23 @@ jobs:
             echo "GITHUB_TOKEN 未注入,无法发布 Release(检查 workflow 的 permissions/secrets)"; exit 1
           fi
           cd repo
-          TAG="${GITHUB_REF_NAME}"
           API="${GITHUB_API_URL:-https://api.github.com}"
           REPO="${GITHUB_REPOSITORY}"
           AUTH="Authorization: token ${GITHUB_TOKEN}"
           VERSION="$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v${VERSION}"
+          fi
           ASSET="dist/1panel-skill-${VERSION}.zip"
           [ -f "$ASSET" ] || { echo "缺少附件: $ASSET"; exit 1; }
-          NOTES="1Panel v2 面板管理 Agent Skill(Python 版),CLI 版本 ${VERSION},验证基线 1Panel v2.3.2。下载 zip 解压后运行 bash install.sh,或手动把 1panel-skill 目录复制到 opencode / Claude Code 的 skills 目录。"
+          NOTES="1Panel v2 面板管理 Agent Skill(Python 版),CLI 版本 ${VERSION},验证基线 1Panel v2.4.0。下载 zip 解压后运行 bash install.sh,或手动把 1panel-skill 目录复制到 opencode / Claude Code 的 skills 目录。"
 
           REL_JSON="$(curl -sS -H "$AUTH" "$API/repos/$REPO/releases/tags/$TAG")"
           REL_ID="$(printf '%s' "$REL_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", 0))' 2>/dev/null || echo 0)"
           if [ "${REL_ID:-0}" = "0" ]; then
-            PAYLOAD="$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "name": sys.argv[2], "body": sys.argv[3], "draft": False, "prerelease": False}))' \
+            PAYLOAD="$(python3 -c 'import json,sys,os; print(json.dumps({"tag_name": sys.argv[1], "target_commitish": os.environ.get("GITHUB_SHA") or None, "name": sys.argv[2], "body": sys.argv[3], "draft": False, "prerelease": False}))' \
               "$TAG" "1panel-cli Skill $TAG" "$NOTES")"
             REL_JSON="$(curl -sS -H "$AUTH" -H 'Content-Type: application/json' -X POST \
               "$API/repos/$REPO/releases" -d "$PAYLOAD")"

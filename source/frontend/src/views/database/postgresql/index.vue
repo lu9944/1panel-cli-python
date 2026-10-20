@@ -241,6 +241,7 @@
 </template>
 
 <script lang="ts" setup>
+import { useSearchReset } from '@/composables/useSearchReset';
 import BindDialog from '@/views/database/postgresql/bind/index.vue';
 import OperateDialog from '@/views/database/postgresql/create/index.vue';
 import DeleteDialog from '@/views/database/postgresql/delete/index.vue';
@@ -255,7 +256,7 @@ import UploadDialog from '@/components/upload/index.vue';
 import PortJumpDialog from '@/components/port-jump/index.vue';
 import Tooltip from '@/components/tooltip/index.vue';
 import { dateFormat } from '@/utils/date';
-import { onMounted, reactive, ref } from 'vue';
+import { toRef, onMounted, reactive, ref } from 'vue';
 import {
     deleteCheckPostgresqlDB,
     listDatabases,
@@ -312,6 +313,7 @@ const paginationConfig = reactive({
     order: 'null',
 });
 const searchName = ref();
+useSearchReset({ search: searchName, page: toRef(paginationConfig, 'currentPage') }, { onRevisit: () => search() });
 
 const postgresqlContainer = ref();
 const postgresqlStatus = ref();

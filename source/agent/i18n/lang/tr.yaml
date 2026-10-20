@@ -140,6 +140,9 @@ ErrComposeProjectNameEmpty: 'Docker Compose yapılandırmasından veya dosyanın
 ErrComposeNameInvalid: 'Geçersiz Compose proje adı: küçük harf veya rakamla başlamalı, yalnızca küçük harf, rakam, kısa çizgi ve alt çizgi içermeli ve 1-256 karakter uzunluğunda olmalıdır.'
 ErrAppVersionUnavailable: 'Bu uygulama sürümü uzak hizmetten kaldırıldı. Lütfen başka bir sürüm seçip tekrar deneyin.'
 ErrVllmGB10ProOnly: 'Bu vLLM sürümü yalnızca 1Panel Professional Edition sürümünde kullanılabilir.'
+ErrAIGatewayDatabaseTypeMismatch: 'AI Gateway yalnızca aynı veritabanı türü (SQLite veya PostgreSQL) içinde yükseltilebilir.'
+ErrAIGatewayRecoverDatabaseTypeMismatch: 'AI Gateway yedeği ve hedef uygulama aynı veritabanı türünü (SQLite veya PostgreSQL) kullanmalıdır.'
+ErrHermesUpgradeVersion: 'Hermes Agent yalnızca ana sürümler arası yükseltme ayarının izin verdiği, tanınan daha yeni bir sürüme yükseltilebilir. Eski bir sürüme dönmek için yedekten geri yükleyin.'
 ErrAppWarn: 'Anormal durum, lütfen günlüğü kontrol edin'
 ErrAppParamKey: 'Parametre {{ .name }} alanı anormal'
 ErrAppUpgrade: 'Uygulama {{ .name }} yükseltmesi başarısız {{ .err }}'
@@ -300,6 +303,9 @@ BuildCache: 'Derleme önbelleği'
 Volume: 'Depolama hacmi'
 Network: 'Ağ'
 PruneStart: 'Temizlik devam ediyor, lütfen bekleyin...'
+NetworkCleanupConnected: "Ağ [{{ .name }}] ({{ .id }}) atlandı: bağlı konteynerler var veya ağ kullanımda; silinmedi"
+NetworkCleanupSummary: "Ağ temizliği tamamlandı: silinen {{ .deleted }}, atlanan {{ .skipped }}, başarısız {{ .failed }}"
+NetworkCleanupPartialFailure: "Bazı ağlar temizlenemedi; görev günlüğünü kontrol edin"
 ContainerBackupPrepare: 'Konteyner yedekleme çalışma alanını hazırla'
 ContainerBackupStop: 'Yedeklemeden önce konteyneri durdur'
 ContainerBackupInspect: 'Konteyner inspect ve ağ bilgisini yedekle'
@@ -628,14 +634,15 @@ AppAttributesNotMatch: 'Uygulama türü veya adı eşleşmiyor'
 # uyarı
 ErrAlertMethodNotSupported: 'Bu sürüm bu uyarı yöntemini desteklemiyor'
 ErrAlertSync: 'Alarm bilgisi senkronizasyon hatası, lütfen kontrol edin ve tekrar deneyin'
+ErrWebhookTestFailed: 'Lütfen Webhook yapılandırmasını kontrol edin. Ayrıntılar için sistem günlüklerine bakın.'
 
 # görev - çalışma zamanı
 ErrInstallExtension: 'Zaten devam eden bir kurulum görevi var, görevin bitmesini bekleyin'
 
 # uyarı e-posta şablonu
 PanelAlertTitle: 'Panel Uyarı Bildirimi'
-TestAlertTitle: 'Test E-postası - E-posta Bağlantısını Doğrula'
-TestAlert: 'Bu, e-posta gönderim ayarlarınızın doğru yapılandırıldığını doğrulamak için gönderilen bir test e-postasıdır.'
+TestAlertTitle: 'Panel Test Bildirimi'
+TestAlertMessage: 'Bu, bildirim kanalı yapılandırmasını ve bağlantısını doğrulamak için gönderilen bir test bildirimidir.'
 LicenseExpirationAlert: 'Paneliniz {{ .node }}{{ .ip }}, lisans {{ .day }} gün içinde süresi dolacak. Detaylar için paneline giriş yapın.'
 CronJobFailedAlert: 'Paneliniz {{ .node }}{{ .ip }}, zamanlanmış görev {{ .name }} çalıştırma başarısız oldu. Detaylar için paneline giriş yapın.'
 ClamAlert: 'Paneliniz {{ .node }}{{ .ip }}, virüs tarama görevi {{ .num }} enfekte dosya tespit etti. Detaylar için paneline giriş yapın.'
@@ -649,6 +656,7 @@ CommonAlert: 'Paneliniz {{ .node }}{{ .ip }}, {{ .msg }}. Detaylar için panelin
 NodeExceptionAlert: 'Paneliniz {{ .node }}{{ .ip }}, {{ .num }} düğüm anormal durumda. Detaylar için paneline giriş yapın.'
 LicenseExceptionAlert: 'Paneliniz {{ .node }}{{ .ip }}, {{ .num }} lisans anormal durumda. Detaylar için paneline giriş yapın.'
 SSHAndPanelLoginAlert: 'Paneliniz {{ .node }}{{ .ip }}, {{ .loginIp }} adresinden {{ .name }} girişi anormal. Detaylar için paneline giriş yapın.'
+CronJobSuccessAlert: 'Panel {{ .node }}{{ .ip }}: zamanlanmış görev {{ .name }} başarıyla tamamlandı. Ayrıntıları görmek için giriş yapın.'
 
 # disk
 DeviceNotFound: 'Cihaz {{ .name }} bulunamadı'
@@ -682,8 +690,7 @@ AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
 # Firewall
 ErrDockerIptablesChainUnavailable: 'Docker DOCKER-USER zinciri bulunamadı. Docker’ı yeniden başlatıp tekrar deneyin'
 ErrDockerNftablesChainUnavailable: 'Docker nftables IPv4 güvenlik duvarı zinciri bulunamadı. Geçerli Docker sürümünün nftables güvenlik duvarı arka ucunu desteklediğini doğrulayın, Docker’ı yeniden başlatıp tekrar deneyin'
-ErrDockerForwardPolicyDrop: '{{ .family }} FORWARD varsayılan ilkesi DROP. İlkeyi düzenleyip tekrar deneyin'
-ErrUFWRuleAdopt: 'UFW kuralı yönetilemedi: {{ .detail }}. Geçerli UFW sürümü 0.35’ten eskiyse UFW’yi yükseltip tekrar deneyin'
+ErrDockerForwardPolicyDrop: 'Bu sunucu ağ yönlendirmesini kısıtlıyor. Konteyner port koruması şu anda etkinleştirilemiyor.'
 Firewall: 'Güvenlik duvarı'
 FirewallTaskHost: 'Ana makine güvenlik duvarı'
 FirewallTaskForwarding: 'Port yönlendirme'
@@ -697,28 +704,15 @@ FirewallCreateRulesStep: 'Güvenlik duvarı kuralları oluştur'
 FirewallCreateRulesResult: 'Oluşturma sonucu: {{ .succeeded }} başarılı, {{ .failed }} başarısız, {{ .skipped }} yürütülmedi'
 FirewallRuleOperationResult: 'İşlem sonucu: {{ .succeeded }} başarılı, {{ .failed }} başarısız'
 FirewallCreateRuleSkipped: 'Yürütülmedi'
-FirewallCreateBatchStep: '{{ .backend }} için {{ .count }} kuralı toplu gönder'
 FirewallImportRuleConversion: '[{{ .index }}/{{ .total }}] {{ .source }} → {{ .target }}: {{ .rule }}; {{ .count }} kurala dönüştürüldü'
-FirewallCreateRuleExecutionFailed: 'Kural oluşturma başarısız. Veritabanına kayıt yazılmadı ve yürütülen komutlar geri alınmadı'
-FirewallCreateRulePersistenceFailed: 'Kural oluşturuldu ancak yönetim kaydı kaydedilemedi'
-FirewallAdoptRulePersistenceFailed: 'Kuralı yönetime alma komutu yürütüldü, ancak yönetim kaydı kaydedilemedi'
-FirewallSyncOperationsResult: 'Eşitleme işlemleri: {{ .removed }} silindi, {{ .created }} oluşturuldu, {{ .failed }} başarısız, {{ .skipped }} yürütülmedi, {{ .unchanged }} zaten eşleşiyor (değişiklik gerekmiyor)'
-FirewallSyncRuleUnchanged: 'Zaten eşleşiyor; değişiklik gerekmiyor'
-FirewallSyncStep: 'Kuralları {{ .name }} ile eşitle'
-FirewallSyncFailed: '{{ .failed }} güvenlik duvarı kuralı eşitlenemedi'
-FirewallResetSourceStep: 'Kaynak güvenlik duvarı {{ .name }} sıfırla ve devre dışı bırak'
-FirewallResetSourceResult: 'Kaynak güvenlik duvarı sıfırlandı; {{ .removed }} veritabanı kuralı silindi'
+FirewallCreateRuleExecutionFailed: 'Kural oluşturma başarısız. Yürütülen komutlar geri alınmadı'
 FirewallInitializeChainsStep: '{{ .name }} temel zincirlerini başlat ve bağla'
-FirewallRestoreRulesStep: 'Veritabanı kurallarını {{ .name }} üzerine geri yükle'
 FirewallSyncWhitelistStep: 'Güvenlik duvarı bağlantı noktası izin listesini eşitle'
 FirewallEnableForwardingStep: 'Bağlantı noktası yönlendirme zincirlerini etkinleştir ve bağla'
 FirewallRestoreForwardingRulesStep: 'Veritabanı bağlantı noktası yönlendirme kurallarını geri yükle'
 FirewallInspectDockerGuardStep: 'Docker güvenlik duvarı arka ucunu ve ilkelerini denetle'
 FirewallInitializeDockerGuardStep: '{{ .name }} bağlantı noktası koruma zincirlerini başlat ve bağla'
 FirewallPersistDockerGuardStep: 'Docker bağlantı noktası koruma durumunu kaydet'
-ErrFirewallRuleScopeChange: "Mevcut güvenlik duvarı, kuralın kapsamını (IPv4/IPv6 adres ailesi gibi) değiştirmeyi desteklemiyor. Lütfen yeni bir kural oluşturun."
-FirewallWhitelistReleased: "{{ .name }}: izin listesi koruması kaldırıldı; izin kuralı korundu. Portu kapatmak için kuralı kural listesinden elle silin"
-FirewallWhitelistRequired: "{{ .name }}: zorunlu sistem portu kuralları tarafından korunuyor"
 FileTaskCopy: 'Dosyaları {{ .dst }} konumuna kopyala'
 FileTaskMove: 'Dosyaları {{ .dst }} konumuna taşı'
 FileTaskCompress: 'Dosyaları {{ .dst }} konumuna sıkıştır'
@@ -726,7 +720,56 @@ FileTaskDecompress: 'Dosyaları {{ .dst }} konumuna çıkar'
 FileTaskSource: 'Kaynak yol: {{ .path }}'
 FileTaskFormat: 'Arşiv biçimi: {{ .format }}'
 FileTaskRename: 'Hedef dosya adı: {{ .name }}'
-
 ErrFirewallBackendCleanupRequired: "Mevcut {{ .current }} arka ucunda hâlâ 1Panel kuralları var. {{ .target }} arka ucuna geçmeden önce bunları temizleyin."
 ErrDockerIPv4ForwardingDisabled: "IPv4 yönlendirmesi devre dışı. Docker güvenlik duvarı arka ucunu kullanmadan önce net.ipv4.ip_forward=1 ayarını yapın."
 ErrFirewallRuleSavedApplyFailed: "Yeni kural yapılandırması kaydedildi, ancak güvenlik duvarına uygulanamadı. Eşitleme yaparak yeniden deneyin: {{ .detail }}"
+ErrFirewallRuleConflict: "UFW içinde aynı eşleşme koşullarına sahip, farklı bir eylem uygulayan bir kural zaten var. Mevcut kuralı düzenleyin."
+ErrForwardInterfaceNotFound: "Yönlendirme kuralında belirtilen {{ .name }} ağ arayüzü mevcut değil. Arayüz adını kontrol edip yeniden deneyin."
+ErrIPv6RARisk: "Ağ bağlantısının kesilme riski nedeniyle IPv6 yönlendirmesi engellendi. Belgeleri ve sistem günlüklerini inceleyin."
+ErrIPv6RACheckFailed: "Ağ yapılandırması denetlenemediği için IPv6 yönlendirmesi engellendi. Ayrıntılar için sistem günlüklerini inceleyin."
+
+ErrSSHPublicKey: "Geçerli bir SSH açık anahtarı girin"
+ErrSSHPrivateKey: "SSH özel anahtarı geçersiz veya parola yanlış; şifreli anahtarlar mevcut parolayı gerektirir"
+ErrSSHKeyMismatch: "SSH açık ve özel anahtarları eşleşmiyor"
+
+# sanal makine
+ErrVMNotFound: "Sanal makine mevcut değil"
+ErrVMAlreadyExists: "Sanal makine zaten mevcut"
+ErrVMCountLimit: "Professional sürümü en fazla {{ .limit }} sanal makine oluşturulmasına izin verir. Mevcut bir sanal makineyi silin veya Enterprise sürümüne yükseltip tekrar deneyin."
+ErrVMImageAlreadyExists: "Sanal makine imaj dosyası zaten mevcut: {{ .detail }}"
+ErrVMStoragePathInUse: "Depolama havuzu yolu zaten [{{ .name }}] tarafından kullanılıyor"
+ErrVMHelperNotFound: "1panel-kvm bulunamadı"
+ErrVMBridgeManaged: "Bridge adı zaten libvirt veya Docker tarafından yönetiliyor"
+ErrVMNetworkInUse: "Ağ kullanımda ve silinemez"
+ErrVMStorageInUse: "Depolama havuzu kullanımda ve silinemez"
+ErrVMStorageNameCannotChange: "Depolama havuzunun adı değiştirilemez"
+ErrVMStoragePathCannotChange: "Depolama havuzunun yolu değiştirilemez"
+ErrVMRunning: "Sanal makine çalışıyor"
+ErrVMLibvirtConnect: "libvirt bağlantısı başarısız: {{ .detail }}"
+ErrVMPermission: "Sanal makine işlemi için izin yok: {{ .detail }}"
+ErrVMNetworkNotFound: "Sanal makine ağı mevcut değil: {{ .detail }}"
+ErrVMInvalidPath: "Geçersiz sanal makine yolu: {{ .detail }}"
+ErrVMInvalidInput: "Geçersiz sanal makine parametresi: {{ .detail }}"
+ErrVMCommandFailed: "Sanal makine komutu başarısız: {{ .err }}"
+ErrVMDiskResizeBlocked: "Disk genişletme koşullarını karşılamıyor veya başka bir aygıt tarafından kullanılıyor. Disk durumunu kontrol edin."
+ErrVMDiskReferenced: "Bu sanal disk başka bir sanal makine veya aygıt tarafından kullanılıyor; genişletme henüz desteklenmiyor."
+ErrVMDiskReferenceCheck: "Sanal disk başvuruları doğrulanamadı. Genişletme kullanılamıyor; diğer sanal makinelerin disklerini kontrol edin."
+ErrVMSnapshotMetadataSync: "Anlık görüntü geri yüklendi ancak disk bilgileri eşitlenemedi. Yenileyip kontrol edin; anlık görüntüyü tekrar geri yüklemeyin."
+VMCreateTask: "Sanal makine [{{ .name }}] oluştur"
+VMCreateFromTemplateTask: "Şablondan sanal makine [{{ .name }}] oluştur"
+VMUpdateTask: "Sanal makine [{{ .name }}] güncelle"
+VMDiskResizeTask: "[{{ .name }}] sanal makinesinin [{{ .disk }}] diskini genişlet"
+VMRenameTask: "Sanal makine [{{ .name }}] adını [{{ .newName }}] olarak değiştir"
+VMDeleteTask: "Sanal makine [{{ .name }}] sil"
+VMTemplateCreateTask: "Sanal makine [{{ .name }}] öğesini şablon [{{ .template }}] olarak kaydet"
+VMTemplateDeleteTask: "Sanal makine şablonu [{{ .name }}] sil"
+VMForceDeleteMetadataOnly: "1panel-kvm bulunamadı, yalnızca sanal makine [{{ .name }}] meta verileri zorla siliniyor"
+VMForceDeleteMetadataAfterLibvirtFailed: "Sanal makine [{{ .name }}] libvirt üzerinden silinemedi, meta veriler zorla siliniyor: {{ .err }}"
+VMForceDeleteDiskFailed: "Sanal makine disk dosyası [{{ .path }}] zorla silinemedi: {{ .err }}"
+VMForceDeleteDiskSuccess: "Sanal makine disk dosyası [{{ .path }}] zorla silindi"
+VMSnapshotCreateTask: "Sanal makine [{{ .vm }}] için anlık görüntü [{{ .snapshot }}] oluştur"
+VMSnapshotCreateStep: "Sanal makine anlık görüntüsü [{{ .snapshot }}] oluştur"
+VMSnapshotRecoverTask: "Sanal makine [{{ .vm }}] anlık görüntüsü [{{ .snapshot }}] geri yükle"
+VMSnapshotRecoverStep: "Sanal makine anlık görüntüsü [{{ .snapshot }}] geri yükle"
+VMSnapshotDeleteTask: "Sanal makine [{{ .vm }}] anlık görüntüsü [{{ .snapshot }}] sil"
+VMSnapshotDeleteStep: "Sanal makine anlık görüntüsü [{{ .snapshot }}] sil"

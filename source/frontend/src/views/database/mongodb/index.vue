@@ -323,7 +323,8 @@
 </template>
 
 <script lang="ts" setup>
-import { nextTick, onMounted, reactive, ref } from 'vue';
+import { useSearchReset } from '@/composables/useSearchReset';
+import { toRef, nextTick, onMounted, reactive, ref } from 'vue';
 import { dateFormat } from '@/utils/date';
 import { getRandomStr } from '@/utils/id';
 import { Position } from '@element-plus/icons-vue';
@@ -398,6 +399,7 @@ const paginationConfig = reactive({
     orderBy: 'createdAt',
     order: 'null',
 });
+useSearchReset({ search: searchName, page: toRef(paginationConfig, 'currentPage') }, { onRevisit: () => search() });
 
 type FormInstance = InstanceType<typeof ElForm>;
 const formRef = ref<FormInstance>();

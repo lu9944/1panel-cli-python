@@ -8,11 +8,15 @@ from panel_cli.firewall import (
     ListOptions,
     PortOptions,
     address_eq,
+    delete_request,
+    docker_mode_zh,
+    item_state,
     parse_docker_port,
     parse_target,
     port_rules,
     protocols,
     scopes,
+    v240_delete_target,
     validate_strategy,
 )
 
@@ -86,6 +90,61 @@ class TestMatching(unittest.TestCase):
         self.assertTrue(firewall.matches_filter(rule, item, opts_info))
         opts_miss = ListOptions(type="port", info="zzz", strategy="")
         self.assertFalse(firewall.matches_filter(rule, item, opts_miss))
+
+
+class TestDeleteRequest(unittest.TestCase):
+    def _v240_item(self, protected=False):
+        rule = {
+            "scope": {
+                "provider": "iptables",
+                "family": "ipv4",
+                "table": "filter",
+                "chain": "1PANEL_BASIC",
+                "direction": "input",
+            },
+            "protocol": "tcp",
+            "destinationPort": "45999",
+            "action": "accept",
+        }
+        observed = {
+            "rule": rule,
+            "locator": {"provider": "iptables", "scopeKey": "k"},
+            "instanceKey": "sha256:abc",
+            "parseStatus": "supported",
+            "protected": protected,
+        }
+        return {"rule": rule, "observed": observed, "isWhitelist": protected}
+
+    def test_v240_target_includes_observed(self):
+        item = self._v240_item()
+        target = v240_delete_target(item)
+        self.assertEqual(target["instanceKey"], "sha256:abc")
+        self.assertEqual(target["scope"]["chain"], "1PANEL_BASIC")
+        self.assertIn("observed", target)
+
+    def test_v240_skips_protected_and_whitelist(self):
+        self.assertIsNone(v240_delete_target(self._v240_item(protected=True)))
+
+    def test_delete_request_uses_targets_for_v240(self):
+        body = delete_request("v240", [self._v240_item()])
+        self.assertIn("targets", body)
+        self.assertNotIn("uuids", body)
+        self.assertEqual(len(body["targets"]), 1)
+
+    def test_delete_request_uses_uuids_for_v231(self):
+        item = {"desired": {"uuid": "rule-uuid"}, "observed": {}}
+        body = delete_request("v231", [item])
+        self.assertEqual(body, {"uuids": ["rule-uuid"]})
+
+    def test_item_state_covers_v240_fields(self):
+        self.assertEqual(item_state({"isWhitelist": True}), "whitelist")
+        self.assertEqual(item_state({"observed": {"protected": True}}), "protected")
+        self.assertEqual(item_state({"state": "managed"}), "managed")
+        self.assertEqual(item_state({}), "-")
+
+    def test_docker_modes_include_v240_accept(self):
+        self.assertEqual(docker_mode_zh("accept_sources"), "接受来源")
+        self.assertEqual(docker_mode_zh("accept_all"), "接受所有")
 
 
 class TestParse(unittest.TestCase):

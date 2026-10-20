@@ -140,6 +140,9 @@ ErrComposeProjectNameEmpty: 'Unable to derive a project name from Docker Compose
 ErrComposeNameInvalid: 'Invalid Compose project name: it must start with a lowercase letter or number, contain only lowercase letters, numbers, hyphens, and underscores, and be 1-256 characters long.'
 ErrAppVersionUnavailable: 'This application version has been removed from the remote service. Please select another version and try again.'
 ErrVllmGB10ProOnly: 'This vLLM version is available only in 1Panel Professional Edition.'
+ErrAIGatewayDatabaseTypeMismatch: 'AI Gateway can only upgrade within the same database type (SQLite or PostgreSQL).'
+ErrAIGatewayRecoverDatabaseTypeMismatch: 'The AI Gateway backup and target application must use the same database type (SQLite or PostgreSQL).'
+ErrHermesUpgradeVersion: 'Hermes Agent can only upgrade to a newer recognized release allowed by its cross-version upgrade policy. Restore an older version from a backup instead.'
 ErrAppWarn: 'App status abnormal; check logs'
 ErrAppParamKey: 'Invalid app parameter: {{ .name }}'
 ErrAppUpgrade: 'App upgrade failed: {{ .name }} {{ .err }}'
@@ -300,6 +303,9 @@ BuildCache: 'Build Cache'
 Volume: 'Volume'
 Network: "Network"
 PruneStart: 'Cleaning in progress'
+NetworkCleanupConnected: "Skipped network [{{ .name }}] ({{ .id }}): containers connected or network in use; not deleted"
+NetworkCleanupSummary: "Network cleanup finished: deleted {{ .deleted }}, skipped {{ .skipped }}, failed {{ .failed }}"
+NetworkCleanupPartialFailure: "Some networks could not be cleaned; see the task log"
 ContainerBackupPrepare: 'Prepare container backup workspace'
 ContainerBackupStop: 'Stop container before backup'
 ContainerBackupInspect: 'Backup container inspect and network'
@@ -628,14 +634,15 @@ AppAttributesNotMatch: 'Application type or name does not match'
 # alert
 ErrAlertMethodNotSupported: 'This version does not support this alert method'
 ErrAlertSync: 'Failed to sync alert message'
+ErrWebhookTestFailed: 'Please check the Webhook configuration. See the system logs for details.'
 
 # task - runtime
 ErrInstallExtension: 'Another extension install task is running'
 
 # alert mail template
 PanelAlertTitle: "Panel Alert Notification"
-TestAlertTitle: "Test Email - Verify Email Connectivity"
-TestAlert: "This is a test email to verify that your email sending configuration is correct."
+TestAlertTitle: "Panel Test Notification"
+TestAlertMessage: "This is a test notification to verify the notification channel configuration and connectivity."
 LicenseExpirationAlert: "Panel {{ .node }}{{ .ip }}: license expires in {{ .day }} days. Log in to view details."
 CronJobFailedAlert: "Panel {{ .node }}{{ .ip }}: scheduled task {{ .name }} failed. Log in to view details."
 ClamAlert: "Panel {{ .node }}{{ .ip }}: virus scan found {{ .num }} infected files. Log in to view details."
@@ -649,6 +656,7 @@ CommonAlert: "Panel {{ .node }}{{ .ip }}: {{ .msg }}. Log in to view details."
 NodeExceptionAlert: "Panel {{ .node }}{{ .ip }}: {{ .num }} nodes are abnormal. Log in to view details."
 LicenseExceptionAlert: "Panel {{ .node }}{{ .ip }}: {{ .num }} licenses are abnormal. Log in to view details."
 SSHAndPanelLoginAlert: "Panel {{ .node }}{{ .ip }}: abnormal {{ .name }} login from {{ .loginIp }}. Log in to view details."
+CronJobSuccessAlert: "Panel {{ .node }}{{ .ip }}: scheduled task {{ .name }} completed successfully. Log in to view details."
 
 # disk
 DeviceNotFound: "Device {{ .name }} not found"
@@ -682,8 +690,7 @@ AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
 # Firewall
 ErrDockerIptablesChainUnavailable: 'The Docker DOCKER-USER chain was not found. Restart Docker and try again'
 ErrDockerNftablesChainUnavailable: 'The Docker nftables IPv4 firewall chain was not found. Verify that the current Docker version supports the nftables firewall backend, restart Docker, and try again'
-ErrDockerForwardPolicyDrop: '{{ .family }} FORWARD defaults to DROP. Adjust the policy and retry'
-ErrUFWRuleAdopt: 'Failed to adopt the UFW rule: {{ .detail }}. If the installed UFW version is earlier than 0.35, upgrade UFW and try again'
+ErrDockerForwardPolicyDrop: 'This server restricts network forwarding. Container port protection cannot be enabled at this time.'
 Firewall: 'Firewall'
 FirewallTaskHost: 'Host firewall'
 FirewallTaskForwarding: 'Port forwarding'
@@ -697,28 +704,15 @@ FirewallCreateRulesStep: 'Create firewall rules'
 FirewallCreateRulesResult: 'Creation result: {{ .succeeded }} succeeded, {{ .failed }} failed, {{ .skipped }} not executed'
 FirewallRuleOperationResult: 'Operation result: {{ .succeeded }} succeeded, {{ .failed }} failed'
 FirewallCreateRuleSkipped: 'Not executed'
-FirewallCreateBatchStep: 'Submit {{ .count }} rules as a batch to {{ .backend }}'
 FirewallImportRuleConversion: '[{{ .index }}/{{ .total }}] {{ .source }} → {{ .target }}: {{ .rule }}; converted to {{ .count }} rules'
-FirewallCreateRuleExecutionFailed: 'Rule creation failed; no database record was saved and executed commands were not rolled back'
-FirewallCreateRulePersistenceFailed: 'The rule was created, but its management record could not be saved'
-FirewallAdoptRulePersistenceFailed: 'The rule was adopted, but its management record could not be saved'
-FirewallSyncOperationsResult: 'Synchronization operations: {{ .removed }} deleted, {{ .created }} created, {{ .failed }} failed, {{ .skipped }} not executed, {{ .unchanged }} already matching (no changes needed)'
-FirewallSyncRuleUnchanged: 'Already matching; no changes needed'
-FirewallSyncStep: 'Synchronize rules to {{ .name }}'
-FirewallSyncFailed: '{{ .failed }} firewall rules failed to synchronize'
-FirewallResetSourceStep: 'Reset and disable source firewall {{ .name }}'
-FirewallResetSourceResult: 'Source firewall reset completed; {{ .removed }} database rules were deleted'
+FirewallCreateRuleExecutionFailed: 'Rule creation failed; executed commands were not rolled back'
 FirewallInitializeChainsStep: 'Initialize and bind {{ .name }} base chains'
-FirewallRestoreRulesStep: 'Restore database rules to {{ .name }}'
 FirewallSyncWhitelistStep: 'Synchronize firewall port whitelist'
 FirewallEnableForwardingStep: 'Enable and bind port forwarding chains'
 FirewallRestoreForwardingRulesStep: 'Restore database port forwarding rules'
 FirewallInspectDockerGuardStep: 'Inspect Docker firewall backend and policies'
 FirewallInitializeDockerGuardStep: 'Initialize and bind {{ .name }} port guard chains'
 FirewallPersistDockerGuardStep: 'Persist Docker port guard status'
-ErrFirewallRuleScopeChange: "The current firewall does not support changing a rule's scope (such as its IPv4/IPv6 address family). Please create a new rule."
-FirewallWhitelistReleased: "{{ .name }}: whitelist protection released; allow rule retained. To close the port, delete the rule manually from the rule list"
-FirewallWhitelistRequired: "{{ .name }}: protected by mandatory system port rules"
 FileTaskCopy: 'Copy files to {{ .dst }}'
 FileTaskMove: 'Move files to {{ .dst }}'
 FileTaskCompress: 'Compress files to {{ .dst }}'
@@ -726,7 +720,56 @@ FileTaskDecompress: 'Extract files to {{ .dst }}'
 FileTaskSource: 'Source path: {{ .path }}'
 FileTaskFormat: 'Archive format: {{ .format }}'
 FileTaskRename: 'Target filename: {{ .name }}'
-
 ErrFirewallBackendCleanupRequired: "The current backend {{ .current }} still contains 1Panel rules. Clean it up before switching to {{ .target }}."
 ErrDockerIPv4ForwardingDisabled: "IPv4 forwarding is disabled. Set net.ipv4.ip_forward=1 before using Docker's firewall backend."
 ErrFirewallRuleSavedApplyFailed: "The new rule configuration was saved, but applying it to the firewall failed. Retry by synchronizing: {{ .detail }}"
+ErrFirewallRuleConflict: "A UFW rule with the same match conditions and a different action already exists. Edit the existing rule instead."
+ErrForwardInterfaceNotFound: "Network interface {{ .name }} specified by the forwarding rule does not exist. Check the interface name and retry."
+ErrIPv6RARisk: "IPv6 forwarding is blocked to prevent possible network loss. See the documentation and system logs for details."
+ErrIPv6RACheckFailed: "IPv6 forwarding is blocked because the network configuration could not be checked. See the system logs for details."
+
+ErrSSHPublicKey: "Enter a valid SSH public key"
+ErrSSHPrivateKey: "Invalid SSH private key or incorrect passphrase; encrypted keys require the original passphrase"
+ErrSSHKeyMismatch: "The SSH public and private keys do not match"
+
+# virtual machine
+ErrVMNotFound: "Virtual machine does not exist"
+ErrVMAlreadyExists: "Virtual machine already exists"
+ErrVMCountLimit: "The Professional edition supports up to {{ .limit }} virtual machines. Delete an existing VM or upgrade to Enterprise to create more."
+ErrVMImageAlreadyExists: "Virtual machine image already exists: {{ .detail }}"
+ErrVMStoragePathInUse: "Storage pool path is already used by [{{ .name }}]"
+ErrVMHelperNotFound: "1panel-kvm not found"
+ErrVMBridgeManaged: "Bridge name is already managed by libvirt or Docker"
+ErrVMNetworkInUse: "Network is in use and cannot be deleted"
+ErrVMStorageInUse: "Storage pool is in use and cannot be deleted"
+ErrVMStorageNameCannotChange: "Storage pool name cannot be changed"
+ErrVMStoragePathCannotChange: "Storage pool path cannot be changed"
+ErrVMRunning: "Virtual machine is running"
+ErrVMLibvirtConnect: "Failed to connect to libvirt: {{ .detail }}"
+ErrVMPermission: "No permission to operate virtual machine: {{ .detail }}"
+ErrVMNetworkNotFound: "Virtual machine network does not exist: {{ .detail }}"
+ErrVMInvalidPath: "Invalid virtual machine path: {{ .detail }}"
+ErrVMInvalidInput: "Invalid virtual machine parameter: {{ .detail }}"
+ErrVMCommandFailed: "Virtual machine command failed: {{ .err }}"
+ErrVMDiskResizeBlocked: "The disk does not meet expansion requirements or is referenced by another device. Check the disk status."
+ErrVMDiskReferenced: "This virtual disk is used by another virtual machine or device and cannot be expanded yet."
+ErrVMDiskReferenceCheck: "Cannot complete virtual disk reference checks. Expansion is unavailable; check the disks of other virtual machines."
+ErrVMSnapshotMetadataSync: "The snapshot was restored, but disk information could not be synced. Refresh and check; do not restore the snapshot again."
+VMCreateTask: "Create virtual machine [{{ .name }}]"
+VMCreateFromTemplateTask: "Create virtual machine [{{ .name }}] from template"
+VMUpdateTask: "Update virtual machine [{{ .name }}]"
+VMDiskResizeTask: "Expand disk [{{ .disk }}] of virtual machine [{{ .name }}]"
+VMRenameTask: "Rename virtual machine [{{ .name }}] to [{{ .newName }}]"
+VMDeleteTask: "Delete virtual machine [{{ .name }}]"
+VMTemplateCreateTask: "Save virtual machine [{{ .name }}] as template [{{ .template }}]"
+VMTemplateDeleteTask: "Delete virtual machine template [{{ .name }}]"
+VMForceDeleteMetadataOnly: "1panel-kvm not found, force deleting virtual machine [{{ .name }}] metadata only"
+VMForceDeleteMetadataAfterLibvirtFailed: "Failed to delete virtual machine [{{ .name }}] from libvirt, force deleting metadata: {{ .err }}"
+VMForceDeleteDiskFailed: "Force delete virtual machine disk file [{{ .path }}] failed: {{ .err }}"
+VMForceDeleteDiskSuccess: "Force deleted virtual machine disk file [{{ .path }}]"
+VMSnapshotCreateTask: "Create snapshot [{{ .snapshot }}] for virtual machine [{{ .vm }}]"
+VMSnapshotCreateStep: "Create virtual machine snapshot [{{ .snapshot }}]"
+VMSnapshotRecoverTask: "Recover snapshot [{{ .snapshot }}] for virtual machine [{{ .vm }}]"
+VMSnapshotRecoverStep: "Recover virtual machine snapshot [{{ .snapshot }}]"
+VMSnapshotDeleteTask: "Delete snapshot [{{ .snapshot }}] for virtual machine [{{ .vm }}]"
+VMSnapshotDeleteStep: "Delete virtual machine snapshot [{{ .snapshot }}]"

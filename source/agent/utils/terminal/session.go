@@ -309,16 +309,25 @@ func (s *Session) detach(a *attachment, clean, revalidate bool, cursor uint64) {
 	if revalidate {
 		s.revalidateCursor = cursor
 	}
-	shouldClose := clean || (!s.Persistent && !revalidate)
-	if !shouldClose {
+	if !clean {
 		timeout := graceTimeout
-		if revalidate {
+		if !s.Persistent || revalidate {
 			timeout = revalidateGrace
 		}
-		s.grace = time.AfterFunc(timeout, s.Close)
+		// Stop cannot cancel a fired timer; a racing Attach clears s.grace.
+		var grace *time.Timer
+		grace = time.AfterFunc(timeout, func() {
+			s.mu.Lock()
+			expired := s.grace == grace
+			s.mu.Unlock()
+			if expired {
+				s.Close()
+			}
+		})
+		s.grace = grace
 	}
 	s.mu.Unlock()
-	if shouldClose {
+	if clean {
 		s.Close()
 	}
 }

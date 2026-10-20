@@ -140,6 +140,9 @@ ErrComposeProjectNameEmpty: 'Docker Compose 구성 또는 파일의 상위 디�
 ErrComposeNameInvalid: 'Compose 프로젝트 이름 형식이 잘못되었습니다. 소문자 또는 숫자로 시작하고 소문자, 숫자, 하이픈, 밑줄만 사용하여 1~256자로 입력하세요.'
 ErrAppVersionUnavailable: '현재 애플리케이션 버전이 원격 서비스에서 제거되었습니다. 다른 버전을 선택한 후 다시 시도해 주세요.'
 ErrVllmGB10ProOnly: '이 vLLM 버전은 1Panel 프로페셔널 에디션에서만 사용할 수 있습니다.'
+ErrAIGatewayDatabaseTypeMismatch: 'AI Gateway는 동일한 데이터베이스 유형(SQLite 또는 PostgreSQL) 내에서만 업그레이드할 수 있습니다.'
+ErrAIGatewayRecoverDatabaseTypeMismatch: 'AI Gateway 백업과 대상 애플리케이션의 데이터베이스 유형(SQLite 또는 PostgreSQL)이 같아야 합니다.'
+ErrHermesUpgradeVersion: 'Hermes Agent는 인식 가능하고 주 버전 간 업그레이드 설정을 충족하는 최신 릴리스로만 업그레이드할 수 있습니다. 이전 버전으로 되돌리려면 백업을 복원하세요.'
 ErrAppWarn: '비정상적인 상태입니다. 로그를 확인해 주세요.'
 ErrAppParamKey: '매개변수 {{ .name }} 필드가 비정상입니다.'
 ErrAppUpgrade: '애플리케이션 {{ .name }} 업그레이드에 실패했습니다 {{ .err }}'
@@ -300,6 +303,9 @@ BuildCache: '빌드 캐시'
 Volume: '스토리지 볼륨'
 Network: '네트워크'
 PruneStart: '정리 중입니다. 잠시만 기다려주세요...'
+NetworkCleanupConnected: "네트워크 [{{ .name }}] ({{ .id }}) 건너뜀: 연결된 컨테이너가 있거나 사용 중이므로 삭제하지 않음"
+NetworkCleanupSummary: "네트워크 정리 완료: 삭제 {{ .deleted }}개, 건너뜀 {{ .skipped }}개, 실패 {{ .failed }}개"
+NetworkCleanupPartialFailure: "일부 네트워크를 정리하지 못했습니다. 작업 로그를 확인하세요"
 ContainerBackupPrepare: '컨테이너 백업 작업 공간 준비'
 ContainerBackupStop: '백업 전에 컨테이너 중지'
 ContainerBackupInspect: '컨테이너 inspect 및 네트워크 정보 백업'
@@ -628,14 +634,15 @@ AppAttributesNotMatch: '애플리케이션 유형 또는 이름이 일치하지 
 # 알림
 ErrAlertMethodNotSupported: '현재 버전에서는 이 알림 방식을 지원하지 않습니다'
 ErrAlertSync: '알람 정보 동기화 오류입니다. 확인하고 다시 시도하세요'
+ErrWebhookTestFailed: 'Webhook 설정을 확인하세요. 자세한 원인은 시스템 로그를 확인하세요.'
 
 # 작업 - 런타임
 ErrInstallExtension: '이미 설치 작업이 진행 중입니다. 작업이 완료될 때까지 기다려 주세요.'
 
 # 알림 메일 템플릿
 PanelAlertTitle: '패널 알림 통지'
-TestAlertTitle: '테스트 이메일 - 이메일 연결 확인'
-TestAlert: '이것은 테스트 이메일이며 이메일 발송 설정이 올바른지 확인합니다.'
+TestAlertTitle: '패널 테스트 알림'
+TestAlertMessage: '알림 채널 설정 및 연결 상태를 확인하기 위한 테스트 알림입니다.'
 LicenseExpirationAlert: '귀하의 {{ .node }}{{ .ip }} 패널, 라이센스가 {{ .day }}일 후에 만료됩니다. 자세한 내용은 패널에 로그인하십시오.'
 CronJobFailedAlert: '귀하의 {{ .node }}{{ .ip }} 패널, 예약 작업 {{ .name }} 실행에 실패했습니다. 자세한 내용은 패널에 로그인하십시오.'
 ClamAlert: '귀하의 {{ .node }}{{ .ip }} 패널, 바이러스 스캔 작업에서 {{ .num }}개의 감염 파일이 감지되었습니다. 자세한 내용은 패널에 로그인하십시오.'
@@ -649,6 +656,7 @@ CommonAlert: '귀하의 {{ .node }}{{ .ip }} 패널, {{ .msg }}。자세한 내�
 NodeExceptionAlert: '귀하의 {{ .node }}{{ .ip }} 패널, {{ .num }}개의 노드에 이상이 있습니다. 자세한 내용은 패널에 로그인하십시오.'
 LicenseExceptionAlert: '귀하의 {{ .node }}{{ .ip }} 패널, {{ .num }}개의 라이센스에 이상이 있습니다. 자세한 내용은 패널에 로그인하십시오.'
 SSHAndPanelLoginAlert: '귀하의 {{ .node }}{{ .ip }} 패널, {{ .loginIp }}에서의 {{ .name }} 로그인에 이상이 있습니다. 자세한 내용은 패널에 로그인하십시오.'
+CronJobSuccessAlert: '패널 {{ .node }}{{ .ip }}: 예약 작업 {{ .name }}이(가) 성공적으로 완료되었습니다. 로그인하여 자세한 내용을 확인하십시오.'
 
 # 디스크
 DeviceNotFound: '장치 {{ .name }} 을(를) 찾을 수 없습니다'
@@ -682,8 +690,7 @@ AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
 # Firewall
 ErrDockerIptablesChainUnavailable: 'Docker DOCKER-USER 체인을 찾을 수 없습니다. Docker를 다시 시작한 후 재시도하세요'
 ErrDockerNftablesChainUnavailable: 'Docker nftables IPv4 방화벽 체인을 찾을 수 없습니다. 현재 Docker 버전이 nftables 방화벽 백엔드를 지원하는지 확인하고 Docker를 다시 시작한 후 재시도하세요'
-ErrDockerForwardPolicyDrop: '{{ .family }} FORWARD 기본 정책이 DROP입니다. 정책을 조정한 후 다시 시도하세요'
-ErrUFWRuleAdopt: 'UFW 규칙 관리에 실패했습니다: {{ .detail }}. 현재 UFW 버전이 0.35 미만이면 UFW를 업그레이드한 후 다시 시도하세요'
+ErrDockerForwardPolicyDrop: '현재 서버에서 네트워크 전달이 제한되어 컨테이너 포트 보호를 활성화할 수 없습니다.'
 Firewall: '방화벽'
 FirewallTaskHost: '호스트 방화벽'
 FirewallTaskForwarding: '포트 포워딩'
@@ -697,28 +704,15 @@ FirewallCreateRulesStep: '방화벽 규칙 생성'
 FirewallCreateRulesResult: '생성 결과: 성공 {{ .succeeded }}개, 실패 {{ .failed }}개, 미실행 {{ .skipped }}개'
 FirewallRuleOperationResult: '작업 결과: 성공 {{ .succeeded }}개, 실패 {{ .failed }}개'
 FirewallCreateRuleSkipped: '미실행'
-FirewallCreateBatchStep: '{{ .backend }}에 규칙 {{ .count }}개 일괄 제출'
 FirewallImportRuleConversion: '[{{ .index }}/{{ .total }}] {{ .source }} → {{ .target }}: {{ .rule }}; 규칙 {{ .count }}개로 변환'
-FirewallCreateRuleExecutionFailed: '규칙 생성에 실패했습니다. 데이터베이스에 저장하지 않았으며 실행된 명령은 롤백하지 않습니다'
-FirewallCreateRulePersistenceFailed: '규칙은 생성되었지만 관리 정보를 저장하지 못했습니다'
-FirewallAdoptRulePersistenceFailed: '규칙 관리 등록 명령은 실행되었지만 관리 정보를 저장하지 못했습니다'
-FirewallSyncOperationsResult: '동기화 작업: 삭제 성공 {{ .removed }}개, 생성 성공 {{ .created }}개, 실패 {{ .failed }}개, 미실행 {{ .skipped }}개, 이미 일치하여 변경 불필요 {{ .unchanged }}개'
-FirewallSyncRuleUnchanged: '이미 일치하여 변경이 필요하지 않음'
-FirewallSyncStep: '{{ .name }}에 규칙 동기화'
-FirewallSyncFailed: '방화벽 규칙 {{ .failed }}개를 동기화하지 못했습니다'
-FirewallResetSourceStep: '원본 방화벽 {{ .name }} 초기화 및 비활성화'
-FirewallResetSourceResult: '원본 방화벽을 초기화하고 데이터베이스 규칙 {{ .removed }}개를 삭제했습니다'
+FirewallCreateRuleExecutionFailed: '규칙 생성에 실패했습니다. 실행된 명령은 롤백하지 않습니다'
 FirewallInitializeChainsStep: '{{ .name }} 기본 체인 초기화 및 바인딩'
-FirewallRestoreRulesStep: '데이터베이스 규칙을 {{ .name }}에 복원'
 FirewallSyncWhitelistStep: '방화벽 포트 허용 목록 동기화'
 FirewallEnableForwardingStep: '포트 전달 체인 활성화 및 바인딩'
 FirewallRestoreForwardingRulesStep: '데이터베이스 포트 전달 규칙 복원'
 FirewallInspectDockerGuardStep: 'Docker 방화벽 백엔드 및 보호 정책 확인'
 FirewallInitializeDockerGuardStep: '{{ .name }} 포트 보호 체인 초기화 및 바인딩'
 FirewallPersistDockerGuardStep: 'Docker 포트 보호 상태 저장'
-ErrFirewallRuleScopeChange: "현재 방화벽에서는 규칙의 적용 범위(예: IPv4/IPv6 주소 패밀리)를 변경할 수 없습니다. 새 규칙을 생성하세요."
-FirewallWhitelistReleased: "{{ .name }}: 허용 목록 보호가 해제되었으며 허용 규칙은 유지됩니다. 포트를 닫으려면 규칙 목록에서 수동으로 삭제하세요"
-FirewallWhitelistRequired: "{{ .name }}: 시스템 필수 포트 규칙으로 보호됩니다"
 FileTaskCopy: '{{ .dst }}에 파일 복사'
 FileTaskMove: '{{ .dst }}로 파일 이동'
 FileTaskCompress: '{{ .dst }}에 파일 압축'
@@ -726,7 +720,56 @@ FileTaskDecompress: '{{ .dst }}에 압축 해제'
 FileTaskSource: '원본 경로: {{ .path }}'
 FileTaskFormat: '압축 형식: {{ .format }}'
 FileTaskRename: '대상 파일 이름: {{ .name }}'
-
 ErrFirewallBackendCleanupRequired: "현재 백엔드 {{ .current }}에 1Panel 규칙이 남아 있습니다. {{ .target }}로 전환하기 전에 정리하세요."
 ErrDockerIPv4ForwardingDisabled: "IPv4 전달이 비활성화되어 있습니다. Docker 방화벽 백엔드를 사용하기 전에 net.ipv4.ip_forward=1을 설정하세요."
 ErrFirewallRuleSavedApplyFailed: "새 규칙 설정이 저장되었지만 방화벽에 적용하지 못했습니다. 동기화하여 다시 시도하세요: {{ .detail }}"
+ErrFirewallRuleConflict: "UFW에 일치 조건이 같지만 동작이 다른 규칙이 이미 있습니다. 기존 규칙을 편집하세요."
+ErrForwardInterfaceNotFound: "전달 규칙에 지정된 네트워크 인터페이스 {{ .name }}이 존재하지 않습니다. 이름을 확인한 후 다시 시도하세요."
+ErrIPv6RARisk: "네트워크 연결이 끊길 위험이 있어 IPv6 전달 활성화를 차단했습니다. 문서와 시스템 로그를 확인하세요."
+ErrIPv6RACheckFailed: "네트워크 구성을 확인할 수 없어 IPv6 전달 활성화를 차단했습니다. 자세한 내용은 시스템 로그를 확인하세요."
+
+ErrSSHPublicKey: "유효한 SSH 공개 키를 입력하세요"
+ErrSSHPrivateKey: "SSH 개인 키 형식이 잘못되었거나 암호가 틀립니다. 암호화된 키에는 원래 암호가 필요합니다"
+ErrSSHKeyMismatch: "SSH 공개 키와 개인 키가 일치하지 않습니다"
+
+# 가상 머신
+ErrVMNotFound: "가상 머신이 존재하지 않습니다"
+ErrVMAlreadyExists: "가상 머신이 이미 존재합니다"
+ErrVMCountLimit: "Professional 버전에서는 가상 머신을 최대 {{ .limit }}대까지 생성할 수 있습니다. 기존 가상 머신을 삭제하거나 Enterprise 버전으로 업그레이드한 후 다시 시도하세요."
+ErrVMImageAlreadyExists: "가상 머신 이미지 파일이 이미 존재합니다: {{ .detail }}"
+ErrVMStoragePathInUse: "스토리지 풀 경로가 이미 [{{ .name }}]에서 사용 중입니다"
+ErrVMHelperNotFound: "1panel-kvm을 찾을 수 없습니다"
+ErrVMBridgeManaged: "브리지 이름이 이미 libvirt 또는 Docker에서 관리되고 있습니다"
+ErrVMNetworkInUse: "네트워크가 사용 중이므로 삭제할 수 없습니다"
+ErrVMStorageInUse: "스토리지 풀이 사용 중이므로 삭제할 수 없습니다"
+ErrVMStorageNameCannotChange: "스토리지 풀 이름은 변경할 수 없습니다"
+ErrVMStoragePathCannotChange: "스토리지 풀 경로는 변경할 수 없습니다"
+ErrVMRunning: "가상 머신이 실행 중입니다"
+ErrVMLibvirtConnect: "libvirt 연결 실패: {{ .detail }}"
+ErrVMPermission: "가상 머신 작업 권한이 없습니다: {{ .detail }}"
+ErrVMNetworkNotFound: "가상 머신 네트워크가 존재하지 않습니다: {{ .detail }}"
+ErrVMInvalidPath: "가상 머신 경로가 유효하지 않습니다: {{ .detail }}"
+ErrVMInvalidInput: "가상 머신 매개변수가 유효하지 않습니다: {{ .detail }}"
+ErrVMCommandFailed: "가상 머신 명령 실행 실패: {{ .err }}"
+ErrVMDiskResizeBlocked: "디스크가 확장 조건을 충족하지 않거나 다른 장치에서 참조하고 있습니다. 디스크 상태를 확인하세요."
+ErrVMDiskReferenced: "다른 가상 머신 또는 장치가 이 가상 디스크를 사용 중이므로 현재 확장할 수 없습니다."
+ErrVMDiskReferenceCheck: "가상 디스크 참조를 확인할 수 없어 확장할 수 없습니다. 다른 가상 머신의 디스크 상태를 확인하세요."
+ErrVMSnapshotMetadataSync: "스냅샷은 복원되었지만 디스크 정보 동기화에 실패했습니다. 새로 고쳐 확인하세요. 스냅샷을 다시 복원할 필요는 없습니다."
+VMCreateTask: "가상 머신 [{{ .name }}] 생성"
+VMCreateFromTemplateTask: "템플릿에서 가상 머신 [{{ .name }}] 생성"
+VMUpdateTask: "가상 머신 [{{ .name }}] 업데이트"
+VMDiskResizeTask: "가상 머신 [{{ .name }}]의 디스크 [{{ .disk }}] 확장"
+VMRenameTask: "가상 머신 [{{ .name }}]을(를) [{{ .newName }}](으)로 이름 변경"
+VMDeleteTask: "가상 머신 [{{ .name }}] 삭제"
+VMTemplateCreateTask: "가상 머신 [{{ .name }}]을(를) 템플릿 [{{ .template }}](으)로 저장"
+VMTemplateDeleteTask: "가상 머신 템플릿 [{{ .name }}] 삭제"
+VMForceDeleteMetadataOnly: "1panel-kvm을 찾을 수 없어 가상 머신 [{{ .name }}] 메타데이터만 강제 삭제합니다"
+VMForceDeleteMetadataAfterLibvirtFailed: "libvirt에서 가상 머신 [{{ .name }}] 삭제 실패, 메타데이터 강제 삭제: {{ .err }}"
+VMForceDeleteDiskFailed: "가상 머신 디스크 파일 [{{ .path }}] 강제 삭제 실패: {{ .err }}"
+VMForceDeleteDiskSuccess: "가상 머신 디스크 파일 [{{ .path }}]을(를) 강제 삭제했습니다"
+VMSnapshotCreateTask: "가상 머신 [{{ .vm }}] 스냅샷 [{{ .snapshot }}] 생성"
+VMSnapshotCreateStep: "가상 머신 스냅샷 [{{ .snapshot }}] 생성"
+VMSnapshotRecoverTask: "가상 머신 [{{ .vm }}] 스냅샷 [{{ .snapshot }}] 복구"
+VMSnapshotRecoverStep: "가상 머신 스냅샷 [{{ .snapshot }}] 복구"
+VMSnapshotDeleteTask: "가상 머신 [{{ .vm }}] 스냅샷 [{{ .snapshot }}] 삭제"
+VMSnapshotDeleteStep: "가상 머신 스냅샷 [{{ .snapshot }}] 삭제"

@@ -16,14 +16,7 @@
                 <el-select v-model="group" @change="search()" clearable class="p-w-200">
                     <template #prefix>{{ $t('commons.table.group') }}</template>
                     <el-option :label="$t('commons.table.all')" value=""></el-option>
-                    <div v-for="item in groupList" :key="item.id">
-                        <el-option
-                            v-if="item.name === 'Default'"
-                            :label="$t('commons.table.default')"
-                            :value="item.id"
-                        />
-                        <el-option v-else :label="item.name" :value="item.id" />
-                    </div>
+                    <el-option v-for="item in groupList" :key="item.id" :label="item.name" :value="item.id" />
                 </el-select>
                 <TableSearch @search="search()" v-model:searchName="info" />
                 <TableRefresh @search="search()" />
@@ -48,16 +41,14 @@
                         <template #default="{ row }">
                             <fu-select-rw-switch v-model="row.groupID" @change="updateGroup(row)">
                                 <template #read>
-                                    {{ row.groupBelong === 'Default' ? $t('commons.table.default') : row.groupBelong }}
+                                    {{ row.groupBelong }}
                                 </template>
-                                <div v-for="item in groupList" :key="item.id">
-                                    <el-option
-                                        v-if="item.name === 'Default'"
-                                        :label="$t('commons.table.default')"
-                                        :value="item.id"
-                                    />
-                                    <el-option v-else :label="item.name" :value="item.id" />
-                                </div>
+                                <el-option
+                                    v-for="item in groupList"
+                                    :key="item.id"
+                                    :label="item.name"
+                                    :value="item.id"
+                                />
                             </fu-select-rw-switch>
                         </template>
                     </el-table-column>
@@ -79,11 +70,12 @@
 </template>
 
 <script setup lang="ts">
+import { useSearchReset } from '@/composables/useSearchReset';
 import GroupDialog from '@/components/agent-group/index.vue';
 import OperateDialog from '@/views/terminal/host/operate/index.vue';
 import { deleteHost, editHostGroup, searchHosts } from '@/api/modules/terminal';
 import { getAgentGroupList } from '@/api/modules/group';
-import { reactive, ref } from 'vue';
+import { toRef, reactive, ref } from 'vue';
 import i18n from '@/lang';
 import { Host } from '@/api/interface/host';
 import { MsgSuccess } from '@/utils/message';
@@ -99,6 +91,7 @@ const paginationConfig = reactive({
     total: 0,
 });
 const info = ref();
+useSearchReset({ search: info, page: toRef(paginationConfig, 'currentPage') }, { onRevisit: () => search() });
 const group = ref<string>('');
 
 const opRef = ref();

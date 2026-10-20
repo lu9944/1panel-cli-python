@@ -1,5 +1,8 @@
+import { bindSearchReset } from '@/utils/search-reset';
+import router from '@/routers/router';
+import { useGlobalStore } from '@/composables/useGlobalStore';
 import { defineStore } from 'pinia';
-import { ref, reactive } from 'vue';
+import { ref, reactive, toRef } from 'vue';
 import { MsgError } from '@/utils/message';
 import { checkStreamAuth } from '@/utils/stream-auth';
 
@@ -44,6 +47,17 @@ export const ProcessStore = defineStore('ProcessStore', () => {
         processID: undefined,
         processName: '',
         port: undefined,
+    });
+
+    const { currentNode } = useGlobalStore();
+    bindSearchReset([() => router.currentRoute.value.path, currentNode], {
+        pid: toRef(psSearch, 'pid'),
+        name: toRef(psSearch, 'name'),
+        username: toRef(psSearch, 'username'),
+
+        processID: toRef(netSearch, 'processID'),
+        processName: toRef(netSearch, 'processName'),
+        port: toRef(netSearch, 'port'),
     });
 
     let pendingRequestType: 'ps' | 'net' | null = null;

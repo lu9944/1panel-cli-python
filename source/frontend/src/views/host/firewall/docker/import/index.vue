@@ -6,7 +6,6 @@
             :closable="false"
             :title="$t('firewall.importLimit', [FIREWALL_BATCH_LIMIT, FIREWALL_IMPORT_MAX_SIZE / 1024])"
         />
-        <el-alert v-if="submitError" class="mb-3" type="error" :closable="false" :title="submitError" />
         <div class="import-file-bar mt-3">
             <el-upload
                 ref="uploadRef"
@@ -64,7 +63,6 @@
                 <el-table-column :label="$t('firewall.protection')" min-width="180">
                     <template #default="{ row }">{{ displaySources(row) || '-' }}</template>
                 </el-table-column>
-                <el-table-column :label="$t('commons.table.description')" prop="description" min-width="150" />
             </ComplexTable>
         </el-card>
         <template #footer>
@@ -78,6 +76,7 @@
 
 <script lang="ts" setup>
 import { Firewall } from '@/api/interface/firewall';
+import { parseDockerPolicyImport } from '../transfer';
 import { upsertDockerPortGuardPolicies } from '@/api/modules/firewall';
 import i18n from '@/lang';
 import { MsgError } from '@/utils/message';
@@ -100,7 +99,6 @@ const policies = ref<Firewall.DockerGuardPolicy[]>([]);
 const selects = ref(new Set<Firewall.DockerGuardPolicy>());
 const uploadRef = ref();
 const uploaderFiles = ref<UploadFile[]>([]);
-const submitError = ref('');
 const displaySources = (policy: Firewall.DockerGuardPolicy) => formatHostAddressList(policy.sources, policy.family);
 
 const fileOnChange = (uploadFile: UploadFile, uploadFiles: UploadFiles) => {
@@ -109,7 +107,6 @@ const fileOnChange = (uploadFile: UploadFile, uploadFiles: UploadFiles) => {
 
     policies.value = [];
     selects.value = new Set();
-    submitError.value = '';
     uploaderFiles.value = uploadFiles;
     if (uploadFile.raw.size > FIREWALL_IMPORT_MAX_SIZE) {
         uploadRef.value?.clearFiles();
@@ -121,8 +118,7 @@ const fileOnChange = (uploadFile: UploadFile, uploadFiles: UploadFiles) => {
     const reader = new FileReader();
     reader.onload = (event) => {
         try {
-            const parsed: unknown = JSON.parse(String(event.target?.result || ''));
-            if (!Array.isArray(parsed)) throw new Error();
+            const parsed = parseDockerPolicyImport(String(event.target?.result || ''));
             if (parsed.length > FIREWALL_BATCH_LIMIT) {
                 MsgError(
                     i18n.global.t('firewall.importLimit', [FIREWALL_BATCH_LIMIT, FIREWALL_IMPORT_MAX_SIZE / 1024]),
@@ -133,7 +129,8 @@ const fileOnChange = (uploadFile: UploadFile, uploadFiles: UploadFiles) => {
             if (normalized.some((policy) => !policy)) throw new Error();
             const byEndpoint = new Map<string, Firewall.DockerGuardPolicy>();
             for (const policy of normalized as Firewall.DockerGuardPolicy[]) {
-                byEndpoint.set(dockerGuardEndpointKey(policy), policy);
+                const key = dockerGuardEndpointKey(policy);
+                if (!byEndpoint.has(key)) byEndpoint.set(key, policy);
             }
             policies.value = [...byEndpoint.values()];
             selects.value = new Set(policies.value);
@@ -162,24 +159,25 @@ const onImport = async () => {
         return;
     }
     loading.value = true;
-    submitError.value = '';
     try {
         const result = (
             await upsertDockerPortGuardPolicies({
+                import: true,
                 policies: policies.value.filter((policy) => selects.value.has(policy)),
             })
         ).data;
         if (!result.taskID || !result.queued) {
-            submitError.value = i18n.global.t('commons.msg.operationFailed');
+            MsgError(i18n.global.t('commons.msg.operationFailed'));
             return;
         }
         visible.value = false;
         emit('created', result.taskID);
     } catch (error) {
-        submitError.value =
+        MsgError(
             (isAxiosError(error) && error.response?.data?.message) ||
-            (error && getErrorMessage(error)) ||
-            i18n.global.t('commons.res.commonError');
+                (error && getErrorMessage(error)) ||
+                i18n.global.t('commons.res.commonError'),
+        );
     } finally {
         loading.value = false;
     }
@@ -188,6 +186,8 @@ const onImport = async () => {
 const modeLabel = (mode: Firewall.DockerGuardPolicy['mode']) => {
     if (mode === 'deny_sources') return i18n.global.t('firewall.denySources');
     if (mode === 'allow_sources') return i18n.global.t('firewall.allowSources');
+    if (mode === 'accept_sources') return i18n.global.t('firewall.acceptSources');
+    if (mode === 'accept_all') return i18n.global.t('firewall.acceptAll');
     return i18n.global.t('firewall.denyAll');
 };
 
@@ -197,7 +197,6 @@ const acceptParams = () => {
     policies.value = [];
     selects.value = new Set();
     uploaderFiles.value = [];
-    submitError.value = '';
     uploadRef.value?.clearFiles();
     visible.value = true;
 };

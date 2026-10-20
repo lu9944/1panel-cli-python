@@ -46,7 +46,7 @@ func CreateTaskScanCustomWebhookAlertLog(
 	transport *http.Transport,
 	agentInfo *dto.AgentInfo,
 ) error {
-	params := CreateAlertParams(GetCronJobTypeName(pushAlert.Param))
+	params := CreateTaskAlertParams(pushAlert)
 	alertInfo := info
 	alertInfo.Type = alertType
 	create.Type = GetCronJobType(alertType)
@@ -99,7 +99,7 @@ func customWebhookTemplateData(rawDetail string, agentInfo *dto.AgentInfo, occur
 	if businessType == "" {
 		return webhook_sender.TemplateData{}, errors.New("resolve custom webhook alert detail failed")
 	}
-	content := GetSendContent(businessType, detail.Params, agentInfo)
+	content := GetAlertDetailContent(detail, agentInfo)
 	if content == "" {
 		content = i18n.GetMsgWithMap("CommonAlert", map[string]interface{}{"msg": detail.Title})
 	}
@@ -139,33 +139,21 @@ func TestCustomWebhook(
 	resolved dto.AlertCustomWebhookResolvedConfig,
 	transport *http.Transport,
 	agentInfo *dto.AgentInfo,
+	lang string,
 ) (dto.AlertConfigTestResult, error) {
 	request, err := buildResolvedCustomWebhookRequest(resolved, webhook_sender.TemplateData{
-		Title:     "1Panel Webhook Test",
-		Message:   "This is a test notification from 1Panel.",
+		Title:     i18n.GetMsgByKeyAndLang(lang, "TestAlertTitle"),
+		Message:   i18n.GetMsgByKeyAndLang(lang, "TestAlertMessage"),
 		Type:      "test",
 		NodeName:  customWebhookNodeName(agentInfo),
 		Timestamp: customWebhookNow(),
 	}, transport)
 	if err != nil {
-		return dto.AlertConfigTestResult{}, err
+		return CustomWebhookTestResult(webhook_sender.Request{}, webhook_sender.Result{}, err), nil
 	}
 	request.CaptureResponse = true
 	result, executeErr := webhook_sender.Execute(context.Background(), request)
-	durationMillis := result.Duration.Milliseconds()
-	if result.Duration > 0 && durationMillis == 0 {
-		durationMillis = 1
-	}
-	testResult := dto.AlertConfigTestResult{
-		Success:    executeErr == nil,
-		StatusCode: result.StatusCode,
-		Duration:   durationMillis,
-		Response:   result.Response,
-	}
-	if executeErr != nil {
-		testResult.Message = executeErr.Error()
-	}
-	return testResult, nil
+	return CustomWebhookTestResult(request, result, executeErr), nil
 }
 
 func buildResolvedCustomWebhookRequest(

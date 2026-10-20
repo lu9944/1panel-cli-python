@@ -26,6 +26,8 @@
             </template>
             <template #main>
                 <ComplexTable
+                    :selection-context="() => [searchName]"
+                    row-key="name"
                     :pagination-config="paginationConfig"
                     v-model:selects="selects"
                     :data="data"
@@ -122,10 +124,11 @@
 </template>
 
 <script lang="ts" setup>
+import { useSearchReset } from '@/composables/useSearchReset';
 import CreateDialog from '@/views/container/volume/create/index.vue';
 import CodemirrorDrawer from '@/components/codemirror-pro/drawer.vue';
 import DockerStatus from '@/views/container/docker-status/index.vue';
-import { reactive, ref } from 'vue';
+import { toRef, reactive, ref } from 'vue';
 import { dateFormat } from '@/utils/date';
 import { newUUID } from '@/utils/id';
 import { deleteVolume, searchVolume, inspect, containerPrune } from '@/api/modules/container';
@@ -155,6 +158,7 @@ const paginationConfig = reactive({
     total: 0,
 });
 const searchName = ref();
+useSearchReset({ search: searchName, page: toRef(paginationConfig, 'currentPage') }, { onRevisit: () => search() });
 const isActive = ref(false);
 const isExist = ref(false);
 

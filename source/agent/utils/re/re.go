@@ -6,6 +6,11 @@ import (
 )
 
 const (
+	VMNameValidationPattern = `^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`
+	VMCommonPattern         = `^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,63}$`
+
+	VLLMMetricSamplePattern            = `^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{(?:[^"\\]|"(?:\\.|[^"\\])*")*\})?\s+(\S+)(?:\s+.*)?$`
+	VLLMMetricLabelPattern             = `([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*("(?:[^"\\]|\\.)*")`
 	NumberAlphaPattern                 = `(\d+)([A-Za-z]+)`
 	ComposeDisallowedCharsPattern      = `[^a-z0-9_-]+`
 	ComposeNamePattern                 = `^[a-z0-9][a-z0-9_-]{0,255}$`
@@ -61,6 +66,11 @@ var regexMap = make(map[string]*regexp.Regexp)
 
 func Init() {
 	patterns := []string{
+		VMNameValidationPattern,
+		VMCommonPattern,
+
+		VLLMMetricSamplePattern,
+		VLLMMetricLabelPattern,
 		NumberAlphaPattern,
 		ComposeDisallowedCharsPattern,
 		ComposeNamePattern,
