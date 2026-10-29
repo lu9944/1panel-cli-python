@@ -2,9 +2,10 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .eggs/
-build/
+/build/
 dist/
 .env
+!source/frontend/.env
 .venv/
 venv/
 *.tmp
