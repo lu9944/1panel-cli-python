@@ -1,4 +1,4 @@
-"""API 路由目录:内置 v2.4.0 源码清单 + 当前面板 Swagger 运行时合并。
+"""API 路由目录:内置 v2.4.1 源码清单 + 当前面板 Swagger 运行时合并。
 
 对应 Rust 版 catalog.rs。
 """
@@ -13,7 +13,7 @@ from .client import PanelClient
 from .errors import CliError
 from .session import load_session
 
-BUILTIN_CATALOG_PATH = Path(__file__).resolve().parent / "data" / "api-v2.4.0.json"
+BUILTIN_CATALOG_PATH = Path(__file__).resolve().parent / "data" / "api-v2.4.1.json"
 SOURCE_ROOT = Path(__file__).resolve().parent.parent / "source"
 HTTP_METHODS = ("get", "post", "put", "delete", "patch")
 
@@ -174,7 +174,7 @@ def resolve_swagger_operation(
 def source_reference(route_source: str) -> str:
     """路由清单里的源码相对路径 → 技能目录内可直接阅读的 `source/...` 路径。
 
-    仅当技能目录附带 `source/`(1Panel v2.4.0 源码)且该文件存在时返回。
+    仅当技能目录附带 `source/`(1Panel v2.4.1 源码)且该文件存在时返回。
     """
     if not route_source or route_source == "runtime-swagger":
         return ""

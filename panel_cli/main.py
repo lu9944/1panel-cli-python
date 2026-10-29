@@ -13,7 +13,7 @@ from . import apps, catalog, commands, config, db, doctor
 from . import firewall, initcmd, redis, web, auth, redact
 from .errors import CliError
 
-VERSION = "2.4.0"
+VERSION = "2.4.1"
 
 EPILOG = (
     "示例:\n"
@@ -125,7 +125,7 @@ def _add_api(subparsers, common) -> None:
     p = subparsers.add_parser("api", parents=[common], help="使用已保存的凭据调用面板 API")
     sub = p.add_subparsers(dest="api_action", metavar="<ACTION>", required=True)
 
-    q = sub.add_parser("list", help="列出 API 路由(内置 v2.4.0 清单 + 当前面板 Swagger)")
+    q = sub.add_parser("list", help="列出 API 路由(内置 v2.4.1 清单 + 当前面板 Swagger)")
     q.add_argument("--filter", default="", help="按路径、处理器、摘要或标签过滤")
     q.set_defaults(func=lambda a: catalog.list_routes(a.profile, a.filter))
 

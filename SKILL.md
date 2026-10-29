@@ -8,18 +8,18 @@ description: >-
   nginx 配置、配置 HTTPS/SSL、上传解压网站文件、管理 MySQL/MariaDB 数据库与用户、
   管理 Redis、防火墙端口/IP/转发规则,或发现和调用面板 API 时使用本 skill。执行前先
   运行 `1panel-cli doctor`;原始 API 调用前先用 `api list` / `api describe` 查询,不要猜测路径。
-  请求失败或参数不确定时,阅读随技能附带的 1Panel v2.4.0 完整源码(技能目录内 `source/`)。
+  请求失败或参数不确定时,阅读随技能附带的 1Panel v2.4.1 完整源码(技能目录内 `source/`)。
 compatibility: opencode
 metadata:
   tool: 1panel-cli
   panel: 1Panel
   language: python
-  verified-panel-version: v2.4.0
+  verified-panel-version: v2.4.1
 ---
 
 # 1panel-cli — 1Panel v2 面板管理(Python)
 
-通过 1Panel 官方 API 管理面板。当前验证基线是 **1Panel v2.4.0 stable**;内置 API 路由清单即由随技能附带的 v2.4.0 源码 `source/` 生成(788 条)。代码同时保留了旧版统一防火墙接口(带规则检查)与 v2.2.x 旧防火墙接口的自动探测:连接 v2.4.0 时使用统一规则接口(删除提交 `scope + instanceKey + observed`,写操作为异步任务,CLI 自动轮询并汇报结果),连接 v2.3.2 / 中间版本 / 旧版面板时自动回退对应接口。
+通过 1Panel 官方 API 管理面板。当前验证基线是 **1Panel v2.4.1 stable**;内置 API 路由清单即由随技能附带的 v2.4.1 源码 `source/` 生成(793 条;其中 5 条仅存在于 v2.4.1 tag 源码,官方发行包未注册,见下)。代码同时保留了旧版统一防火墙接口(带规则检查)与 v2.2.x 旧防火墙接口的自动探测:连接 v2.4.1 时使用统一规则接口(删除提交 `scope + instanceKey + observed`,写操作为异步任务,CLI 自动轮询并汇报结果),连接 v2.3.2 / 中间版本 / 旧版面板时自动回退对应接口。
 
 实现为**纯 Python 标准库**,无需安装任何第三方包。
 
@@ -51,11 +51,11 @@ metadata:
 1panel-cli api post websites/templates/search --body '{"page":1,"pageSize":20}'
 ```
 
-`api list` 基于 1Panel v2.4.0 源码(技能目录内 `source/`)生成的 788 条路由清单,并尝试读取当前面板 Swagger;它能显示 Swagger 未收录但源码已注册的路由。
+`api list` 基于 1Panel v2.4.1 源码(技能目录内 `source/`)生成的 793 条路由清单,并尝试读取当前面板 Swagger;它能显示 Swagger 未收录但源码已注册的路由。注意:5 条 v2.4.1 tag 新路由(`GET /ai/benchmark/sources`、`GET|POST /dashboard/quick/directory*`)在官方 v2.4.1 发行包中尚未注册(实机 404),调用会失败,详见 `references/compatibility-v2.4.1.md`。
 
 ## 源码参考 `source/`
 
-技能目录内附带 **1Panel v2.4.0 完整源码** `source/`(与内置 788 条路由清单同源)。当请求失败(404、方法不符、参数校验错误、返回 HTML)或参数不确定时,**先查源码再重试,不要猜测**:
+技能目录内附带 **1Panel v2.4.1 完整源码** `source/`(与内置 793 条路由清单同源)。当请求失败(404、方法不符、参数校验错误、返回 HTML)或参数不确定时,**先查源码再重试,不要猜测**:
 
 | 查阅内容 | 位置 |
 |---|---|
@@ -149,9 +149,9 @@ metadata:
 2. `api` 路径相对 `/api/v2`;也接受完整的 `/api/v2/...` 路径。
 3. 登录使用本地密码源 `authSource=local`;LDAP/OIDC/SAML 等企业认证登录不由此 CLI 代办。
 4. 多节点面板务必选择正确的 `PANEL_NODE` / `--node`;未指定时发送 `CurrentNode: local`。
-5. 防火墙接口有四种形态,由 CLI 自动探测:1Panel v2.4.0 走统一规则接口(`/hosts/firewall/rules*`,删除提交 `targets` = `scope + instanceKey + observed`,并自动跳过白名单/受保护规则);v2.3.2 仍按 `uuids` 删除;中间版本创建前会先调用 `rules/check`(`checkFlag` 签名);v2.2.x 走旧门面接口。v2.3.2+ 写操作均为异步任务(返回 `taskID`,CLI 自动轮询 `logs/tasks/search` 并在任务失败时报错)。不要绕过探测手拼写请求。
+5. 防火墙接口有四种形态,由 CLI 自动探测:1Panel v2.4.0/v2.4.1 走统一规则接口(`/hosts/firewall/rules*`,删除提交 `targets` = `scope + instanceKey + observed`,并自动跳过白名单/受保护规则);v2.3.2 仍按 `uuids` 删除;中间版本创建前会先调用 `rules/check`(`checkFlag` 签名);v2.2.x 走旧门面接口。v2.3.2+ 写操作均为异步任务(返回 `taskID`,CLI 自动轮询 `logs/tasks/search` 并在任务失败时报错)。不要绕过探测手拼写请求。
 6. nginx 配置保存后面板会 reload;写入前先读取原配置。生产密码与 Cookie 不应写入日志或提交仓库。
-7. Swagger 不是完整路由清单;以 `source/` 的 1Panel v2.4.0 源码为准(内置清单 `panel_cli/data/api-v2.4.0.json` 即由其生成)。企业版闭源扩展接口不在该清单内。
+7. Swagger 不是完整路由清单;以 `source/` 的 1Panel v2.4.1 源码为准(内置清单 `panel_cli/data/api-v2.4.1.json` 即由其生成;官方 v2.4.1 发行包与 tag 源码的 5 条路由差异见 `references/compatibility-v2.4.1.md`)。企业版闭源扩展接口不在该清单内。
 8. `firewall docker` 等接口仅在 v2.3.x+ 面板存在;v2.2.x 会自动回退旧防火墙接口。v2.4.0 的 Docker 守护策略只对 `managementTarget=container_guard` 的端口生效,流量由宿主机防火墙接管的端口要用 `firewall port/ip` 规则(`firewall docker ports` 会标注)。v2.4.0 已移除 `docker/sync`、`rules/adopt`、`rules/sync*`,新增 `rules/backups`、`family/operate`、`settings/ipv6`;`firewall ipv6` 已封装 IPv6 开关。
 9. 请求失败或参数不确定时,按上表到 `source/` 阅读对应 router / DTO / service 源码确认路径、字段与行为,再修正调用。
 10. 应用 key 与实例名自动兼容 `local` 前缀:配套离线包(patched agent)的本地应用以规范 key 注册

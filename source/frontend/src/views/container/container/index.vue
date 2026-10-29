@@ -355,6 +355,20 @@
                         show-overflow-tooltip
                         prop="runTime"
                     />
+                    <!-- The API sorts by createdAt; the row field is named createTime. -->
+                    <el-table-column
+                        :label="$t('commons.table.createdAt')"
+                        card-type="description"
+                        min-width="180"
+                        show-overflow-tooltip
+                        prop="createdAt"
+                        sortable="custom"
+                        :sort-orders="['descending', 'ascending', null]"
+                    >
+                        <template #default="{ row }">
+                            {{ row.createTime }}
+                        </template>
+                    </el-table-column>
                     <fu-table-operations
                         card-type="button"
                         fix
@@ -474,7 +488,7 @@
 </template>
 
 <script lang="ts" setup>
-import { useSearchReset } from '@/composables/useSearchReset';
+import { useSearchState } from '@/utils/search-reset';
 import PruneDialog from '@/views/container/container/prune/index.vue';
 import RenameDialog from '@/views/container/container/rename/index.vue';
 import UpgradeDialog from '@/views/container/container/upgrade/index.vue';
@@ -526,17 +540,16 @@ const portsDialogContainer = ref('');
 const portFilter = ref('');
 const showIPv6Ports = ref(true);
 const selects = ref<any>([]);
+const defaultSort = { prop: 'name', order: 'ascending' };
 const paginationConfig = reactive({
-    cacheSizeKey: 'container-page-size',
     currentPage: 1,
-    pageSize: Number(localStorage.getItem('container-page-size')) || 20,
+    pageSize: 20,
     total: 0,
     state: 'all',
-    orderBy: 'name',
-    order: 'ascending',
+    orderBy: defaultSort.prop,
+    order: defaultSort.order,
 });
 const searchName = ref();
-useSearchReset({ search: searchName, page: toRef(paginationConfig, 'currentPage') }, { onRevisit: () => search() });
 const dialogUpgradeRef = ref();
 const dialogCommitRef = ref();
 const dialogPortJumpRef = ref();
@@ -552,6 +565,19 @@ const taskLogRef = ref();
 
 const tags = ref([]);
 const activeTag = ref('all');
+useSearchState(
+    'container/container/index',
+    {
+        search: searchName,
+        page: toRef(paginationConfig, 'currentPage'),
+        pageSize: toRef(paginationConfig, 'pageSize'),
+        state: toRef(paginationConfig, 'state'),
+        activeTag,
+        orderBy: toRef(paginationConfig, 'orderBy'),
+        order: toRef(paginationConfig, 'order'),
+    },
+    { onRevisit: () => search() },
+);
 
 const activeDropdownContainerId = ref('');
 const statFields = [
@@ -709,8 +735,10 @@ const search = async (column?: any) => {
     }
     localStorage.setItem('includeAppStore', includeAppStore.value ? 'true' : 'false');
     let filterItem = (router.currentRoute.value.query?.filters as string) || '';
-    paginationConfig.orderBy = column?.order ? column.prop : paginationConfig.orderBy;
-    paginationConfig.order = column?.order ? column.order : paginationConfig.order;
+    if (column) {
+        paginationConfig.orderBy = column.order ? column.prop : defaultSort.prop;
+        paginationConfig.order = column.order || defaultSort.order;
+    }
     let params = {
         name: searchName.value,
         state: paginationConfig.state || 'all',

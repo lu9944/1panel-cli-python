@@ -206,7 +206,7 @@ def doctor(profile: str, force: bool, env_file: str | None = None) -> None:
             6,
             "面板版本兼容性",
             compatible,
-            f"{version} ({edition});已验证基线 v2.4.0",
+            f"{version} ({edition});已验证基线 v2.4.1",
         )
         if not compatible:
             all_ok = False

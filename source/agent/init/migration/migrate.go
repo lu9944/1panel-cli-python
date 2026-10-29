@@ -115,6 +115,8 @@ func agentDBMigrations() []*gormigrate.Migration {
 		migrations.AddMonitorSettings,
 		migrations.AddVLLMRequestMetrics,
 		migrations.AddVLLMSampleInterval,
+		migrations.AddNativeAgentInstalls,
+		migrations.AddQuickDirectory,
 	}
 }
 

@@ -7,7 +7,7 @@
 #
 # 说明:
 # - 覆盖 SKILL.md / commands.md / README.md / .env.example / bin/1panel-cli / panel_cli/;
-# - 同步 1Panel v2.4.0 完整源码 source/(请求失败/参数不确定时的源码参考);
+# - 同步 1Panel v2.4.1 完整源码 source/(请求失败/参数不确定时的源码参考);
 # - 保留目标目录已有的 .env(真实凭据)与 bin/.env;
 # - 清理旧版 Rust/dev-v2 的参考文件(api-dev-v2.json / compatibility-dev-v2.md)。
 set -euo pipefail
@@ -22,7 +22,7 @@ fi
 
 mkdir -p "$DEST/bin" "$DEST/references"
 
-# Python 包(含 data/api-v2.4.0.json)
+# Python 包(含 data/api-v2.4.1.json)
 rm -rf "$DEST/panel_cli"
 cp -r "$SRC/panel_cli" "$DEST/panel_cli"
 find "$DEST/panel_cli" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
@@ -40,15 +40,16 @@ cp "$SRC/.env.example" "$DEST/bin/.env.example"
 rm -f "$DEST/panel_cli/exec.py" "$DEST/panel_cli/ws.py"
 rm -rf "$DEST/docs"
 
-# 参考资料:替换为 v2.4.0 基线
-cp "$SRC/references/compatibility-v2.4.0.md" "$DEST/references/"
-cp "$SRC/panel_cli/data/api-v2.4.0.json" "$DEST/references/api-v2.4.0.json"
+# 参考资料:替换为 v2.4.1 基线
+cp "$SRC/references/compatibility-v2.4.1.md" "$DEST/references/"
+cp "$SRC/panel_cli/data/api-v2.4.1.json" "$DEST/references/api-v2.4.1.json"
 rm -f "$DEST/references/api-dev-v2.json" "$DEST/references/compatibility-dev-v2.md" \
       "$DEST/references/api-v2.2.5.json" "$DEST/references/compatibility-v2.2.5.md" \
       "$DEST/references/api-v2.3.1.json" "$DEST/references/compatibility-v2.3.1.md" \
-      "$DEST/references/api-v2.3.2.json" "$DEST/references/compatibility-v2.3.2.md"
+      "$DEST/references/api-v2.3.2.json" "$DEST/references/compatibility-v2.3.2.md" \
+      "$DEST/references/api-v2.4.0.json" "$DEST/references/compatibility-v2.4.0.md"
 
-# 1Panel v2.4.0 完整源码参考:请求失败或参数不确定时按 SKILL.md 指引阅读
+# 1Panel v2.4.1 完整源码参考:请求失败或参数不确定时按 SKILL.md 指引阅读
 if [[ -d "$SRC/source" ]]; then
   rm -rf "$DEST/source"
   cp -r "$SRC/source" "$DEST/source"

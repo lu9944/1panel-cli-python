@@ -1,10 +1,10 @@
-# 1panel-cli v2.4.0 命令速查(Python / 1Panel v2.4.0)
+# 1panel-cli v2.4.1 命令速查(Python / 1Panel v2.4.1)
 
 首次使用先运行 `1panel-cli init` 自动生成 `.env`(无需手填账号);然后运行 `1panel-cli doctor`,确认六项检查通过。所有命令支持全局参数 `--env <PATH>`、`--profile <NAME>`、`--node <NODE>`;节点也可由 `PANEL_NODE` 设置。全局参数放在子命令前后均可。
 
-> 本清单面向 1Panel v2.4.0 验证;旧版面板(v2.2.x)的旧防火墙接口与中间版本(带 `rules/check` 的统一接口)会自动探测并回退。
+> 本清单面向 1Panel v2.4.1 验证;旧版面板(v2.2.x)的旧防火墙接口与中间版本(带 `rules/check` 的统一接口)会自动探测并回退。
 >
-> 请求失败或参数不确定时,阅读随技能附带的 1Panel v2.4.0 完整源码 `source/`:`api describe` 输出的 `sourcePath` 可直接定位文件(路由 `source/*/router/`、DTO `source/*/app/dto/`、行为 `source/*/app/service/`)。内置路由清单 `panel_cli/data/api-v2.4.0.json` 即由该源码生成。
+> 请求失败或参数不确定时,阅读随技能附带的 1Panel v2.4.1 完整源码 `source/`:`api describe` 输出的 `sourcePath` 可直接定位文件(路由 `source/*/router/`、DTO `source/*/app/dto/`、行为 `source/*/app/service/`)。内置路由清单 `panel_cli/data/api-v2.4.1.json` 即由该源码生成。
 
 ## 会话
 
@@ -140,7 +140,7 @@ v2.4.0 的 Docker 端口守护注意事项:
 | `api put <PATH> [--body JSON] [--body-file PATH]` | PUT,`--body-file -` 从标准输入读取 |
 | `api delete <PATH>` | DELETE |
 
-路径相对 `/api/v2`,请求自动带 Cookie、CSRF、`Accept-Language` 和 `CurrentNode`。内置清单由 1Panel `v2.4.0` 源码生成(788 条路由,Swagger 收录 759 条)。已在 v2.4.0 面板上全量核验:788 条路由全部注册可调用。`api describe` 支持用真实取值匹配参数路由(如 `websites/ca/1` 可匹配 `websites/ca/:id`);调用不存在的路由或方法不符时会给出明确报错,而不是打印 HTML。
+路径相对 `/api/v2`,请求自动带 Cookie、CSRF、`Accept-Language` 和 `CurrentNode`。内置清单由 1Panel `v2.4.1` 源码生成(793 条路由,Swagger 收录 759 条)。已在 v2.4.1 面板上全量核验:788 条 v2.4.0 及更早的路由全部注册可调用;5 条 v2.4.1 tag 新增路由(`GET /ai/benchmark/sources`、`GET|POST /dashboard/quick/directory*`)官方发行包尚未注册,实机 404(详见兼容性文档),请勿调用。`api describe` 支持用真实取值匹配参数路由(如 `websites/ca/1` 可匹配 `websites/ca/:id`);调用不存在的路由或方法不符时会给出明确报错,而不是打印 HTML。
 
 响应默认脱敏:字段名命中 `privateKey` / `password` / `passwd` / `token` / `secret` / `accessKey` / `hmacKey` / `authorization` / `credential` 等,或值中出现 PEM 私钥块(`RSA/EC/OPENSSH/PGP ... PRIVATE KEY`),输出统一替换为 `***REDACTED***` / `***REDACTED PRIVATE KEY***`。确需原值(如读取证书私钥)时显式加全局参数 `--show-secrets`(或环境变量 `PANEL_CLI_SHOW_SECRETS=1`),并自行承担泄露风险;请求体含敏感内容时优先用 `--body-file`,不要让私钥出现在命令行参数里。
 

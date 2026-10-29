@@ -1,7 +1,7 @@
 {
-  "panelVersion": "v2.4.0",
-  "sourceRef": "v2.4.0",
-  "routeCount": 788,
+  "panelVersion": "v2.4.1",
+  "sourceRef": "v2.4.1",
+  "routeCount": 793,
   "swaggerDocumentedCount": 759,
   "routes": [
     {
@@ -806,6 +806,15 @@
         "AI"
       ],
       "swaggerDocumented": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/ai/benchmark/sources",
+      "handler": "AIBenchmarkSources",
+      "source": "agent/router/ro_ai.go",
+      "summary": "",
+      "tags": [],
+      "swaggerDocumented": false
     },
     {
       "method": "POST",
@@ -3862,6 +3871,42 @@
         "Dashboard"
       ],
       "swaggerDocumented": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v2/dashboard/quick/directory",
+      "handler": "ListQuickDirectories",
+      "source": "agent/router/ro_dashboard.go",
+      "summary": "",
+      "tags": [],
+      "swaggerDocumented": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/dashboard/quick/directory",
+      "handler": "CreateQuickDirectory",
+      "source": "agent/router/ro_dashboard.go",
+      "summary": "",
+      "tags": [],
+      "swaggerDocumented": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/dashboard/quick/directory/del",
+      "handler": "DeleteQuickDirectory",
+      "source": "agent/router/ro_dashboard.go",
+      "summary": "",
+      "tags": [],
+      "swaggerDocumented": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v2/dashboard/quick/directory/update",
+      "handler": "UpdateQuickDirectory",
+      "source": "agent/router/ro_dashboard.go",
+      "summary": "",
+      "tags": [],
+      "swaggerDocumented": false
     },
     {
       "method": "GET",

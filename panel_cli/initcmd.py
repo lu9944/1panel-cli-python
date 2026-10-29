@@ -6,7 +6,7 @@
    当 user-info 因已登录过而掩码密码时,读取设置表中的 Password/EncryptKey
    并用 AES 解密,无需用户手填。DB 文件通常全局可读(0644),无需 sudo。
 
-对应 1Panel v2.4.0 源码(技能目录内 `source/`):
+对应 1Panel v2.4.1 源码(技能目录内 `source/`):
 - source/core/cmd/server/cmd/user-info.go — user-info 输出与掩码逻辑(有成功登录记录即掩码)
 - source/core/utils/encrypt/encrypt.go    — StringDecrypt: base64(iv + AES-CBC(PKCS7))
 """

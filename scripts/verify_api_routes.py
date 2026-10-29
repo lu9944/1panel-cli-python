@@ -8,7 +8,7 @@
   Swagger 核验注册情况。
 
 用法:
-  python3 scripts/verify_api_routes.py                 # 核验内置 v2.4.0 清单
+  python3 scripts/verify_api_routes.py                 # 核验内置 v2.4.1 清单
   python3 scripts/verify_api_routes.py --profile prod  # 指定已登录的会话
   python3 scripts/verify_api_routes.py --filter websites
   python3 scripts/verify_api_routes.py --output /tmp/api-verify.json
