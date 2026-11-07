@@ -117,6 +117,8 @@ func agentDBMigrations() []*gormigrate.Migration {
 		migrations.AddVLLMSampleInterval,
 		migrations.AddNativeAgentInstalls,
 		migrations.AddQuickDirectory,
+		migrations.AddLocalModelAccountLink,
+		migrations.AddOllamaModelAccountSync,
 	}
 }
 

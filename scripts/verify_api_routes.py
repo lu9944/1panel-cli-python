@@ -8,7 +8,7 @@
   Swagger 核验注册情况。
 
 用法:
-  python3 scripts/verify_api_routes.py                 # 核验内置 v2.4.1 清单
+  python3 scripts/verify_api_routes.py                 # 核验内置 v2.4.2 清单
   python3 scripts/verify_api_routes.py --profile prod  # 指定已登录的会话
   python3 scripts/verify_api_routes.py --filter websites
   python3 scripts/verify_api_routes.py --output /tmp/api-verify.json
@@ -39,7 +39,6 @@ MALFORMED_JSON = b'{"__verify_api_routes__": '
 PARAM_RE = re.compile(r":[A-Za-z][A-Za-z0-9]*|\{[A-Za-z][A-Za-z0-9]*\}")
 
 SKIP_ROUTES: dict[str, str] = {
-    "/api/v2/ai/ollama/model/sync": "同步 Ollama 模型状态",
     "/api/v2/alert/logs/clean": "清空告警日志",
     "/api/v2/apps/installed/sync": "同步已安装应用状态",
     "/api/v2/core/auth/api/generate": "生成新的 API Key",

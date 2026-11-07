@@ -22,6 +22,13 @@ type AppInstallCreate struct {
 	Name        string                 `json:"name" validate:"required"`
 	Services    map[string]string      `json:"services"`
 	TaskID      string                 `json:"taskID"`
+	GPU         *dto.ModelGPUConfig    `json:"gpu"`
+
+	GPUImageType string `json:"-"`
+
+	SyncModelAccount        *bool  `json:"syncModelAccount"`
+	ModelAccountBaseURLType string `json:"modelAccountBaseURLType" validate:"omitempty,oneof=container localhost systemIP custom"`
+	ModelAccountBaseURL     string `json:"modelAccountBaseURL"`
 
 	AppContainerConfig
 	NodePushConfig
@@ -83,31 +90,33 @@ type AppBackupDelete struct {
 }
 
 type AppInstalledOperate struct {
-	InstallId     uint                `json:"installId" validate:"required"`
-	BackupId      uint                `json:"backupId"`
-	DetailId      uint                `json:"detailId"`
-	Operate       constant.AppOperate `json:"operate" validate:"required"`
-	ForceDelete   bool                `json:"forceDelete"`
-	DeleteBackup  bool                `json:"deleteBackup"`
-	DeleteDB      bool                `json:"deleteDB"`
-	Backup        bool                `json:"backup"`
-	PullImage     bool                `json:"pullImage"`
-	DockerCompose string              `json:"dockerCompose"`
-	TaskID        string              `json:"taskID"`
-	DeleteImage   bool                `json:"deleteImage"`
-	Favorite      bool                `json:"favorite"`
+	FeishuTransition *dto.AgentFeishuTransition `json:"feishuTransition,omitempty"`
+	InstallId        uint                       `json:"installId" validate:"required"`
+	BackupId         uint                       `json:"backupId"`
+	DetailId         uint                       `json:"detailId"`
+	Operate          constant.AppOperate        `json:"operate" validate:"required"`
+	ForceDelete      bool                       `json:"forceDelete"`
+	DeleteBackup     bool                       `json:"deleteBackup"`
+	DeleteDB         bool                       `json:"deleteDB"`
+	Backup           bool                       `json:"backup"`
+	PullImage        bool                       `json:"pullImage"`
+	DockerCompose    string                     `json:"dockerCompose"`
+	TaskID           string                     `json:"taskID"`
+	DeleteImage      bool                       `json:"deleteImage"`
+	Favorite         bool                       `json:"favorite"`
 
 	UseLifecycleScripts bool `json:"-"`
 }
 
 type AppInstallUpgrade struct {
-	InstallID     uint   `json:"installId"`
-	DetailID      uint   `json:"detailId"`
-	Backup        bool   `json:"backup"`
-	PullImage     bool   `json:"pullImage"`
-	DeleteImage   bool   `json:"deleteImage"`
-	DockerCompose string `json:"dockerCompose"`
-	TaskID        string `json:"taskID"`
+	FeishuTransition *dto.AgentFeishuTransition `json:"feishuTransition,omitempty"`
+	InstallID        uint                       `json:"installId"`
+	DetailID         uint                       `json:"detailId"`
+	Backup           bool                       `json:"backup"`
+	PullImage        bool                       `json:"pullImage"`
+	DeleteImage      bool                       `json:"deleteImage"`
+	DockerCompose    string                     `json:"dockerCompose"`
+	TaskID           string                     `json:"taskID"`
 }
 
 type AppInstallDelete struct {
@@ -122,9 +131,13 @@ type AppInstallDelete struct {
 }
 
 type AppInstalledUpdate struct {
-	InstallId uint                   `json:"installId" validate:"required"`
-	Params    map[string]interface{} `json:"params" validate:"required"`
-	TaskID    string                 `json:"-"`
+	GPU                     *dto.ModelGPUConfig    `json:"gpu"`
+	SyncModelAccount        *bool                  `json:"syncModelAccount"`
+	ModelAccountBaseURLType string                 `json:"modelAccountBaseURLType" validate:"omitempty,oneof=container localhost systemIP custom"`
+	ModelAccountBaseURL     string                 `json:"modelAccountBaseURL"`
+	InstallId               uint                   `json:"installId" validate:"required"`
+	Params                  map[string]interface{} `json:"params" validate:"required"`
+	TaskID                  string                 `json:"-"`
 	AppContainerConfig
 }
 
@@ -147,6 +160,7 @@ type PortUpdate struct {
 type AppUpdateVersion struct {
 	AppInstallID  uint   `json:"appInstallID" validate:"required"`
 	UpdateVersion string `json:"updateVersion"`
+	LoadCompose   *bool  `json:"loadCompose,omitempty"`
 }
 
 type AppInstallSortItem struct {

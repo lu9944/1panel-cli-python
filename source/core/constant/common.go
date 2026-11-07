@@ -73,10 +73,14 @@ var WebUrlMap = map[string]struct{}{
 	"/ai/benchmark":             {},
 	"/ai/model/account":         {},
 	"/ai/model/local":           {},
+	"/ai/model/local/templates": {},
+	"/ai/model/files":           {},
 	"/ai/gpu":                   {},
 	"/ai/gpu/current":           {},
 	"/ai/gpu/history":           {},
 	"/ai/mcp":                   {},
+	"/ai/mcp/server":            {},
+	"/ai/mcp/1panel":            {},
 	"/ai/agents/agent":          {},
 
 	"/containers":                   {},
@@ -152,15 +156,18 @@ var WebUrlMap = map[string]struct{}{
 	"/toolbox/fail2ban":     {},
 	"/toolbox/clean":        {},
 
-	"/websites":                 {},
-	"/websites/templates":       {},
-	"/websites/ssl":             {},
-	"/websites/runtimes/php":    {},
-	"/websites/runtimes/node":   {},
-	"/websites/runtimes/java":   {},
-	"/websites/runtimes/go":     {},
-	"/websites/runtimes/python": {},
-	"/websites/runtimes/dotnet": {},
+	"/websites":                  {},
+	"/websites/templates":        {},
+	"/websites/ssl":              {},
+	"/websites/ssl/ca":           {},
+	"/websites/ssl/acme-account": {},
+	"/websites/ssl/dns-account":  {},
+	"/websites/runtimes/php":     {},
+	"/websites/runtimes/node":    {},
+	"/websites/runtimes/java":    {},
+	"/websites/runtimes/go":      {},
+	"/websites/runtimes/python":  {},
+	"/websites/runtimes/dotnet":  {},
 
 	"/login": {},
 
@@ -235,6 +242,7 @@ var WebUrlMap = map[string]struct{}{
 }
 
 var DynamicRoutes = []string{
+	`^/ai/benchmark/[0-9]+$`,
 	`^/containers/composeDetail/[^/]+$`,
 	`^/databases/mysql/setting/[^/]+/[^/]+$`,
 	`^/databases/postgresql/setting/[^/]+/[^/]+$`,

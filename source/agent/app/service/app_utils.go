@@ -28,6 +28,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/i18n"
+	"github.com/1Panel-dev/1Panel/agent/utils/appicon"
 	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
 	"github.com/1Panel-dev/1Panel/agent/utils/common"
 	"github.com/1Panel-dev/1Panel/agent/utils/compose"
@@ -391,12 +392,27 @@ func deleteAppInstall(deleteReq request.AppInstallDelete) error {
 				}
 			}
 		}
+		if install.App.Key == "ollama" {
+			ollamaModelMu.Lock()
+			defer ollamaModelMu.Unlock()
+		}
 		tx, ctx := helper.GetTxAndContext()
 		defer tx.Rollback()
 		if err = appInstallRepo.Delete(ctx, install); err != nil {
 			return err
 		}
 		appKey := install.App.Key
+		if appKey == "ollama" {
+			remaining, listErr := appInstallRepo.ListBy(ctx, appInstallRepo.WithAppId(install.AppId))
+			if listErr != nil {
+				return listErr
+			}
+			if len(remaining) == 0 {
+				if err = aiRepo.DeleteAll(ctx); err != nil {
+					return err
+				}
+			}
+		}
 		if isAgentAppKey(appKey) {
 			_ = agentRepo.DeleteByAppInstallIDWithCtx(ctx, install.ID)
 		}
@@ -469,7 +485,12 @@ func deleteAppInstall(deleteReq request.AppInstallDelete) error {
 		if err == nil && len(entries) == 0 {
 			_ = op.DeleteDir(parentDir)
 		}
-		tx.Commit()
+		if err := tx.Commit().Error; err != nil {
+			return err
+		}
+		if install.App.Key == "ollama" || install.App.Key == "vllm" {
+			CleanupLocalModelAccount(install.ID)
+		}
 
 		existApps, _ := appInstallRepo.ListBy(context.Background(), appInstallRepo.WithAppId(install.AppId))
 		if len(existApps) == 0 {
@@ -973,8 +994,13 @@ func downloadApp(app model.App, appDetail model.AppDetail, appInstall *model.App
 	if err = os.WriteFile(cacheVersionPath, []byte(storeVersion), constant.FilePerm); err != nil {
 		return err
 	}
-	appDetail.Update = false
-	_ = appDetailRepo.Update(context.Background(), appDetail)
+	marked, err := appDetailRepo.MarkDownloaded(appDetail)
+	if err != nil {
+		return err
+	}
+	if !marked {
+		return buserr.WithDetail("ErrGetCompose", "application resources changed; retry the operation", nil)
+	}
 	return
 }
 
@@ -1248,9 +1274,8 @@ func getAppDetails(details []model.AppDetail, versions []dto.AppConfigVersion) m
 	return appDetails
 }
 
-func getApps(oldApps []model.App, items []dto.AppDefine, systemVersion string, task *task.Task) (map[string]model.App, map[string]string) {
+func getApps(oldApps []model.App, items []dto.AppDefine, systemVersion string, task *task.Task) map[string]model.App {
 	apps := make(map[string]model.App, len(oldApps))
-	pendingIcons := make(map[string]string, len(items))
 	for _, old := range oldApps {
 		old.Status = constant.AppTakeDown
 		apps[old.Key] = old
@@ -1291,12 +1316,14 @@ func getApps(oldApps []model.App, items []dto.AppDefine, systemVersion string, t
 		app.Architectures = strings.Join(config.Architectures, ",")
 		app.GpuSupport = config.GpuSupport
 		app.BatchInstallSupport = config.BatchInstallSupport
-		if item.Icon != "" {
-			pendingIcons[key] = item.Icon
+		if appicon.IsRemoteURL(item.Icon) {
+			app.Icon = item.Icon
+		} else if item.Icon != "" {
+			global.LOG.Warnf("[AppStore] invalid icon URL for app %s, keeping existing icon", key)
 		}
 		apps[key] = app
 	}
-	return apps, pendingIcons
+	return apps
 }
 
 func handleLocalAppDetail(versionDir string, appDetail *model.AppDetail) error {
@@ -1559,6 +1586,7 @@ func handleInstalled(appInstallList []model.AppInstall, updated, sync, checkUpda
 			HttpPort:    installed.HttpPort,
 			HttpsPort:   installed.HttpsPort,
 			AppName:     installed.App.Name,
+			Icon:        appicon.RemoteURL(installed.App.Icon),
 			AppKey:      installed.App.Key,
 			AppType:     installed.App.Type,
 			Path:        installed.GetPath(),
@@ -2013,8 +2041,19 @@ func getAppTags(appID uint, lang string) ([]response.TagDTO, error) {
 	return res, nil
 }
 
+func prepareAppInstallSiteDirectory(app model.App, appDetail model.AppDetail, req request.AppInstallCreate, t *task.Task, hooks *appInstallHooks) error {
+	if hooks != nil && hooks.PrepareSiteDir != nil {
+		return hooks.PrepareSiteDir(app, appDetail, req, t)
+	}
+	return handleSiteDir(app, appDetail, req, t)
+}
+
+func managesOpenrestySiteDirectory(app model.App, appDetail model.AppDetail) bool {
+	return app.Key == "openresty" && (app.Resource == "remote" || app.Resource == "custom") && common.CompareVersion(appDetail.Version, "1.27")
+}
+
 func handleSiteDir(app model.App, appDetail model.AppDetail, req request.AppInstallCreate, t *task.Task) error {
-	if app.Key == "openresty" && (app.Resource == "remote" || app.Resource == "custom") && common.CompareVersion(appDetail.Version, "1.27") {
+	if managesOpenrestySiteDirectory(app, appDetail) {
 		if dir, ok := req.Params["WEBSITE_DIR"]; ok {
 			siteDir := dir.(string)
 			if siteDir == "" || !strings.HasPrefix(siteDir, "/") {

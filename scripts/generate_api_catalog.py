@@ -12,7 +12,10 @@ import json
 import re
 from pathlib import Path
 
-GROUP_RE = re.compile(r'(?P<name>\w+)\s*:=\s*(?P<parent>\w+)\.Group\("(?P<path>[^"]*)"\)')
+GROUP_RE = re.compile(
+    r'(?P<name>\w+)\s*:=\s*(?P<parent>\w+)\.Group\("(?P<path>[^"]*)"\)'
+    r'(?:\s*\.\s*Use\([^()]*\))*'
+)
 ROUTE_RE = re.compile(
     r'(?P<group>\w+)\.(?P<method>GET|POST|PUT|DELETE|PATCH)\("(?P<path>[^"]*)"\s*,\s*(?P<handler>[\w.]+)'
 )
@@ -36,6 +39,10 @@ def swagger_metadata(swagger: dict, route_path: str, method: str) -> dict:
 def extract_router(path: Path, prefix: str, swagger: dict, source_root: Path) -> list[dict]:
     text = path.read_text(encoding="utf-8")
     groups = {"Router": ""}
+    # InitRouter 的形参名不固定(如 ro_mcp.go 用 `group`),一并作为根前缀
+    param = re.search(r"InitRouter\((\w+)\s*\*\s*gin", text)
+    if param:
+        groups[param.group(1)] = ""
     pending = list(GROUP_RE.finditer(text))
     while pending:
         remaining = []
@@ -72,11 +79,11 @@ def extract_router(path: Path, prefix: str, swagger: dict, source_root: Path) ->
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True, help="1Panel source checkout")
-    parser.add_argument("--version", default="v2.4.1")
+    parser.add_argument("--version", default="v2.4.2")
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("panel_cli/data/api-v2.4.1.json"),
+        default=Path("panel_cli/data/api-v2.4.2.json"),
     )
     args = parser.parse_args()
 

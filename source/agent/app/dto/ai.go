@@ -2,6 +2,28 @@ package dto
 
 import "time"
 
+type ModelGPUDevice struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	UUID      string `json:"uuid,omitempty"`
+	Available bool   `json:"available"`
+}
+
+type ModelGPUDevices struct {
+	Devices  []ModelGPUDevice `json:"devices"`
+	Warnings []string         `json:"warnings"`
+}
+
+type ModelGPUConfig struct {
+	Mode         string   `json:"mode"`
+	Count        int      `json:"count,omitempty"`
+	Error        string   `json:"error,omitempty"`
+	Enabled      bool     `json:"enabled"`
+	DeviceIDs    []string `json:"deviceIDs"`
+	Capabilities []string `json:"capabilities"`
+}
+
 type OllamaModelInfo struct {
 	ID           uint   `json:"id"`
 	Name         string `json:"name"`
@@ -14,14 +36,15 @@ type OllamaModelInfo struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-type OllamaModelDropList struct {
-	ID   uint   `json:"id"`
-	Name string `json:"name"`
-}
-
 type OllamaModelName struct {
 	Name   string `json:"name"`
 	TaskID string `json:"taskID"`
+}
+
+type OllamaModelAccountSync struct {
+	ID                      uint   `json:"id" validate:"required"`
+	ModelAccountBaseURLType string `json:"modelAccountBaseURLType" validate:"required,oneof=container localhost systemIP custom"`
+	ModelAccountBaseURL     string `json:"modelAccountBaseURL"`
 }
 
 type OllamaBindDomain struct {

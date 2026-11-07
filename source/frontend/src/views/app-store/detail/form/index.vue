@@ -16,6 +16,8 @@
         />
 
         <el-form
+            @validate="(prop, valid) => expandInvalidFormSection(formRef, prop, valid)"
+            scroll-to-error
             v-loading="loading"
             @submit.prevent
             ref="formRef"
@@ -25,126 +27,137 @@
             :rules="formRules"
             :validate-on-rule-change="false"
         >
-            <el-form-item :label="$t('commons.table.name')" prop="name">
-                <el-input v-model.trim="formData.name"></el-input>
-            </el-form-item>
-            <el-form-item :label="$t('app.version')" prop="version">
-                <el-select v-model="formData.version" @change="handleVersionChange">
-                    <el-option
-                        v-for="(version, index) in appVersions"
-                        :key="index"
-                        :label="version"
-                        :value="version"
-                    ></el-option>
-                </el-select>
-            </el-form-item>
+            <component :is="sectioned ? 'details' : 'section'" :open="sectioned" :class="{ 'form-section': sectioned }">
+                <summary v-if="sectioned" class="form-section-header">{{ $t('home.baseInfo') }}</summary>
+                <div :class="{ 'form-section-body': sectioned }">
+                    <el-form-item :label="$t('commons.table.name')" prop="name">
+                        <el-input v-model.trim="formData.name"></el-input>
+                    </el-form-item>
+                    <el-form-item :label="$t('app.version')" prop="version">
+                        <el-select v-model="formData.version" @change="handleVersionChange">
+                            <el-option
+                                v-for="(version, index) in appVersions"
+                                :key="index"
+                                :label="version"
+                                :value="version"
+                            ></el-option>
+                        </el-select>
+                    </el-form-item>
 
-            <Params
-                :key="paramKey"
-                v-if="showParams"
-                v-model:form="formData.params"
-                v-model:params="installParams"
-                v-model:rules="formRules.params"
-                :propStart="'params.'"
-            />
-
-            <el-form-item prop="advanced">
-                <el-checkbox v-model="formData.advanced" :label="$t('app.advanced')" size="large" />
-            </el-form-item>
-
-            <div v-if="formData.advanced">
-                <el-form-item :label="$t('app.containerName')" prop="containerName">
-                    <el-input v-model.trim="formData.containerName" :placeholder="$t('app.containerNameHelper')" />
-                </el-form-item>
-
-                <el-form-item prop="allowPort" v-if="!isHostMode">
-                    <el-checkbox v-model="formData.allowPort" :label="$t('app.allowPort')" size="large" />
-                    <span class="input-help">{{ $t('app.allowPortHelper') }}</span>
-                </el-form-item>
-
-                <el-form-item :label="$t('app.specifyIP')" v-if="formData.allowPort" prop="specifyIP">
-                    <el-input v-model="formData.specifyIP" />
-                    <span class="input-help">{{ $t('app.specifyIPHelper') }}</span>
-                </el-form-item>
-
-                <el-form-item :label="$t('container.restartPolicy')" prop="restartPolicy">
-                    <el-select v-model="formData.restartPolicy" class="p-w-300">
-                        <el-option :label="$t('container.no')" value="no"></el-option>
-                        <el-option :label="$t('container.always')" value="always"></el-option>
-                        <el-option :label="$t('container.onFailure')" value="on-failure"></el-option>
-                        <el-option :label="$t('container.unlessStopped')" value="unless-stopped"></el-option>
-                    </el-select>
-                </el-form-item>
-
-                <el-form-item
-                    :label="$t('container.cpuQuota')"
-                    prop="cpuQuota"
-                    :rules="checkNumberRange(0, limits.cpu)"
-                >
-                    <el-input type="number" class="!w-2/5" v-model.number="formData.cpuQuota" maxlength="5">
-                        <template #append>{{ $t('app.cpuCore') }}</template>
-                    </el-input>
-                    <span class="input-help">
-                        {{ $t('container.limitHelper', [limits.cpu]) }}{{ $t('commons.units.core') }}
-                    </span>
-                </el-form-item>
-
-                <el-form-item
-                    :label="$t('container.memoryLimit')"
-                    prop="memoryLimit"
-                    :rules="checkNumberRange(0, limits.memory)"
-                >
-                    <el-input class="!w-2/5" v-model.number="formData.memoryLimit" maxlength="10">
-                        <template #append>
-                            <el-select
-                                v-model="formData.memoryUnit"
-                                placeholder="Select"
-                                class="p-w-100"
-                                @change="changeUnit"
-                            >
-                                <el-option label="MB" value="M" />
-                                <el-option label="GB" value="G" />
-                            </el-select>
-                        </template>
-                    </el-input>
-                    <span class="input-help">
-                        {{ $t('container.limitHelper', [limits.memory]) }}{{ formData.memoryUnit }}B
-                    </span>
-                </el-form-item>
-
-                <el-form-item pro="gpuConfig" v-if="gpuSupport">
-                    <el-checkbox v-model="formData.gpuConfig" :label="$t('app.gpuConfig')" size="large" />
-                    <span class="input-help">{{ $t('app.gpuConfigHelper') }}</span>
-                </el-form-item>
-
-                <el-form-item pro="pullImage">
-                    <el-checkbox v-model="formData.pullImage" :label="$t('app.pullImage')" size="large" />
-                    <span class="input-help">{{ $t('app.pullImageHelper') }}</span>
-                </el-form-item>
-
-                <PushToNode
-                    v-if="isMaster && isXpackOrEE && batchInstallSupport"
-                    :push-node="formData.pushNode"
-                    :nodes="formData.nodes"
-                    type="app"
-                    @update:push-node="formData.pushNode = $event"
-                    @update:nodes="formData.nodes = $event"
-                />
-
-                <el-form-item prop="editCompose">
-                    <el-checkbox v-model="formData.editCompose" :label="$t('app.editCompose')" size="large" />
-                    <span class="input-help">{{ $t('app.editComposeHelper') }}</span>
-                </el-form-item>
-
-                <div v-if="formData.editCompose">
-                    <CodemirrorPro v-model="formData.dockerCompose" mode="yaml" />
+                    <Params
+                        :key="paramKey"
+                        v-if="showParams"
+                        v-model:form="formData.params"
+                        v-model:params="installParams"
+                        v-model:rules="formRules.params"
+                        :propStart="'params.'"
+                    />
                 </div>
-            </div>
+            </component>
+
+            <slot name="after-params" />
+
+            <component :is="sectioned ? 'details' : 'section'" :open="sectioned" :class="{ 'form-section': sectioned }">
+                <summary v-if="sectioned" class="form-section-header">{{ $t('app.advanced') }}</summary>
+                <el-form-item v-if="!sectioned" prop="advanced">
+                    <el-checkbox v-model="formData.advanced" :label="$t('app.advanced')" size="large" />
+                </el-form-item>
+
+                <div v-if="formData.advanced" :class="{ 'form-section-body': sectioned }">
+                    <el-form-item :label="$t('app.containerName')" prop="containerName">
+                        <el-input v-model.trim="formData.containerName" :placeholder="$t('app.containerNameHelper')" />
+                    </el-form-item>
+
+                    <el-form-item prop="allowPort" v-if="!isHostMode">
+                        <el-checkbox v-model="formData.allowPort" :label="$t('app.allowPort')" size="large" />
+                        <span class="input-help">{{ $t('app.allowPortHelper') }}</span>
+                    </el-form-item>
+
+                    <el-form-item :label="$t('app.specifyIP')" v-if="formData.allowPort" prop="specifyIP">
+                        <el-input v-model="formData.specifyIP" />
+                        <span class="input-help">{{ $t('app.specifyIPHelper') }}</span>
+                    </el-form-item>
+
+                    <el-form-item :label="$t('container.restartPolicy')" prop="restartPolicy">
+                        <el-select v-model="formData.restartPolicy" class="p-w-300">
+                            <el-option :label="$t('container.no')" value="no"></el-option>
+                            <el-option :label="$t('container.always')" value="always"></el-option>
+                            <el-option :label="$t('container.onFailure')" value="on-failure"></el-option>
+                            <el-option :label="$t('container.unlessStopped')" value="unless-stopped"></el-option>
+                        </el-select>
+                    </el-form-item>
+
+                    <el-form-item
+                        :label="$t('container.cpuQuota')"
+                        prop="cpuQuota"
+                        :rules="checkNumberRange(0, limits.cpu)"
+                    >
+                        <el-input type="number" class="!w-2/5" v-model.number="formData.cpuQuota" maxlength="5">
+                            <template #append>{{ $t('app.cpuCore') }}</template>
+                        </el-input>
+                        <span class="input-help">
+                            {{ $t('container.limitHelper', [limits.cpu]) }}{{ $t('commons.units.core') }}
+                        </span>
+                    </el-form-item>
+
+                    <el-form-item
+                        :label="$t('container.memoryLimit')"
+                        prop="memoryLimit"
+                        :rules="checkNumberRange(0, limits.memory)"
+                    >
+                        <el-input class="!w-2/5" v-model.number="formData.memoryLimit" maxlength="10">
+                            <template #append>
+                                <el-select
+                                    v-model="formData.memoryUnit"
+                                    placeholder="Select"
+                                    class="p-w-100"
+                                    @change="changeUnit"
+                                >
+                                    <el-option label="MB" value="M" />
+                                    <el-option label="GB" value="G" />
+                                </el-select>
+                            </template>
+                        </el-input>
+                        <span class="input-help">
+                            {{ $t('container.limitHelper', [limits.memory]) }}{{ formData.memoryUnit }}B
+                        </span>
+                    </el-form-item>
+
+                    <el-form-item pro="gpuConfig" v-if="gpuSupport && !hideGpuConfig">
+                        <el-checkbox v-model="formData.gpuConfig" :label="$t('app.gpuConfig')" size="large" />
+                        <span class="input-help">{{ $t('app.gpuConfigHelper') }}</span>
+                    </el-form-item>
+
+                    <el-form-item pro="pullImage">
+                        <el-checkbox v-model="formData.pullImage" :label="$t('app.pullImage')" size="large" />
+                        <span class="input-help">{{ $t('app.pullImageHelper') }}</span>
+                    </el-form-item>
+
+                    <PushToNode
+                        v-if="isMaster && isXpackOrEE && batchInstallSupport"
+                        :push-node="formData.pushNode"
+                        :nodes="formData.nodes"
+                        type="app"
+                        @update:push-node="formData.pushNode = $event"
+                        @update:nodes="formData.nodes = $event"
+                    />
+
+                    <el-form-item prop="editCompose">
+                        <el-checkbox v-model="formData.editCompose" :label="$t('app.editCompose')" size="large" />
+                        <span class="input-help">{{ $t('app.editComposeHelper') }}</span>
+                    </el-form-item>
+
+                    <div v-if="formData.editCompose">
+                        <CodemirrorPro v-model="formData.dockerCompose" mode="yaml" />
+                    </div>
+                </div>
+            </component>
         </el-form>
     </div>
 </template>
 
 <script lang="ts" setup>
+import { expandInvalidFormSection } from '@/views/ai/model/components/form-section';
 import { App } from '@/api/interface/app';
 import { getAppByKey, getAppDetail, getAppInstalledByID } from '@/api/modules/app';
 import { getAppStoreConfig } from '@/api/modules/setting';
@@ -181,6 +194,8 @@ interface Props {
     loading?: boolean;
     modelValue?: any;
     batchInstallSupport?: boolean;
+    sectioned?: boolean;
+    hideGpuConfig?: boolean;
 }
 
 const limits = ref<Container.ResourceLimit>({
@@ -191,6 +206,7 @@ const limits = ref<Container.ResourceLimit>({
 const props = withDefaults(defineProps<Props>(), {
     loading: false,
     batchInstallSupport: false,
+    sectioned: false,
 });
 
 interface Emits {
@@ -320,19 +336,23 @@ const loadInstallDefaultConfig = async () => {
     }
 };
 
-const initForm = async (appKey: string) => {
+const initForm = async (appKey: string, allowPort?: boolean) => {
     operateNode.value = undefined;
     env.value = undefined;
     masterNodeAddr.value = undefined;
     formData.value.name = appKey.replace(/^local/, '');
-    await loadInstallDefaultConfig();
+    if (allowPort === undefined) {
+        await loadInstallDefaultConfig();
+    } else {
+        formData.value.allowPort = allowPort;
+    }
     const res = await getAppByKey(appKey);
     currentApp.value = res.data;
     appVersions.value = currentApp.value.versions;
     if (appVersions.value.length > 0) {
         const defaultVersion = appVersions.value[0];
         formData.value.version = defaultVersion;
-        getVersionDetail(defaultVersion);
+        await getVersionDetail(defaultVersion);
     }
     if (isOffline.value) {
         formData.value.pullImage = false;
@@ -454,3 +474,7 @@ defineExpose({
     initClusterForm,
 });
 </script>
+
+<style lang="scss" scoped>
+@use '@/views/ai/model/components/form-section.scss';
+</style>

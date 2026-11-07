@@ -98,8 +98,8 @@ func LoadMenus() string {
 		{ID: "2", Disabled: true, Title: "menu.apps", IsShow: true, Label: "App-Menu", Path: "/apps/all", Sort: 200},
 		{ID: "3", Disabled: false, Title: "menu.aiTools", IsShow: true, Label: "AI-Menu", Path: "/ai/model/account", Sort: 300,
 			Children: []dto.ShowMenu{
-				{ID: "44", Disabled: false, Title: "aiTools.agents.agent", IsShow: true, Label: "Agents", Path: "/ai/agents/agent", Sort: 50},
-				{ID: "41", Disabled: false, Title: "aiTools.model.model", IsShow: true, Label: "AIModel", Path: "/ai/model/account", Sort: 100},
+				{ID: "41", Disabled: false, Title: "aiTools.model.model", IsShow: true, Label: "AIModel", Path: "/ai/model/account", Sort: 50},
+				{ID: "44", Disabled: false, Title: "aiTools.agents.agent", IsShow: true, Label: "Agents", Path: "/ai/agents/agent", Sort: 100},
 				{ID: "42", Disabled: false, Title: "menu.mcp", IsShow: true, Label: "MCPServer", Path: "/ai/mcp", Sort: 200},
 				{ID: "43", Disabled: false, Title: "aiTools.gpu.gpu", IsShow: true, Label: "GPU", Path: "/ai/gpu", Sort: 300},
 			}},
@@ -150,7 +150,7 @@ func LoadMenus() string {
 					Label:    "AIProxyManagement",
 					Path:     "/ai/ai-proxy/model-pool",
 					Sort:     150,
-				}, "AIModel")
+				}, "Agents")
 				item[i].Children = UpsertMenuByLabel(item[i].Children, dto.ShowMenu{
 					ID:       "47",
 					Disabled: false,
@@ -158,7 +158,7 @@ func LoadMenus() string {
 					IsShow:   true,
 					Label:    "SkillsHub",
 					Path:     "/ai/skills-hub",
-					Sort:     155,
+					Sort:     175,
 				}, "AIProxyManagement")
 				item[i].Children = UpsertMenuByLabel(item[i].Children, dto.ShowMenu{
 					ID:       "45",
@@ -167,8 +167,8 @@ func LoadMenus() string {
 					IsShow:   true,
 					Label:    "AIBenchmark",
 					Path:     "/ai/benchmark",
-					Sort:     160,
-				}, "SkillsHub")
+					Sort:     350,
+				}, "GPU")
 				continue
 			}
 			if item[i].Label != "Xpack-Menu" {
@@ -204,13 +204,13 @@ func MenuSort() []dto.MenuLabelSort {
 		{Label: "Home-Menu", Sort: 100},
 		{Label: "App-Menu", Sort: 200},
 		{Label: "AI-Menu", Sort: 300},
-		{Label: "Agents", Sort: 50},
-		{Label: "AIModel", Sort: 100},
+		{Label: "AIModel", Sort: 50},
+		{Label: "Agents", Sort: 100},
 		{Label: "AIProxyManagement", Sort: 150},
-		{Label: "SkillsHub", Sort: 155},
-		{Label: "AIBenchmark", Sort: 160},
+		{Label: "SkillsHub", Sort: 175},
 		{Label: "MCPServer", Sort: 200},
 		{Label: "GPU", Sort: 300},
+		{Label: "AIBenchmark", Sort: 350},
 		{Label: "Website-Menu", Sort: 400},
 		{Label: "Website", Sort: 100},
 		{Label: "SSL", Sort: 200},

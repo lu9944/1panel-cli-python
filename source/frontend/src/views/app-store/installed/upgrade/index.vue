@@ -5,7 +5,7 @@
         :resource="resourceName"
         @close="handleClose"
     >
-        <div v-loading="loading">
+        <div v-loading="loading || loadingVersions">
             <el-descriptions direction="vertical">
                 <el-descriptions-item>
                     <el-link @click="toLink(app.website)">
@@ -41,6 +41,13 @@
                             :label="version.version"
                         ></el-option>
                     </el-select>
+                    <el-button
+                        v-if="operateReq.operate === 'upgrade' && !composeReady && !loadingVersions"
+                        class="mt-2"
+                        @click="getVersions(operateReq.version)"
+                    >
+                        {{ $t('commons.button.retry') }}
+                    </el-button>
                 </el-form-item>
                 <el-alert
                     v-if="showOpenclawHttpRollbackNotice"
@@ -55,8 +62,22 @@
                         <div>2. {{ $t('app.openclawHttpsUpgradeNoticeItem2') }}</div>
                     </div>
                 </el-alert>
+                <template v-if="feishuLegacy && operateReq.operate === 'upgrade' && composeReady">
+                    <el-alert
+                        class="mb-4"
+                        type="warning"
+                        :closable="false"
+                        :title="$t('aiTools.agents.feishuUpgradeNotice')"
+                    />
+                    <FeishuTransition
+                        v-if="feishuConfigured"
+                        v-model:streaming="feishuTransition.streaming"
+                        v-model:group-session-scope="feishuTransition.groupSessionScope"
+                        v-model:require-mention="feishuTransition.requireMention"
+                    />
+                </template>
                 <el-form-item prop="backup" v-if="operateReq.operate === 'upgrade'">
-                    <el-checkbox v-model="operateReq.backup" :label="$t('app.backupApp')" />
+                    <el-checkbox v-model="operateReq.backup" :disabled="feishuLegacy" :label="$t('app.backupApp')" />
                     <span class="input-help">
                         <el-text type="warning">{{ $t('app.backupAppHelper') }}</el-text>
                     </span>
@@ -69,7 +90,7 @@
                     <el-checkbox v-model="operateReq.deleteImage" :label="$t('app.upgradeDeleteImage')" />
                 </el-form-item>
             </el-form>
-            <div v-if="operateReq.operate === 'upgrade'">
+            <div v-if="operateReq.operate === 'upgrade' && composeReady">
                 <el-text type="danger" v-if="isEdit">{{ $t('app.isEdirWarn') }}</el-text>
                 <el-text type="warning" v-else>{{ $t('app.upgradeWarn') }}</el-text>
                 <div>
@@ -86,7 +107,16 @@
         </div>
         <template #footer>
             <el-button @click="handleClose" :disabled="loading">{{ $t('commons.button.cancel') }}</el-button>
-            <el-button type="primary" @click="onOperate" :disabled="versions == null || loading">
+            <el-button
+                type="primary"
+                @click="onOperate"
+                :disabled="
+                    versions == null ||
+                    loading ||
+                    loadingVersions ||
+                    (operateReq.operate === 'upgrade' && !composeReady)
+                "
+            >
                 {{ $t('commons.button.confirm') }}
             </el-button>
         </template>
@@ -100,13 +130,15 @@ import TaskLog from '@/components/log/task/index.vue';
 import CodemirrorPro from '@/components/codemirror-pro/index.vue';
 
 import { App } from '@/api/interface/app';
-import { getAppUpdateVersions, ignoreUpgrade, installedOp } from '@/api/modules/app';
+import { AI } from '@/api/interface/ai';
+import FeishuTransition from '@/views/ai/agents/agent/config/tabs/channels/components/feishu-transition.vue';
+import { getAppInstallParams, getAppUpdateVersions, ignoreUpgrade, installedOp } from '@/api/modules/app';
 import { getAppStoreConfig } from '@/api/modules/setting';
 import { isOpenclawCurrentHTTPVersion, isOpenclawHTTPSWindowVersion } from '@/utils/agent';
 import i18n from '@/lang';
 import { ElMessageBox, FormInstance } from 'element-plus';
 import { computed, onBeforeUnmount, reactive, ref } from 'vue';
-import { MsgSuccess } from '@/utils/message';
+import { MsgError, MsgSuccess } from '@/utils/message';
 import { Rules } from '@/global/form-rules';
 import bus from '@/global/bus';
 import { v4 as uuidv4 } from 'uuid';
@@ -117,6 +149,10 @@ const composeDiffRef = ref();
 const updateRef = ref<FormInstance>();
 const open = ref(false);
 const loading = ref(false);
+const loadingVersions = ref(false);
+const composeReady = ref(false);
+const currentComposeReady = ref(false);
+let versionRequest = 0;
 const versions = ref<App.VersionDetail[]>();
 const operateReq = reactive({
     detailId: 0,
@@ -128,6 +164,15 @@ const operateReq = reactive({
     version: '',
     dockerCompose: '',
     taskID: '',
+    feishuTransition: undefined as AI.AgentFeishuTransition | undefined,
+});
+const feishuLegacy = ref(false);
+const feishuConfigured = ref(false);
+const feishuTransition = reactive<AI.AgentFeishuTransition>({
+    confirmed: false,
+    streaming: false,
+    groupSessionScope: 'group',
+    requireMention: 'true',
 });
 const resourceName = ref('');
 const rules = ref<any>({
@@ -138,6 +183,9 @@ const oldContent = ref('');
 const newContent = ref('');
 const em = defineEmits(['close']);
 const handleClose = () => {
+    versionRequest++;
+    loadingVersions.value = false;
+    composeReady.value = false;
     open.value = false;
     em('close', open.value);
 };
@@ -170,9 +218,10 @@ const toLink = (link: string) => {
 };
 
 const openDiff = async () => {
-    if (newContent.value === '') {
+    if (!composeReady.value) {
         await getVersions(operateReq.version);
     }
+    if (!composeReady.value) return;
     composeDiffRef.value.acceptParams(oldContent.value, newContent.value);
 };
 
@@ -187,22 +236,41 @@ const getNewCompose = (compose: string) => {
 };
 
 const initData = async () => {
+    const request = versionRequest;
     const config = await getAppStoreConfig(node.value);
+    if (request !== versionRequest) return false;
     newCompose.value = '';
     useNewCompose.value = false;
     operateReq.backup = config.data.upgradeBackup == 'Enable';
     operateReq.pullImage = true;
     operateReq.deleteImage = config.data.upgradeDeleteImage == 'Enable';
     operateReq.dockerCompose = '';
+    return true;
 };
 
-const acceptParams = (appInstall: App.AppInstallDto, op: string, opNode?: string) => {
+const acceptParams = async (appInstall: App.AppInstallDto, op: string, opNode?: string) => {
+    versionRequest++;
+    composeReady.value = false;
+    currentComposeReady.value = false;
+    loadingVersions.value = false;
+    versions.value = undefined;
+    operateReq.detailId = 0;
+    operateReq.version = '';
     if (opNode) {
         node.value = opNode;
     } else {
         node.value = currentNode.value;
     }
-    initData();
+    feishuLegacy.value = false;
+    feishuConfigured.value = false;
+    operateReq.feishuTransition = undefined;
+    Object.assign(feishuTransition, {
+        confirmed: false,
+        streaming: false,
+        groupSessionScope: 'group',
+        requireMention: 'true',
+    });
+    if (!(await initData())) return;
     isEdit.value = appInstall.isEdit;
     currentVersion.value = appInstall.version;
     currentAppKey.value = appInstall.appKey;
@@ -221,27 +289,51 @@ const acceptParams = (appInstall: App.AppInstallDto, op: string, opNode?: string
 };
 
 const getVersions = async (version: string) => {
-    const req = {
+    const request = ++versionRequest;
+    const upgrading = operateReq.operate === 'upgrade';
+    composeReady.value = false;
+    loadingVersions.value = true;
+    const req: App.AppUpdateVersionReq = {
         appInstallID: appInstallID.value,
+        loadCompose: upgrading,
     };
     if (version !== '') {
-        req['updateVersion'] = version;
+        req.updateVersion = version;
     }
     try {
+        if (upgrading && !currentComposeReady.value) {
+            const config = await getAppInstallParams(appInstallID.value, node.value);
+            if (request !== versionRequest) return;
+            if (typeof config.data.isEdit === 'boolean') isEdit.value = config.data.isEdit;
+            oldContent.value = config.data.dockerCompose;
+            currentComposeReady.value = true;
+        }
         const res = await getAppUpdateVersions(req, node.value);
+        if (request !== versionRequest) return;
         versions.value = res.data || [];
-        if (res.data != null && res.data.length > 0) {
+        if (versions.value.length > 0) {
             let item = res.data[0];
             if (version != '') {
                 item = res.data.find((v) => v.version === version);
             }
+            if (!item || (upgrading && !item.dockerCompose?.trim())) {
+                if (upgrading) MsgError(i18n.global.t('container.contentEmpty'));
+                return;
+            }
+            feishuLegacy.value = Boolean(item.feishuLegacy);
+            feishuConfigured.value = Boolean(item.feishuConfigured);
+            if (feishuLegacy.value) operateReq.backup = true;
             operateReq.detailId = item.detailId;
             operateReq.version = item.version;
             newContent.value = item.dockerCompose;
             newCompose.value = item.dockerCompose;
             useNewCompose.value = false;
+            composeReady.value = upgrading;
         }
-    } catch (error) {}
+    } catch (error) {
+    } finally {
+        if (request === versionRequest) loadingVersions.value = false;
+    }
 };
 
 const openTaskLog = (taskID: string) => {
@@ -249,6 +341,7 @@ const openTaskLog = (taskID: string) => {
 };
 
 const operate = async () => {
+    if (operateReq.operate === 'upgrade' && !composeReady.value) return;
     loading.value = true;
     if (operateReq.operate === 'upgrade') {
         if (useNewCompose.value) {
@@ -279,15 +372,25 @@ const operate = async () => {
 };
 
 const onOperate = async () => {
-    ElMessageBox.confirm(
-        i18n.global.t('app.operatorHelper', [i18n.global.t('commons.button.' + operateReq.operate)]),
-        i18n.global.t('commons.button.upgrade'),
-        {
-            confirmButtonText: i18n.global.t('commons.button.confirm'),
-            cancelButtonText: i18n.global.t('commons.button.cancel'),
-            type: 'info',
-        },
-    ).then(() => {
+    if (loadingVersions.value || (operateReq.operate === 'upgrade' && !composeReady.value)) return;
+    if (operateReq.operate === 'upgrade' && useNewCompose.value && !newCompose.value.trim()) {
+        MsgError(i18n.global.t('container.contentEmpty'));
+        return;
+    }
+    await updateRef.value?.validate();
+    const helper = i18n.global.t('app.operatorHelper', [i18n.global.t('commons.button.' + operateReq.operate)]);
+    const notice =
+        feishuLegacy.value && operateReq.operate === 'upgrade'
+            ? i18n.global.t('aiTools.agents.feishuUpgradeNotice') +
+              (feishuConfigured.value ? ' ' + i18n.global.t('aiTools.agents.feishuSwitchConfirm') : '')
+            : helper;
+    ElMessageBox.confirm(notice, i18n.global.t('commons.button.upgrade'), {
+        confirmButtonText: i18n.global.t('commons.button.confirm'),
+        cancelButtonText: i18n.global.t('commons.button.cancel'),
+        type: 'info',
+    }).then(() => {
+        operateReq.feishuTransition =
+            feishuLegacy.value && feishuConfigured.value ? { ...feishuTransition, confirmed: true } : undefined;
         operate();
     });
 };

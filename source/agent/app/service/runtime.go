@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,7 +47,7 @@ type RuntimeService struct {
 type IRuntimeService interface {
 	Page(req request.RuntimeSearch) (int64, []response.RuntimeDTO, error)
 	Create(create request.RuntimeCreate) (*model.Runtime, error)
-	Delete(delete request.RuntimeDelete) error
+	Delete(delete request.RuntimeDelete) (string, error)
 	Update(req request.RuntimeUpdate) error
 	Get(id uint) (res *response.RuntimeDTO, err error)
 	GetNodePackageRunScript(req request.NodePackageReq) ([]response.PackageScripts, error)
@@ -376,16 +377,16 @@ func (r *RuntimeService) DeleteCheck(runTimeId uint) ([]dto.AppResource, error) 
 	return res, nil
 }
 
-func (r *RuntimeService) Delete(runtimeDelete request.RuntimeDelete) error {
+func (r *RuntimeService) Delete(runtimeDelete request.RuntimeDelete) (string, error) {
 	runtime, err := runtimeRepo.GetFirst(context.Background(), repo.WithByID(runtimeDelete.ID))
 	if err != nil {
-		return err
+		return "", err
 	}
 	website, _ := websiteRepo.GetFirst(websiteRepo.WithRuntimeID(runtimeDelete.ID))
 	if website.ID > 0 {
-		return buserr.New("ErrDelWithWebsite")
+		return runtime.Name, buserr.New("ErrDelWithWebsite")
 	}
-	return startRuntimeDeleteTask(runtimeDelete, runtime)
+	return runtime.Name, startRuntimeDeleteTask(runtimeDelete, runtime)
 }
 
 func startRuntimeDeleteTask(runtimeDelete request.RuntimeDelete, runtime *model.Runtime) error {
@@ -584,6 +585,21 @@ func (r *RuntimeService) Get(id uint) (*response.RuntimeDTO, error) {
 
 		for _, form := range appForm.FormFields {
 			if v, ok := envs[form.EnvKey]; ok {
+				if form.EnvKey == "PHP_VERSION" {
+					// Refresh only version choices; keep the saved form if synchronized metadata is unavailable.
+					var latestForm dto.AppForm
+					if json.Unmarshal([]byte(appDetail.Params), &latestForm) == nil {
+						for _, latest := range latestForm.FormFields {
+							if latest.EnvKey == form.EnvKey && len(latest.Values) > 0 {
+								form.Values = latest.Values
+								break
+							}
+						}
+					}
+					if v != "" && !slices.ContainsFunc(form.Values, func(value dto.AppFormValue) bool { return value.Value == v }) {
+						form.Values = append(form.Values, dto.AppFormValue{Label: v, Value: v})
+					}
+				}
 				appParam := response.AppParam{
 					Edit:     false,
 					Key:      form.EnvKey,
@@ -631,7 +647,7 @@ func (r *RuntimeService) Get(id uint) (*response.RuntimeDTO, error) {
 	return &res, nil
 }
 
-func (r *RuntimeService) Update(req request.RuntimeUpdate) error {
+func (r *RuntimeService) Update(req request.RuntimeUpdate) (err error) {
 	runtime, err := runtimeRepo.GetFirst(context.Background(), repo.WithByID(req.ID))
 	if err != nil {
 		return err
@@ -640,6 +656,7 @@ func (r *RuntimeService) Update(req request.RuntimeUpdate) error {
 		runtime.Version = req.Version
 		return runtimeRepo.Save(runtime)
 	}
+	oldRuntime := *runtime
 	appDetail, err := getRuntimeUpdateAppDetail(runtime, req)
 	if err != nil {
 		return err
@@ -683,6 +700,20 @@ func (r *RuntimeService) Update(req request.RuntimeUpdate) error {
 	refreshTemplate := !fileOp.Stat(appVersionDir) || appDetail.Update
 	if err = downloadApp(app, appDetail, nil, nil); err != nil {
 		return err
+	}
+	var snapshot *runtimeUpdateSnapshot
+	if runtime.Type != constant.RuntimePHP {
+		snapshot, err = snapshotRuntimeUpdate(&oldRuntime)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err != nil {
+				if restoreErr := snapshot.restoreFiles(); restoreErr != nil {
+					err = fmt.Errorf("%w; restore runtime configuration: %v", err, restoreErr)
+				}
+			}
+		}()
 	}
 	if versionChanged {
 		if err = updateRuntimeVersionFiles(runtime, appVersionDir); err != nil {
@@ -757,7 +788,13 @@ func (r *RuntimeService) Update(req request.RuntimeUpdate) error {
 		if err = runtimeRepo.Save(runtime); err != nil {
 			return err
 		}
-		go reCreateRuntime(runtime)
+		go func() {
+			if err := prepareRuntimeUpdate(runtime, snapshot); err != nil {
+				global.LOG.Errorf("prepare runtime [%s] update failed: %v", runtime.Name, err)
+				return
+			}
+			reCreateRuntime(runtime)
+		}()
 	}
 	return nil
 }

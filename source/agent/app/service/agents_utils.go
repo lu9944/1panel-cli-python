@@ -98,7 +98,7 @@ func ensureContainerRunning(containerName string) error {
 	return nil
 }
 
-func resolveAgentAccountInput(provider, apiType, authMode, apiKey, baseURL, modelID string, validateAvailability bool) (resolvedAgentAccountInput, error) {
+func resolveAgentAccountInput(provider, apiType, authMode, apiKey, baseURL, modelID string, validateAvailability, allowEmptyModel bool) (resolvedAgentAccountInput, error) {
 	resolvedAPIKey := strings.TrimSpace(apiKey)
 	resolvedAPIType := strings.TrimSpace(apiType)
 	resolvedAuthMode, err := providercatalog.ResolveAuthMode(provider, resolvedAPIType, authMode)
@@ -113,7 +113,7 @@ func resolveAgentAccountInput(provider, apiType, authMode, apiKey, baseURL, mode
 		return resolvedAgentAccountInput{}, err
 	}
 	modelID = strings.TrimSpace(modelID)
-	if modelID == "" {
+	if modelID == "" && !allowEmptyModel {
 		return resolvedAgentAccountInput{}, buserr.New("ErrAgentAccountModelsRequired")
 	}
 	imageAPI := providercatalog.IsImageAPIType(resolvedAPIType)
@@ -148,6 +148,10 @@ func readOpenclawConfig(configPath string) (map[string]interface{}, error) {
 }
 
 func writeOpenclawConfigRaw(configPath string, conf map[string]interface{}) error {
+	if _, busy := feishuSwitches.LoadOrStore(configPath, true); busy {
+		return buserr.New("TaskIsExecuting")
+	}
+	defer feishuSwitches.Delete(configPath)
 	ensureGatewaySecurityDefaults(conf)
 	ensureOpenclawUpdateDefaults(conf)
 	payload, err := json.MarshalIndent(conf, "", "  ")

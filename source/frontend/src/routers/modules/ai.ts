@@ -1,4 +1,5 @@
 import { Layout } from '@/routers/constant';
+import { GlobalStore } from '@/store';
 
 const aiRouter = {
     sort: 4,
@@ -11,16 +12,6 @@ const aiRouter = {
         title: 'menu.aiTools',
     },
     children: [
-        {
-            path: '/ai/agents/agent',
-            name: 'Agents',
-            component: () => import('@/views/ai/agents/agent/index.vue'),
-            meta: {
-                icon: 'p-jiqiren2',
-                title: 'aiTools.agents.agent',
-                permission: 'ai_agent_view',
-            },
-        },
         {
             path: '/ai/model/account',
             name: 'AIModel',
@@ -37,19 +28,62 @@ const aiRouter = {
             name: 'LocalModel',
             component: () => import('@/views/ai/model/index.vue'),
             meta: {
-                title: 'aiTools.model.localModel',
+                title: 'aiTools.model.deployments',
                 activeMenu: '/ai/model/account',
                 permission: 'ai_model_view',
             },
         },
         {
+            path: '/ai/model/files',
+            hidden: true,
+            name: 'ModelFiles',
+            component: () => import('@/views/ai/model/index.vue'),
+            meta: {
+                title: 'aiTools.model.files',
+                activeMenu: '/ai/model/account',
+                permission: 'ai_model_view',
+            },
+        },
+        {
+            path: '/ai/agents/agent',
+            name: 'Agents',
+            component: () => import('@/views/ai/agents/agent/index.vue'),
+            meta: {
+                icon: 'p-jiqiren2',
+                title: 'aiTools.agents.agent',
+                permission: 'ai_agent_view',
+            },
+        },
+        {
             path: '/ai/mcp',
             name: 'MCPServer',
-            component: () => import('@/views/ai/mcp/server/index.vue'),
+            redirect: () => (GlobalStore().hasPermission('ai_mcp_view') ? '/ai/mcp/server' : '/ai/mcp/1panel'),
             meta: {
                 icon: 'p-mcp-menu',
                 title: 'menu.mcp',
+                permission: ['ai_mcp_view', 'mcp_access_view'],
+            },
+        },
+        {
+            path: '/ai/mcp/server',
+            name: 'MCPServerList',
+            hidden: true,
+            component: () => import('@/views/ai/mcp/server/index.vue'),
+            meta: {
+                title: 'menu.mcp',
+                activeMenu: '/ai/mcp',
                 permission: 'ai_mcp_view',
+            },
+        },
+        {
+            path: '/ai/mcp/1panel',
+            name: 'PanelMCP',
+            hidden: true,
+            component: () => import('@/views/ai/mcp/panel/index.vue'),
+            meta: {
+                title: 'panelMCP.title',
+                activeMenu: '/ai/mcp',
+                permission: 'mcp_access_view',
             },
         },
         {

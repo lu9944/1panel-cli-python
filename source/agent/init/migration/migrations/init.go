@@ -1895,3 +1895,47 @@ var AddQuickDirectory = &gormigrate.Migration{
 		return tx.AutoMigrate(&model.QuickDirectory{})
 	},
 }
+
+var AddLocalModelAccountLink = &gormigrate.Migration{
+	ID: "20261023-add-local-model-account-link",
+	Migrate: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.AgentAccount{})
+	},
+}
+
+var AddOllamaModelAccountSync = &gormigrate.Migration{
+	ID: "20261026-add-ollama-model-account-sync",
+	Migrate: func(tx *gorm.DB) error {
+		if err := tx.AutoMigrate(&model.AppInstall{}); err != nil {
+			return err
+		}
+		var accounts []model.AgentAccount
+		if err := tx.Where("provider = ? AND app_install_id > 0", "ollama").Find(&accounts).Error; err != nil {
+			return err
+		}
+		for _, account := range accounts {
+			var install model.AppInstall
+			if err := tx.Preload("App").First(&install, account.AppInstallID).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					continue
+				}
+				return err
+			}
+			if install.App.Key != "ollama" {
+				continue
+			}
+			addressType := "custom"
+			if strings.TrimRight(account.BaseURL, "/") == fmt.Sprintf("http://%s:11434/v1", install.ContainerName) {
+				addressType = "container"
+			}
+			if err := tx.Model(&model.AppInstall{}).Where("id = ?", account.AppInstallID).Updates(map[string]interface{}{
+				"sync_model_account":          true,
+				"model_account_base_url_type": addressType,
+				"model_account_base_url":      account.BaseURL,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	},
+}

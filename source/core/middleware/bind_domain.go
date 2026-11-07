@@ -9,8 +9,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func BindDomain() gin.HandlerFunc {
+// DomainPolicy is configured by the router and must only trust server-verified state.
+type DomainPolicy func(*gin.Context) bool
+
+func BindDomain(policies ...DomainPolicy) gin.HandlerFunc {
+	policies = append([]DomainPolicy(nil), policies...)
 	return func(c *gin.Context) {
+		for _, policy := range policies {
+			if policy != nil && policy(c) {
+				c.Next()
+				return
+			}
+		}
 		localRequest := c.GetBool("LOCAL_REQUEST")
 		if localRequest {
 			c.Next()

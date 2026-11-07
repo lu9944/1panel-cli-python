@@ -175,6 +175,13 @@ html {
     }
 }
 
+.el-table .el-table__body {
+    tr.el-table__row:hover > td.el-table__cell,
+    tr.el-table__row.hover-row > td.el-table__cell {
+        background-color: var(--el-table-row-hover-bg-color);
+    }
+}
+
 .el-drawer {
     .el-drawer__header {
         padding: 15px 20px 14px;
@@ -278,4 +285,28 @@ html {
     color: var(--el-text-color-regular) !important;
     border: 1px solid var(--panel-main-bg-color-10);
     background-color: var(--panel-main-bg-color-10) !important;
+}
+
+// Allow long object names in dialog titles and explanatory text to wrap.
+.el-dialog__header,
+.el-dialog__body,
+.el-message-box__title,
+.el-message-box__message {
+    overflow-wrap: anywhere;
+}
+
+.el-dialog__title,
+.el-message-box__title {
+    white-space: normal;
+}
+
+.el-message-box__message,
+.el-dialog .el-alert__content {
+    min-width: 0;
+}
+
+.dialog-object-name {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }

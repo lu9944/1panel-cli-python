@@ -32,7 +32,6 @@ func (b *BaseApi) CreateMysql(c *gin.Context) {
 		}
 		req.Password = string(password)
 	}
-
 	if _, err := mysqlService.Create(context.Background(), req); err != nil {
 		helper.InternalServer(c, err)
 		return

@@ -1,6 +1,26 @@
 import { ReqPage } from '.';
 
 export namespace AI {
+    export interface ModelGPUDevice {
+        id: string;
+        name: string;
+        type: string;
+        uuid?: string;
+        available: boolean;
+    }
+    export interface ModelGPUConfig {
+        mode: 'all' | 'count' | 'devices';
+        count?: number;
+        error?: string;
+        enabled: boolean;
+        deviceIDs: string[];
+        capabilities: string[];
+    }
+    export interface ModelAccountSync {
+        id: number;
+        modelAccountBaseURLType: 'container' | 'localhost' | 'systemIP' | 'custom';
+        modelAccountBaseURL: string;
+    }
     export type AgentType = 'openclaw' | 'copaw' | 'hermes-agent' | 'deepseek-harness' | 'octop';
 
     export interface OllamaModelInfo {
@@ -13,12 +33,8 @@ export namespace AI {
         message: string;
         createdAt: Date;
     }
-    export interface OllamaModelDropInfo {
-        id: number;
-        name: string;
-    }
     export interface OllamaModelSearch extends ReqPage {
-        info: string;
+        info?: string;
     }
 
     export interface Info {
@@ -33,6 +49,7 @@ export namespace AI {
         xpu: XpuInfo['xpu'];
     }
     export interface GPU {
+        sharedMemory?: boolean;
         eccPending?: string;
         eccErrors?: { scope: string; correctable: string; uncorrectable: string }[];
         memoryActivity?: string;
@@ -123,6 +140,7 @@ export namespace AI {
         chartHide: Array<ChartHide>;
     }
     export interface ChartHide {
+        sharedMemory?: boolean;
         deviceID?: string;
         legacy?: boolean;
         productName: string;
@@ -391,6 +409,7 @@ export namespace AI {
     }
 
     export interface TensorRTLLM {
+        gpu?: ModelGPUConfig;
         id?: number;
         name: string;
         containerName: string;
@@ -738,6 +757,7 @@ export namespace AI {
     }
 
     export interface AgentAccountItem {
+        appInstallId?: number;
         id: number;
         provider: string;
         providerName: string;
@@ -777,6 +797,11 @@ export namespace AI {
     }
 
     export interface AgentFeishuConfig {
+        builtinManaged?: boolean;
+        legacyConfigured?: boolean;
+        groupSessionScope?: string;
+        builtinAvailable?: boolean;
+        legacy?: boolean;
         enabled: boolean;
         threadSession: boolean;
         replyMode: string;
@@ -791,6 +816,7 @@ export namespace AI {
     }
 
     export interface AgentFeishuConfigUpdateReq {
+        groupSessionScope?: string;
         agentId: number;
         enabled: boolean;
         threadSession: boolean;
@@ -802,6 +828,21 @@ export namespace AI {
         domain?: string;
         connectionMode?: 'websocket' | 'webhook';
         bots: AgentFeishuBot[];
+    }
+
+    export interface AgentFeishuTransition {
+        confirmed: boolean;
+        streaming: boolean;
+        groupSessionScope: string;
+        requireMention: string;
+    }
+
+    export interface AgentFeishuSwitchReq {
+        agentId: number;
+        taskID: string;
+        streaming: boolean;
+        groupSessionScope: string;
+        requireMention: 'true' | 'false';
     }
 
     export interface AgentTelegramConfigReq {

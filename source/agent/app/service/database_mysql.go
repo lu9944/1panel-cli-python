@@ -433,7 +433,46 @@ func (u *MysqlService) ListDBOption() ([]dto.MysqlOption, error) {
 }
 
 func (u *MysqlService) Create(ctx context.Context, req dto.MysqlDBCreate) (*model.DatabaseMysql, error) {
-	if cmd.CheckIllegal(req.Name, req.Username, req.Password, req.Format, req.Collation, req.Permission) {
+	creation, err := prepareMysqlCreation(req)
+	if err != nil {
+		return nil, err
+	}
+	req = creation.request
+	cli, version, err := LoadMysqlClientByFrom(req.Database)
+	if err != nil {
+		return nil, err
+	}
+	defer cli.Close()
+	if err := cli.Create(creation.createInfo(version)); err != nil {
+		return nil, err
+	}
+	if len(req.Username) != 0 {
+		if err := saveDatabaseUserCredentials(creation.dbType, req.Database, req.Username, req.Permission, req.Password, req.Description); err != nil {
+			return nil, err
+		}
+		for _, host := range creation.permissionHosts {
+			if err := saveDatabaseUserGrant(creation.dbType, req.Database, req.Name, req.Username, host); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	global.LOG.Infof("create database %s successful!", req.Name)
+	if err := mysqlRepo.Create(ctx, &creation.item); err != nil {
+		return nil, err
+	}
+	return &creation.item, nil
+}
+
+type mysqlCreation struct {
+	request         dto.MysqlDBCreate
+	dbType          string
+	permissionHosts []string
+	item            model.DatabaseMysql
+}
+
+func prepareMysqlCreation(req dto.MysqlDBCreate) (*mysqlCreation, error) {
+	if cmd.CheckIllegal(req.Name, req.Username, req.Password, req.Format, req.Collation, req.Permission) || strings.Contains(req.Password, " ") {
 		return nil, buserr.New("ErrCmdIllegal")
 	}
 	if len(req.Username) != 0 && len(req.Password) == 0 {
@@ -470,13 +509,13 @@ func (u *MysqlService) Create(ctx context.Context, req dto.MysqlDBCreate) (*mode
 		return nil, errors.New("cannot set root as user name")
 	}
 
-	cli, version, err := LoadMysqlClientByFrom(req.Database)
-	if err != nil {
-		return nil, err
-	}
 	createItem.MysqlName = req.Database
-	defer cli.Close()
-	if err := cli.Create(client.CreateInfo{
+	return &mysqlCreation{request: req, dbType: dbType, permissionHosts: permissionHosts, item: createItem}, nil
+}
+
+func (creation *mysqlCreation) createInfo(version string) client.CreateInfo {
+	req := creation.request
+	return client.CreateInfo{
 		Name:       req.Name,
 		Format:     req.Format,
 		Collation:  req.Collation,
@@ -485,25 +524,46 @@ func (u *MysqlService) Create(ctx context.Context, req dto.MysqlDBCreate) (*mode
 		Permission: req.Permission,
 		Version:    version,
 		Timeout:    300,
-	}); err != nil {
-		return nil, err
 	}
-	if len(req.Username) != 0 {
-		if err := saveDatabaseUserCredentials(dbType, req.Database, req.Username, req.Permission, req.Password, req.Description); err != nil {
-			return nil, err
-		}
-		for _, host := range permissionHosts {
-			if err := saveDatabaseUserGrant(dbType, req.Database, req.Name, req.Username, host); err != nil {
-				return nil, err
+}
+
+func saveMysqlCreationMetadata(ctx context.Context, req dto.MysqlDBCreate, hosts []string, item *model.DatabaseMysql) error {
+	return global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		txCtx := context.WithValue(ctx, constant.DB, tx)
+		if req.Username != "" {
+			key := global.CONF.Base.EncryptKey
+			if key == "" {
+				setting, err := settingRepo.GetWithContext(txCtx, repo.WithByKey("EncryptKey"))
+				if err != nil {
+					return err
+				}
+				key = setting.Value
+			}
+			password, err := encrypt.StringEncryptWithKey(req.Password, key)
+			if err != nil {
+				return err
+			}
+			for _, host := range hosts {
+				user, err := databaseUserRepo.GetEncryptedWithContext(txCtx, repo.WithByType("mysql"), databaseUserRepo.WithByDatabase(req.Database), databaseUserRepo.WithByUser(req.Username, host))
+				if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+					return err
+				}
+				user.Type, user.Database, user.Username, user.Host = "mysql", req.Database, req.Username, host
+				user.Password, user.IsDelete = password, false
+				if req.Description != "" {
+					user.Description = req.Description
+				}
+				if err := databaseUserRepo.SaveEncryptedWithContext(txCtx, &user); err != nil {
+					return err
+				}
+				grant := model.DatabaseUserGrant{Type: "mysql", Database: req.Database, DBName: req.Name, Username: req.Username, Host: host}
+				if err := databaseUserGrantRepo.CreateIfAbsent(txCtx, &grant); err != nil {
+					return err
+				}
 			}
 		}
-	}
-
-	global.LOG.Infof("create database %s successful!", req.Name)
-	if err := mysqlRepo.Create(ctx, &createItem); err != nil {
-		return nil, err
-	}
-	return &createItem, nil
+		return mysqlRepo.CreateMetadata(txCtx, item)
+	})
 }
 
 func (u *MysqlService) ListUsers(req dto.MysqlUserSearch) ([]dto.MysqlUser, error) {
@@ -615,7 +675,7 @@ func (u *MysqlService) ListGrantSummary(req dto.MysqlGrantSummarySearch) (map[st
 }
 
 func (u *MysqlService) CreateUser(req dto.MysqlUserCreate) error {
-	if cmd.CheckIllegal(req.Username, req.Password, req.Host) {
+	if cmd.CheckIllegal(req.Username, req.Password, req.Host) || strings.Contains(req.Password, " ") {
 		return buserr.New("ErrCmdIllegal")
 	}
 	dbs := make([]string, 0, len(req.DBs))
@@ -818,7 +878,7 @@ func (u *MysqlService) UpdateUser(req dto.MysqlUserUpdate) error {
 }
 
 func (u *MysqlService) ChangeUserPassword(req dto.MysqlUserPassword) error {
-	if cmd.CheckIllegal(req.Username, req.Host, req.Password) {
+	if cmd.CheckIllegal(req.Username, req.Host, req.Password) || strings.Contains(req.Password, " ") {
 		return buserr.New("ErrCmdIllegal")
 	}
 	if err := checkMysqlNormalUser(req.Username); err != nil {
@@ -871,7 +931,7 @@ func (u *MysqlService) ChangeUserPassword(req dto.MysqlUserPassword) error {
 }
 
 func (u *MysqlService) SaveUserPassword(req dto.MysqlUserPassword) error {
-	if cmd.CheckIllegal(req.Username, req.Host, req.Password) {
+	if cmd.CheckIllegal(req.Username, req.Host, req.Password) || strings.Contains(req.Password, " ") {
 		return buserr.New("ErrCmdIllegal")
 	}
 	if err := checkMysqlNormalUser(req.Username); err != nil {
@@ -1237,7 +1297,7 @@ func isMysqlDatabaseResourceInUseError(err error) bool {
 }
 
 func (u *MysqlService) ChangePassword(req dto.ChangeDBInfo) error {
-	if cmd.CheckIllegal(req.Value) {
+	if cmd.CheckIllegal(req.Value) || strings.Contains(req.Value, " ") {
 		return buserr.New("ErrCmdIllegal")
 	}
 	cli, version, err := LoadMysqlClientByFrom(req.Database)
@@ -1398,7 +1458,14 @@ func (u *MysqlService) LoadStatus(req dto.OperationWithNameAndType) (*dto.MysqlS
 		return nil, err
 	}
 
-	statusMap, err := executeSqlForMaps(app.ContainerName, app.Key, app.Password, "show global status;")
+	return loadMysqlStatus(req, app, executeSqlForMaps, executeSqlForRows)
+}
+
+func loadMysqlStatus(req dto.OperationWithNameAndType, app *repo.RootInfo,
+	maps func(string, string, string, string) (map[string]string, error),
+	rowsQuery func(string, string, string, string) ([]string, error),
+) (*dto.MysqlStatus, error) {
+	statusMap, err := maps(app.ContainerName, app.Key, app.Password, "show global status;")
 	if err != nil {
 		return nil, err
 	}
@@ -1426,7 +1493,7 @@ func (u *MysqlService) LoadStatus(req dto.OperationWithNameAndType) (*dto.MysqlS
 	if common.CompareAppVersion(app.Version, "8.4.0") && (req.Type == constant.AppMysql || req.Type == constant.AppMysqlCluster) {
 		masterStatus = "show binary log status;"
 	}
-	rows, err := executeSqlForRows(app.ContainerName, app.Key, app.Password, masterStatus)
+	rows, err := rowsQuery(app.ContainerName, app.Key, app.Password, masterStatus)
 	if err != nil {
 		return nil, err
 	}
@@ -1531,6 +1598,34 @@ func updateMyCnf(oldFiles []string, group string, param string, value interface{
 }
 
 func LoadMysqlClientByFrom(database string) (mysql.MysqlClient, string, error) {
+	databaseItem, err := databaseRepo.Get(repo.WithByName(database))
+	if err != nil {
+		return nil, "", err
+	}
+	return newMysqlClientForDatabase(databaseItem, database)
+}
+
+func loadInstalledLocalMysqlClient(database string) (*client.Local, string, error) {
+	databaseItem, err := databaseRepo.Get(repo.WithByName(database))
+	if err != nil {
+		return nil, "", err
+	}
+	if databaseItem.ID == 0 || databaseItem.From != "local" || databaseItem.Type != "mysql" || databaseItem.AppInstallID == 0 {
+		return nil, "", errors.New("an installed local MySQL instance is required")
+	}
+	cli, version, err := newMysqlClientForDatabase(databaseItem, database)
+	if err != nil {
+		return nil, "", err
+	}
+	local, ok := cli.(*client.Local)
+	if !ok {
+		cli.Close()
+		return nil, "", errors.New("an installed local MySQL instance is required")
+	}
+	return local, version, nil
+}
+
+func newMysqlClientForDatabase(databaseItem model.Database, database string) (mysql.MysqlClient, string, error) {
 	var (
 		dbInfo  client.DBInfo
 		version string
@@ -1538,10 +1633,6 @@ func LoadMysqlClientByFrom(database string) (mysql.MysqlClient, string, error) {
 	)
 
 	dbInfo.Timeout = 300
-	databaseItem, err := databaseRepo.Get(repo.WithByName(database))
-	if err != nil {
-		return nil, "", err
-	}
 	dbInfo.Type = databaseItem.Type
 	dbInfo.From = databaseItem.From
 	dbInfo.Database = database

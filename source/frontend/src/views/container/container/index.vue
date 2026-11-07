@@ -177,73 +177,40 @@
                         min-width="120"
                     >
                         <template #default="{ row }">
-                            <div v-if="row.hasLoad">
-                                <div class="source-font">CPU: {{ row.cpuPercent.toFixed(2) }}%</div>
-                                <div class="float-left source-font">
-                                    {{ $t('monitor.memory') }}: {{ row.memoryPercent.toFixed(2) }}%
-                                </div>
-                                <el-popover placement="right" width="500px" class="float-right">
-                                    <template #reference>
-                                        <svg-icon iconName="p-xiangqing" className="resource-detail-icon"></svg-icon>
+                            <span v-if="row.state !== 'running'">—</span>
+                            <ContainerResource v-else-if="row.hasLoad" :stats="row">
+                                <el-descriptions-item v-if="row.hasLoadSize">
+                                    <template #label>
+                                        {{ $t('container.sizeRw') }}
+                                        <el-tooltip :content="$t('container.sizeRwHelper')">
+                                            <el-icon class="icon-item"><InfoFilled /></el-icon>
+                                        </el-tooltip>
                                     </template>
-                                    <template #default>
-                                        <el-descriptions direction="vertical" border :column="3" size="small">
-                                            <el-descriptions-item :label="$t('container.cpuUsage')">
-                                                {{ computeCPU(row.cpuTotalUsage) }}
-                                            </el-descriptions-item>
-                                            <el-descriptions-item :label="$t('container.cpuTotal')">
-                                                {{ computeCPU(row.systemUsage) }}
-                                            </el-descriptions-item>
-                                            <el-descriptions-item :label="$t('container.core')">
-                                                {{ row.percpuUsage }}
-                                            </el-descriptions-item>
-
-                                            <el-descriptions-item :label="$t('container.memUsage')">
-                                                {{ computeSizeForDocker(row.memoryUsage) }}
-                                            </el-descriptions-item>
-                                            <el-descriptions-item :label="$t('container.memCache')">
-                                                {{ computeSizeForDocker(row.memoryCache) }}
-                                            </el-descriptions-item>
-                                            <el-descriptions-item :label="$t('container.memTotal')">
-                                                {{ computeSizeForDocker(row.memoryLimit) }}
-                                            </el-descriptions-item>
-                                            <el-descriptions-item v-if="row.hasLoadSize">
-                                                <template #label>
-                                                    {{ $t('container.sizeRw') }}
-                                                    <el-tooltip :content="$t('container.sizeRwHelper')">
-                                                        <el-icon class="icon-item"><InfoFilled /></el-icon>
-                                                    </el-tooltip>
-                                                </template>
-                                                {{ computeSize2(row.sizeRw) }}
-                                            </el-descriptions-item>
-                                            <el-descriptions-item
-                                                :label="$t('container.sizeRootFs')"
-                                                v-if="row.hasLoadSize"
-                                            >
-                                                <template #label>
-                                                    {{ $t('container.sizeRootFs') }}
-                                                    <el-tooltip :content="$t('container.sizeRootFsHelper')">
-                                                        <el-icon class="icon-item"><InfoFilled /></el-icon>
-                                                    </el-tooltip>
-                                                </template>
-                                                {{ computeSize2(row.sizeRootFs) }}
-                                            </el-descriptions-item>
-                                        </el-descriptions>
-
-                                        <el-button
-                                            class="mt-2"
-                                            v-if="!row.hasLoadSize"
-                                            size="small"
-                                            link
-                                            type="primary"
-                                            @click="loadSize(row)"
-                                        >
-                                            {{ $t('container.loadSize') }}
-                                        </el-button>
+                                    {{ computeSize2(row.sizeRw) }}
+                                </el-descriptions-item>
+                                <el-descriptions-item :label="$t('container.sizeRootFs')" v-if="row.hasLoadSize">
+                                    <template #label>
+                                        {{ $t('container.sizeRootFs') }}
+                                        <el-tooltip :content="$t('container.sizeRootFsHelper')">
+                                            <el-icon class="icon-item"><InfoFilled /></el-icon>
+                                        </el-tooltip>
                                     </template>
-                                </el-popover>
-                            </div>
-                            <div v-if="!row.hasLoad">
+                                    {{ computeSize2(row.sizeRootFs) }}
+                                </el-descriptions-item>
+                                <template #footer>
+                                    <el-button
+                                        class="mt-2"
+                                        v-if="!row.hasLoadSize"
+                                        size="small"
+                                        link
+                                        type="primary"
+                                        @click="loadSize(row)"
+                                    >
+                                        {{ $t('container.loadSize') }}
+                                    </el-button>
+                                </template>
+                            </ContainerResource>
+                            <div v-else>
                                 <el-button link loading></el-button>
                             </div>
                         </template>
@@ -389,6 +356,7 @@
                                         @change="toggleSelection"
                                     ></el-checkbox>
                                 </template>
+                                <el-option :label="$t('commons.button.upgrade')" value="upgrade" />
                                 <el-option
                                     :label="$t('container.start')"
                                     value="start"
@@ -504,7 +472,7 @@ import Uploads from '@/components/upload/index.vue';
 import DockerStatus from '@/views/container/docker-status/index.vue';
 import ContainerLogDialog from '@/components/log/container-drawer/index.vue';
 import Status from '@/components/status/index.vue';
-import { toRef, computed, reactive, ref } from 'vue';
+import { toRef, computed, onBeforeUnmount, onDeactivated, reactive, ref } from 'vue';
 import {
     containerItemStats,
     containerListStats,
@@ -519,7 +487,8 @@ import { MsgSuccess, MsgWarning } from '@/utils/message';
 import { useGlobalStore } from '@/composables/useGlobalStore';
 import { routerToName, routerToNameWithQuery } from '@/utils/router';
 import router from '@/routers';
-import { computeSize2, computeSizeForDocker, computeCPU } from '@/utils/size';
+import { computeSize2 } from '@/utils/size';
+import ContainerResource from '@/components/container-resource/index.vue';
 import { newUUID } from '@/utils/id';
 import { updateCommonDescription } from '@/api/modules/setting';
 
@@ -729,48 +698,84 @@ const dialogContainerLogRef = ref();
 const dialogRenameRef = ref();
 const dialogPruneRef = ref();
 
-const search = async (column?: any) => {
-    if (!isActive.value || !isExist.value) {
+let requestController: AbortController | undefined;
+
+const cancelRequests = () => {
+    requestController?.abort();
+    requestController = undefined;
+    loading.value = false;
+};
+onBeforeUnmount(cancelRequests);
+onDeactivated(cancelRequests);
+
+const loadContainers = async (background = false, column?: any) => {
+    if (!isActive.value || !isExist.value || (background && requestController)) {
         return;
     }
+    requestController?.abort();
+    const controller = new AbortController();
+    requestController = controller;
+    loading.value = !background;
     localStorage.setItem('includeAppStore', includeAppStore.value ? 'true' : 'false');
-    let filterItem = (router.currentRoute.value.query?.filters as string) || '';
     if (column) {
         paginationConfig.orderBy = column.order ? column.prop : defaultSort.prop;
         paginationConfig.order = column.order || defaultSort.order;
     }
-    let params = {
+    const params = {
         name: searchName.value,
         state: paginationConfig.state || 'all',
         page: paginationConfig.currentPage,
         pageSize: paginationConfig.pageSize,
-        filters: filterItem,
+        filters: props.filters || (router.currentRoute.value.query?.filters as string) || '',
         orderBy: paginationConfig.orderBy,
         order: paginationConfig.order,
         excludeAppStore: !includeAppStore.value,
     };
-    loading.value = true;
-    const [containerResult, statsResult, statusResult] = await Promise.allSettled([
-        searchContainer(params),
-        containerListStats(),
-        loadContainerStatus(),
-    ]);
-    loading.value = false;
-
-    if (containerResult.status === 'fulfilled') {
-        const containers = containerResult.value.data.items || [];
+    const statusRequest = loadContainerStatus(undefined, true, controller.signal)
+        .then((res) => {
+            if (!controller.signal.aborted) {
+                updateTags(res.data || {});
+            }
+        })
+        .catch(() => {}); // Request errors are reported by the HTTP layer.
+    try {
+        const res = await searchContainer(params, undefined, controller.signal);
+        if (controller.signal.aborted) {
+            return;
+        }
+        const containers = res.data.items || [];
         syncContainerRows(containers);
-        paginationConfig.total = containerResult.value.data.total;
-    }
-
-    if (statsResult.status === 'fulfilled') {
-        applyStatsToRows(statsResult.value.data || []);
-    }
-
-    if (statusResult.status === 'fulfilled') {
-        updateTags(statusResult.value.data || {});
+        paginationConfig.total = res.data.total;
+        loading.value = false;
+        // Stopped containers no longer produce samples; discard their previous usage.
+        for (const row of data.value) {
+            if (row.state !== 'running') {
+                for (const field of statFields) {
+                    row[field] = 0;
+                }
+            }
+        }
+        const ids = containers.filter((item) => item.state === 'running').map((item) => item.containerID);
+        if (ids.length > 0) {
+            const stats = await containerListStats(undefined, ids, { signal: controller.signal });
+            if (!controller.signal.aborted) {
+                applyStatsToRows(stats.data || []);
+            }
+        }
+    } catch {
+        // Preserve the last successful rows; the HTTP layer reports the failure.
+    } finally {
+        if (!controller.signal.aborted) {
+            loading.value = false;
+        }
+        await statusRequest;
+        if (requestController === controller) {
+            requestController = undefined;
+        }
     }
 };
+
+const search = (column?: any) => loadContainers(false, column);
 
 const searchWithStatus = (item: string) => {
     activeTag.value = item;
@@ -800,21 +805,7 @@ const changePinned = (row: any, isPinned: boolean) => {
     });
 };
 
-const refresh = async () => {
-    let filterItem = props.filters ? props.filters : '';
-    let params = {
-        name: searchName.value,
-        state: paginationConfig.state || 'all',
-        page: paginationConfig.currentPage,
-        pageSize: paginationConfig.pageSize,
-        filters: filterItem,
-        orderBy: paginationConfig.orderBy,
-        order: paginationConfig.order,
-    };
-    const [containerResult, statsResult] = await Promise.all([searchContainer(params), containerListStats()]);
-    syncContainerRows(containerResult.data.items || []);
-    applyStatsToRows(statsResult.data || []);
-};
+const refresh = () => loadContainers(true);
 
 const loadSize = async (row: any) => {
     containerItemStats(row.containerID).then((res) => {
@@ -920,6 +911,10 @@ const checkStatus = (operation: string, row: Container.ContainerInfo | null) => 
 };
 
 const onOperate = async (op: string, row: Container.ContainerInfo | null) => {
+    if (op === 'upgrade') {
+        dialogUpgradeRef.value.acceptParams(selects.value);
+        return;
+    }
     let opList = row ? [row] : selects.value;
     let msg = i18n.global.t('container.operatorHelper', [i18n.global.t('container.' + op)]);
     batchNames.value = [];
@@ -1117,14 +1112,6 @@ const buttons = [
         text-overflow: ellipsis;
         white-space: nowrap;
     }
-}
-.source-font {
-    font-size: 12px;
-}
-.resource-detail-icon {
-    margin-top: -3px;
-    font-size: 6px;
-    cursor: pointer;
 }
 .tag-button {
     margin-top: -5px;

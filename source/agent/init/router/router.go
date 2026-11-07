@@ -2,6 +2,7 @@ package router
 
 import (
 	v2 "github.com/1Panel-dev/1Panel/agent/app/api/v2"
+	"github.com/1Panel-dev/1Panel/agent/app/service"
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/i18n"
 	"github.com/1Panel-dev/1Panel/agent/middleware"
@@ -14,14 +15,20 @@ var (
 )
 
 func Routers() *gin.Engine {
+	if err := service.ConfigurePanelMCPTasks(); err != nil {
+		panic(err)
+	}
 	Router = gin.Default()
 	Router.Use(i18n.UseI18n())
+	registerMCPRuntime(Router)
 
 	PrivateGroup := Router.Group("/api/v2")
 	if !global.IsMaster {
 		PrivateGroup.Use(middleware.Certificate())
 	}
 	PrivateGroup.Use(middleware.OperationResolveMeta())
+	PrivateGroup.Use(v2.PanelMCPTaskAccess())
+	PrivateGroup.Use(v2.MCPBusinessDispatch())
 	for _, router := range rou.RouterGroupApp {
 		router.InitRouter(PrivateGroup)
 	}

@@ -1,3 +1,4 @@
+import { AI } from './ai';
 import { ReqPage, CommonModel } from '.';
 
 export namespace App {
@@ -52,6 +53,7 @@ export namespace App {
 
     export interface AppItem {
         name: string;
+        icon?: string;
         key: string;
         id: number;
         description: string;
@@ -136,6 +138,10 @@ export namespace App {
     }
 
     export interface AppInstall {
+        gpu?: AI.ModelGPUConfig;
+        syncModelAccount?: boolean;
+        modelAccountBaseURLType?: string;
+        modelAccountBaseURL?: string;
         appDetailId: number;
         params: any;
         taskID: string;
@@ -227,6 +233,8 @@ export namespace App {
         name: string;
         version: string;
         isExist: boolean;
+        modelAccountBaseURLType: string;
+        modelAccountBaseURL: string;
         app: string;
         status: string;
         createdAt: string;
@@ -255,6 +263,7 @@ export namespace App {
     }
 
     export interface AppInstalledOp {
+        feishuTransition?: AI.AgentFeishuTransition;
         installId: number;
         operate: string;
         backupId?: number;
@@ -280,8 +289,11 @@ export namespace App {
     }
 
     export interface VersionDetail {
+        feishuLegacy?: boolean;
+        feishuConfigured?: boolean;
         version: string;
         detailId: number;
+        dockerCompose?: string;
     }
 
     export interface InstallParams {
@@ -301,8 +313,16 @@ export namespace App {
     }
 
     export interface AppConfig {
+        gpu?: AI.ModelGPUConfig;
+        appKey: string;
+        name: string;
+        httpPort: number;
+        syncModelAccount: boolean;
+        modelAccountBaseURLType: string;
+        modelAccountBaseURL: string;
         params: InstallParams[];
         rawCompose?: string;
+        isEdit?: boolean;
         cpuQuota: number;
         memoryLimit: number;
         memoryUnit: string;
@@ -326,6 +346,7 @@ export namespace App {
     export interface AppUpdateVersionReq {
         appInstallID: number;
         updateVersion?: string;
+        loadCompose?: boolean;
     }
 
     export interface AppIgnoreReq {

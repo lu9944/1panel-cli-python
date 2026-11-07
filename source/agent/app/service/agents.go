@@ -88,6 +88,7 @@ type IAgentService interface {
 
 	GetFeishuConfig(req dto.AgentFeishuConfigReq) (*dto.AgentFeishuConfig, error)
 	UpdateFeishuConfig(req dto.AgentFeishuConfigUpdateReq) error
+	SwitchFeishuPlugin(req dto.AgentFeishuSwitchReq) error
 	GetTelegramConfig(req dto.AgentTelegramConfigReq) (*dto.AgentTelegramConfig, error)
 	UpdateTelegramConfig(req dto.AgentTelegramConfigUpdateReq) error
 	GetDiscordConfig(req dto.AgentIDReq) (*dto.AgentDiscordConfig, error)
@@ -1055,7 +1056,7 @@ func (a AgentService) CreateAccount(req dto.AgentAccountCreateReq) error {
 		return err
 	}
 	validateAvailability := req.ValidateAvailability == nil || *req.ValidateAvailability
-	resolvedInput, err := resolveAgentAccountInput(provider, req.APIType, req.AuthMode, req.APIKey, req.BaseURL, verifyModel, validateAvailability)
+	resolvedInput, err := resolveAgentAccountInput(provider, req.APIType, req.AuthMode, req.APIKey, req.BaseURL, verifyModel, validateAvailability, false)
 	if err != nil {
 		return err
 	}
@@ -1108,12 +1109,15 @@ func (a AgentService) UpdateAccount(req dto.AgentAccountUpdateReq) error {
 	if strings.TrimSpace(requestedVerifyModel) == "" {
 		requestedVerifyModel = account.VerifyModel
 	}
-	verifyModel, err := resolveAgentAccountVerifyModel(provider, requestedVerifyModel, models)
-	if err != nil {
-		return err
+	verifyModel := ""
+	if account.AppInstallID == 0 || len(models) > 0 {
+		verifyModel, err = resolveAgentAccountVerifyModel(provider, requestedVerifyModel, models)
+		if err != nil {
+			return err
+		}
 	}
 	validateAvailability := req.ValidateAvailability == nil || *req.ValidateAvailability
-	resolvedInput, err := resolveAgentAccountInput(provider, req.APIType, req.AuthMode, req.APIKey, req.BaseURL, verifyModel, validateAvailability)
+	resolvedInput, err := resolveAgentAccountInput(provider, req.APIType, req.AuthMode, req.APIKey, req.BaseURL, verifyModel, validateAvailability, account.AppInstallID != 0 && len(models) == 0)
 	if err != nil {
 		return err
 	}
@@ -1127,7 +1131,7 @@ func (a AgentService) UpdateAccount(req dto.AgentAccountUpdateReq) error {
 	account.Remark = req.Remark
 	account.Verified = true
 
-	if err := global.DB.Save(account).Error; err != nil {
+	if err := agentAccountRepo.Save(account); err != nil {
 		return err
 	}
 	terminalai.InvalidateTerminalRuntimeCache()
@@ -1158,13 +1162,34 @@ func (a AgentService) PageAccounts(req dto.AgentAccountSearch) (int64, []dto.Age
 	if err != nil {
 		return 0, nil, err
 	}
+	installIDs := make([]uint, 0, len(list))
+	for _, account := range list {
+		if account.AppInstallID != 0 {
+			installIDs = append(installIDs, account.AppInstallID)
+		}
+	}
+	localInstalls := make(map[uint]bool, len(installIDs))
+	if len(installIDs) > 0 {
+		installs, err := appInstallRepo.ListBy(context.Background(), repo.WithByIDs(installIDs))
+		if err != nil {
+			return 0, nil, err
+		}
+		for _, install := range installs {
+			localInstalls[install.ID] = true
+		}
+	}
 	items := make([]dto.AgentAccountInfo, 0, len(list))
 	for _, item := range list {
 		apiKey := ""
 		if item.RememberAPIKey {
 			apiKey = item.APIKey
 		}
+		appInstallID := uint(0)
+		if localInstalls[item.AppInstallID] {
+			appInstallID = item.AppInstallID
+		}
 		items = append(items, dto.AgentAccountInfo{
+			AppInstallID:    appInstallID,
 			ID:              item.ID,
 			MasterAccountID: item.MasterAccountID,
 			Provider:        item.Provider,
@@ -1362,13 +1387,18 @@ func (a AgentService) SyncAgentsByAccount(account *model.AgentAccount) error {
 }
 
 func (a AgentService) VerifyAccount(req dto.AgentAccountVerifyReq) error {
-	_, err := resolveAgentAccountInput(req.Provider, req.APIType, req.AuthMode, req.APIKey, req.BaseURL, req.Model, true)
+	_, err := resolveAgentAccountInput(req.Provider, req.APIType, req.AuthMode, req.APIKey, req.BaseURL, req.Model, true, false)
 	return err
 }
 
 func (a AgentService) DeleteAccount(req dto.AgentAccountDeleteReq) error {
 	agentAccountMutationMu.Lock()
 	defer agentAccountMutationMu.Unlock()
+	_, err := agentAccountRepo.GetFirst(repo.WithByID(req.ID))
+	if err != nil {
+		return err
+	}
+
 	if err := global.DB.Transaction(func(tx *gorm.DB) error {
 		var agentCount int64
 		if err := tx.Model(&model.Agent{}).Where("account_id = ?", req.ID).Count(&agentCount).Error; err != nil {
@@ -1553,6 +1583,10 @@ func (a AgentService) UpdateConfigFile(req dto.AgentConfigFileUpdateReq) error {
 	if err != nil {
 		return err
 	}
+	if _, busy := feishuSwitches.LoadOrStore(agent.ConfigPath, true); busy {
+		return buserr.New("TaskIsExecuting")
+	}
+	defer feishuSwitches.Delete(agent.ConfigPath)
 	if err := validateAgentConfigFileContent(agent.AgentType, req.Content); err != nil {
 		return err
 	}

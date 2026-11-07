@@ -19,11 +19,16 @@ export const searchOllamaModel = (params: AI.OllamaModelSearch) => {
 export const loadOllamaModel = (name: string) => {
     return http.post<string>(`/ai/ollama/model/load`, { name: name });
 };
-export const syncOllamaModel = () => {
-    return http.post<Array<AI.OllamaModelDropInfo>>(`/ai/ollama/model/sync`);
+export const syncOllamaModelAccount = (req: AI.ModelAccountSync) => {
+    return http.post('/ai/ollama/account/sync', req);
 };
-export const closeOllamaModel = (name: string) => {
-    return http.post(`/ai/ollama/close`, { name: name });
+export const closeOllamaModel = (name: string, currentNode?: string) => {
+    return http.post(
+        `/ai/ollama/close`,
+        { name: name },
+        undefined,
+        currentNode ? { CurrentNode: currentNode } : undefined,
+    );
 };
 
 export const bindDomain = (req: AI.BindDomain) => {
@@ -36,6 +41,10 @@ export const getBindDomain = (req: AI.BindDomainReq) => {
 
 export const updateBindDomain = (req: AI.BindDomain) => {
     return http.post(`/ai/domain/update`, req);
+};
+
+export const loadModelGPUDevices = () => {
+    return http.get<{ devices: AI.ModelGPUDevice[]; warnings: string[] }>('/ai/model/gpu/devices');
 };
 
 export const loadGPUInfo = () => {
@@ -265,6 +274,10 @@ export const deleteAgentAccount = (req: AI.AgentAccountDeleteReq) => {
 
 export const getAgentFeishuConfig = (req: AI.AgentFeishuConfigReq) => {
     return http.post<AI.AgentFeishuConfig>(`/ai/agents/channel/feishu/get`, req);
+};
+
+export const switchAgentFeishuPlugin = (req: AI.AgentFeishuSwitchReq) => {
+    return http.post(`/ai/agents/channel/feishu/switch`, req);
 };
 
 export const updateAgentFeishuConfig = (req: AI.AgentFeishuConfigUpdateReq) => {

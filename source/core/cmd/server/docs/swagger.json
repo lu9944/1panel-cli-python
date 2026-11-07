@@ -1167,6 +1167,41 @@
 				]
 			}
 		},
+		"/ai/agents/channel/feishu/switch": {
+			"post": {
+				"consumes": [
+					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/dto.AgentFeishuSwitchReq"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OK"
+					}
+				},
+				"security": [
+					{
+						"ApiKeyAuth": []
+					},
+					{
+						"Timestamp": []
+					}
+				],
+				"summary": "Switch to the bundled OpenClaw Feishu plugin",
+				"tags": [
+					"AI"
+				]
+			}
+		},
 		"/ai/agents/channel/feishu/update": {
 			"post": {
 				"consumes": [
@@ -3556,40 +3591,6 @@
 				]
 			}
 		},
-		"/ai/ollama/model/sync": {
-			"post": {
-				"responses": {
-					"200": {
-						"description": "OK",
-						"schema": {
-							"items": {
-								"$ref": "#/definitions/dto.OllamaModelDropList"
-							},
-							"type": "array"
-						}
-					}
-				},
-				"security": [
-					{
-						"ApiKeyAuth": []
-					},
-					{
-						"Timestamp": []
-					}
-				],
-				"summary": "Sync Ollama model list",
-				"tags": [
-					"AI"
-				],
-				"x-panel-log": {
-					"BeforeFunctions": [],
-					"bodyKeys": [],
-					"formatEN": "sync Ollama model list",
-					"formatZH": "同步 Ollama 模型列表",
-					"paramKeys": []
-				}
-			}
-		},
 		"/ai/tensorrt/create": {
 			"post": {
 				"consumes": [
@@ -4541,6 +4542,9 @@
 						"schema": {
 							"type": "file"
 						}
+					},
+					"302": {
+						"description": "redirect to the official icon URL"
 					}
 				},
 				"security": [
@@ -5337,6 +5341,17 @@
 			"post": {
 				"consumes": [
 					"application/json"
+				],
+				"parameters": [
+					{
+						"description": "request",
+						"in": "body",
+						"name": "request",
+						"required": true,
+						"schema": {
+							"$ref": "#/definitions/request.AppUpdateVersion"
+						}
+					}
 				],
 				"responses": {
 					"200": {
@@ -21979,11 +21994,9 @@
 				],
 				"x-panel-log": {
 					"BeforeFunctions": [],
-					"bodyKeys": [
-						"id"
-					],
-					"formatEN": "Delete runtime [id]",
-					"formatZH": "删除运行环境 [id]",
+					"bodyKeys": [],
+					"formatEN": "Delete runtime [name]",
+					"formatZH": "删除运行环境 [name]",
 					"paramKeys": []
 				}
 			}
@@ -28068,14 +28081,14 @@
 						{
 							"db": "websites",
 							"input_column": "id",
-							"input_value": "websiteId",
+							"input_value": "websiteID",
 							"isList": false,
 							"output_column": "primary_domain",
 							"output_value": "domain"
 						}
 					],
 					"bodyKeys": [
-						"websiteId"
+						"websiteID"
 					],
 					"formatEN": "php version update [domain]",
 					"formatZH": "php 版本变更 [domain]",
@@ -30149,6 +30162,33 @@
 		}
 	},
 	"definitions": {
+		"dto.AgentFeishuTransition": {
+			"type": "object",
+			"properties": {
+				"confirmed": {
+					"type": "boolean"
+				},
+				"streaming": {
+					"type": "boolean"
+				},
+				"groupSessionScope": {
+					"type": "string",
+					"enum": [
+						"group",
+						"group_sender",
+						"group_topic",
+						"group_topic_sender"
+					]
+				},
+				"requireMention": {
+					"type": "string",
+					"enum": [
+						"true",
+						"false"
+					]
+				}
+			}
+		},
 		"dto.AgentAccountCreateReq": {
 			"properties": {
 				"apiKey": {
@@ -31247,11 +31287,17 @@
 		},
 		"dto.AgentFeishuConfig": {
 			"properties": {
+                "builtinManaged": {
+                    "type": "boolean"
+                },
 				"bots": {
 					"items": {
 						"$ref": "#/definitions/dto.AgentFeishuBot"
 					},
 					"type": "array"
+				},
+				"builtinAvailable": {
+					"type": "boolean"
 				},
 				"connectionMode": {
 					"type": "string"
@@ -31271,7 +31317,19 @@
 				"groupPolicy": {
 					"type": "string"
 				},
+				"groupSessionScope": {
+					"type": "string",
+					"enum": [
+						"group",
+						"group_sender",
+						"group_topic",
+						"group_topic_sender"
+					]
+				},
 				"installed": {
+					"type": "boolean"
+				},
+				"legacy": {
 					"type": "boolean"
 				},
 				"replyMode": {
@@ -31285,8 +31343,47 @@
 				},
 				"threadSession": {
 					"type": "boolean"
+				},
+				"legacyConfigured": {
+					"type": "boolean"
 				}
 			},
+			"type": "object"
+		},
+		"dto.AgentFeishuSwitchReq": {
+			"properties": {
+				"agentId": {
+					"type": "integer"
+				},
+				"groupSessionScope": {
+					"type": "string",
+					"enum": [
+						"group",
+						"group_sender",
+						"group_topic",
+						"group_topic_sender"
+					]
+				},
+				"requireMention": {
+					"type": "string",
+					"enum": [
+						"true",
+						"false"
+					]
+				},
+				"streaming": {
+					"type": "boolean"
+				},
+				"taskID": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"agentId",
+				"taskID",
+				"groupSessionScope",
+				"requireMention"
+			],
 			"type": "object"
 		},
 		"dto.AgentFeishuConfigReq": {
@@ -31334,6 +31431,15 @@
 						"disabled"
 					],
 					"type": "string"
+				},
+				"groupSessionScope": {
+					"type": "string",
+					"enum": [
+						"group",
+						"group_sender",
+						"group_topic",
+						"group_topic_sender"
+					]
 				},
 				"replyMode": {
 					"type": "string"
@@ -33199,6 +33305,12 @@
 				},
 				"version": {
 					"type": "string"
+				},
+				"feishuLegacy": {
+					"type": "boolean"
+				},
+				"feishuConfigured": {
+					"type": "boolean"
 				}
 			},
 			"type": "object"
@@ -39344,17 +39456,6 @@
 			},
 			"type": "object"
 		},
-		"dto.OllamaModelDropList": {
-			"properties": {
-				"id": {
-					"type": "integer"
-				},
-				"name": {
-					"type": "string"
-				}
-			},
-			"type": "object"
-		},
 		"dto.OllamaModelName": {
 			"properties": {
 				"name": {
@@ -42996,6 +43097,9 @@
 				},
 				"taskID": {
 					"type": "string"
+				},
+				"feishuTransition": {
+					"$ref": "#/definitions/dto.AgentFeishuTransition"
 				}
 			},
 			"required": [
@@ -47387,6 +47491,23 @@
 			],
 			"type": "object"
 		},
+		"request.AppUpdateVersion": {
+			"properties": {
+				"appInstallID": {
+					"type": "integer"
+				},
+				"loadCompose": {
+					"type": "boolean"
+				},
+				"updateVersion": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"appInstallID"
+			],
+			"type": "object"
+		},
 		"response.AppConfig": {
 			"properties": {
 				"advanced": {
@@ -47411,6 +47532,9 @@
 					"type": "boolean"
 				},
 				"hostMode": {
+					"type": "boolean"
+				},
+				"isEdit": {
 					"type": "boolean"
 				},
 				"memoryLimit": {
@@ -47672,6 +47796,9 @@
 				},
 				"gpuSupport": {
 					"type": "boolean"
+				},
+				"icon": {
+					"type": "string"
 				},
 				"id": {
 					"type": "integer"
