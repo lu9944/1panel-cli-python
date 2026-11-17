@@ -1,7 +1,7 @@
 import type { PanelMCP } from '@/api/interface/panel-mcp';
 import { isAxiosError } from 'axios';
 
-export const DEFAULT_MCP_DOCKER_IMAGE = '1panel/mcp-server:v1.0.0';
+export const DEFAULT_MCP_DOCKER_IMAGE = '1panel/mcp-server:v2.0.0';
 const dockerPathComponent = '[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*';
 const dockerDomainComponent = '(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])';
 const dockerRegistryHost = `(?:${dockerDomainComponent}(?:\\.${dockerDomainComponent})*|\\[[a-fA-F0-9:]+\\])`;
@@ -154,19 +154,20 @@ export const changeVisibleMCPGrants = (
     return [...result];
 };
 
-export const isMCPRevisionConflict = (error: unknown) => {
-    const candidate = error as {
-        code?: number;
+export const getMCPConflict = (error: unknown) => {
+    type ConflictResponse = {
         errorCode?: string;
-        response?: { status?: number; data?: { code?: number; errorCode?: string } };
+        reason?: string;
+        message?: string;
     };
-    return (
-        candidate?.code === 409 ||
-        candidate?.errorCode === 'MCP_CONFLICT' ||
-        candidate?.response?.data?.code === 409 ||
-        candidate?.response?.data?.errorCode === 'MCP_CONFLICT' ||
-        candidate?.response?.status === 409
-    );
+    const candidate = error as ConflictResponse & { response?: { data?: ConflictResponse } };
+    const response = candidate?.response?.data ?? candidate;
+    return response?.errorCode === 'MCP_CONFLICT' ? response : undefined;
+};
+
+export const isMCPRevisionConflict = (error: unknown) => {
+    const reason = getMCPConflict(error)?.reason;
+    return reason === 'settings_revision_changed' || reason === 'credential_revision_changed';
 };
 
 export const isMCPPolicyChanged = (error: unknown) => {

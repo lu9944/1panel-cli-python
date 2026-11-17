@@ -8,6 +8,107 @@
 		"formatZH": "更新 Ollama 绑定域名 [domain]",
 		"formatEN": "update Ollama bind domain [domain]"
 	},
+	"/xpack/model/downloader/featured/sync/status": {
+		"bodyKeys": [
+			"value"
+		],
+		"paramKeys": [],
+		"beforeFunctions": [],
+		"formatZH": "更新推荐模型自动同步 [value]",
+		"formatEN": "update featured model automatic synchronization [value]"
+	},
+	"/xpack/model/downloader/hf/download": {
+		"bodyKeys": [
+			"repoID",
+			"revision"
+		],
+		"paramKeys": [],
+		"beforeFunctions": [],
+		"formatZH": "下载 Hugging Face 模型 [repoID]",
+		"formatEN": "download Hugging Face model [repoID]"
+	},
+	"/xpack/model/downloader/local/delete": {
+		"bodyKeys": [
+			"name"
+		],
+		"paramKeys": [],
+		"beforeFunctions": [],
+		"formatZH": "删除本地模型 [name]",
+		"formatEN": "delete local model [name]"
+	},
+	"/xpack/model/downloader/modelscope/download": {
+		"bodyKeys": [
+			"repoID",
+			"revision"
+		],
+		"paramKeys": [],
+		"beforeFunctions": [],
+		"formatZH": "下载 ModelScope 模型 [repoID]",
+		"formatEN": "download ModelScope model [repoID]"
+	},
+	"/xpack/model/downloader/settings": {
+		"bodyKeys": [
+			"modelDir"
+		],
+		"paramKeys": [],
+		"beforeFunctions": [],
+		"formatZH": "更新模型下载设置 [modelDir]",
+		"formatEN": "update model downloader settings [modelDir]"
+	},
+	"/xpack/model/downloader/tasks/cancel": {
+		"bodyKeys": [
+			"id"
+		],
+		"paramKeys": [],
+		"beforeFunctions": [
+			{
+				"input_column": "id",
+				"input_value": "id",
+				"isList": false,
+				"db": "model_download_tasks",
+				"output_column": "repo_id",
+				"output_value": "repoID"
+			}
+		],
+		"formatZH": "取消模型下载任务 [repoID]",
+		"formatEN": "cancel model download task [repoID]"
+	},
+	"/xpack/model/downloader/tasks/remove": {
+		"bodyKeys": [
+			"id"
+		],
+		"paramKeys": [],
+		"beforeFunctions": [
+			{
+				"input_column": "id",
+				"input_value": "id",
+				"isList": false,
+				"db": "model_download_tasks",
+				"output_column": "repo_id",
+				"output_value": "repoID"
+			}
+		],
+		"formatZH": "移除模型下载任务 [repoID]",
+		"formatEN": "remove model download task [repoID]"
+	},
+	"/xpack/model/downloader/tasks/retry": {
+		"bodyKeys": [
+			"id"
+		],
+		"paramKeys": [],
+		"beforeFunctions": [
+			{
+				"input_column": "id",
+				"input_value": "id",
+				"isList": false,
+				"db": "model_download_tasks",
+				"output_column": "repo_id",
+				"output_value": "repoID"
+			}
+		],
+		"formatZH": "重试模型下载任务 [repoID]",
+		"formatEN": "retry model download task [repoID]"
+	},
 	"/ai/ollama/close": {
 		"bodyKeys": [
 			"name"
@@ -53,44 +154,6 @@
 		"formatZH": "添加 Ollama 模型重试 [name]",
 		"formatEN": "re-add Ollama model [name]"
 	},
-	"/ai/tensorrt/create": {
-		"bodyKeys": [
-			"name"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [],
-		"formatZH": "创建 TensorRT LLM [name]",
-		"formatEN": "create TensorRT LLM [name]"
-	},
-	"/ai/tensorrt/delete": {
-		"bodyKeys": [
-			"id"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [],
-		"formatZH": "删除 TensorRT LLM [id]",
-		"formatEN": "delete TensorRT LLM [id]"
-	},
-	"/ai/tensorrt/operate": {
-		"bodyKeys": [
-			"id",
-			"operate"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [],
-		"formatZH": "操作 TensorRT LLM [id][operate]",
-		"formatEN": "operate TensorRT LLM [id][operate]"
-	},
-	"/ai/tensorrt/update": {
-		"bodyKeys": [
-			"id",
-			"name"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [],
-		"formatZH": "更新 TensorRT LLM [id][name]",
-		"formatEN": "update TensorRT LLM [id][name]"
-	},
 	"/alert": {
 		"bodyKeys": [
 			"title"
@@ -103,27 +166,27 @@
 	"/alert/config/del": {
 		"bodyKeys": [],
 		"paramKeys": [],
+		"beforeFunctions": [],
 		"formatZH": "删除告警配置 [name]",
-		"formatEN": "delete alert config [name]",
-		"beforeFunctions": []
+		"formatEN": "delete alert config [name]"
 	},
 	"/alert/config/status": {
 		"bodyKeys": [
 			"status"
 		],
 		"paramKeys": [],
+		"beforeFunctions": [],
 		"formatZH": "更新告警配置状态 [name][status]",
-		"formatEN": "update alert config status [name][status]",
-		"beforeFunctions": []
+		"formatEN": "update alert config status [name][status]"
 	},
 	"/alert/config/update": {
 		"bodyKeys": [
 			"displayName"
 		],
 		"paramKeys": [],
+		"beforeFunctions": [],
 		"formatZH": "更新告警配置 [displayName]",
-		"formatEN": "update alert config [displayName]",
-		"beforeFunctions": []
+		"formatEN": "update alert config [displayName]"
 	},
 	"/alert/del": {
 		"bodyKeys": [
@@ -1447,29 +1510,6 @@
 		"beforeFunctions": [],
 		"formatZH": "上传许可证",
 		"formatEN": "upload license"
-	},
-	"/core/enterprise/ops-report/download": {
-		"bodyKeys": [],
-		"paramKeys": [],
-		"beforeFunctions": [],
-		"formatZH": "下载运维报表",
-		"formatEN": "download ops report"
-	},
-	"/core/enterprise/ops-report/generate": {
-		"bodyKeys": [],
-		"paramKeys": [],
-		"beforeFunctions": [],
-		"formatZH": "生成运维报表",
-		"formatEN": "generate ops report"
-	},
-	"/core/enterprise/ops-report/setting/update": {
-		"bodyKeys": [
-			"key"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [],
-		"formatZH": "更新运维报表设置 [key]",
-		"formatEN": "update ops report setting [key]"
 	},
 	"/core/enterprise/roles": {
 		"bodyKeys": [
@@ -4971,98 +5011,6 @@
 		"formatZH": "更新离线告警日志 [id]",
 		"formatEN": "update offline alert log [id]"
 	},
-	"/xpack/model/downloader/hf/download": {
-		"bodyKeys": [
-			"repoID",
-			"revision"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [],
-		"formatZH": "下载 Hugging Face 模型 [repoID]",
-		"formatEN": "download Hugging Face model [repoID]"
-	},
-	"/xpack/model/downloader/local/delete": {
-		"bodyKeys": [
-			"name"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [],
-		"formatZH": "删除本地模型 [name]",
-		"formatEN": "delete local model [name]"
-	},
-	"/xpack/model/downloader/modelscope/download": {
-		"bodyKeys": [
-			"repoID",
-			"revision"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [],
-		"formatZH": "下载 ModelScope 模型 [repoID]",
-		"formatEN": "download ModelScope model [repoID]"
-	},
-	"/xpack/model/downloader/settings": {
-		"bodyKeys": [
-			"modelDir"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [],
-		"formatZH": "更新模型下载设置 [modelDir]",
-		"formatEN": "update model downloader settings [modelDir]"
-	},
-	"/xpack/model/downloader/tasks/cancel": {
-		"bodyKeys": [
-			"id"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [
-			{
-				"input_column": "id",
-				"input_value": "id",
-				"isList": false,
-				"db": "model_download_tasks",
-				"output_column": "repo_id",
-				"output_value": "repoID"
-			}
-		],
-		"formatZH": "取消模型下载任务 [repoID]",
-		"formatEN": "cancel model download task [repoID]"
-	},
-	"/xpack/model/downloader/tasks/remove": {
-		"bodyKeys": [
-			"id"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [
-			{
-				"input_column": "id",
-				"input_value": "id",
-				"isList": false,
-				"db": "model_download_tasks",
-				"output_column": "repo_id",
-				"output_value": "repoID"
-			}
-		],
-		"formatZH": "移除模型下载任务 [repoID]",
-		"formatEN": "remove model download task [repoID]"
-	},
-	"/xpack/model/downloader/tasks/retry": {
-		"bodyKeys": [
-			"id"
-		],
-		"paramKeys": [],
-		"beforeFunctions": [
-			{
-				"input_column": "id",
-				"input_value": "id",
-				"isList": false,
-				"db": "model_download_tasks",
-				"output_column": "repo_id",
-				"output_value": "repoID"
-			}
-		],
-		"formatZH": "重试模型下载任务 [repoID]",
-		"formatEN": "retry model download task [repoID]"
-	},
 	"/xpack/monitor/config/global": {
 		"bodyKeys": [],
 		"paramKeys": [],
@@ -5211,7 +5159,7 @@
 		"formatZH": "更新 vLLM [name]",
 		"formatEN": "update vLLM [name]"
 	},
-	"/xpack/vms": {
+	"/vms": {
 		"bodyKeys": [
 			"name"
 		],
@@ -5220,7 +5168,7 @@
 		"formatZH": "创建虚拟机 [name]",
 		"formatEN": "create VM [name]"
 	},
-	"/xpack/vms/del": {
+	"/vms/del": {
 		"bodyKeys": [
 			"id"
 		],
@@ -5238,7 +5186,7 @@
 		"formatZH": "删除虚拟机 [name]",
 		"formatEN": "delete VM [name]"
 	},
-	"/xpack/vms/disks/resize": {
+	"/vms/disks/resize": {
 		"bodyKeys": [
 			"name",
 			"target",
@@ -5249,14 +5197,14 @@
 		"formatZH": "扩容虚拟机 [name] 磁盘 [target] 至 [sizeGiB] GiB",
 		"formatEN": "expand VM [name] disk [target] to [sizeGiB] GiB"
 	},
-	"/xpack/vms/environment/enable": {
+	"/vms/environment/enable": {
 		"bodyKeys": [],
 		"paramKeys": [],
 		"beforeFunctions": [],
 		"formatZH": "启用虚拟机运行环境",
 		"formatEN": "enable VM runtime environment"
 	},
-	"/xpack/vms/iso": {
+	"/vms/iso": {
 		"bodyKeys": [
 			"name",
 			"type"
@@ -5266,7 +5214,7 @@
 		"formatZH": "创建虚拟机镜像 [name] [type]",
 		"formatEN": "create VM ISO [name] [type]"
 	},
-	"/xpack/vms/iso/del": {
+	"/vms/iso/del": {
 		"bodyKeys": [
 			"id"
 		],
@@ -5284,7 +5232,7 @@
 		"formatZH": "删除虚拟机镜像 [name]",
 		"formatEN": "delete VM ISO [name]"
 	},
-	"/xpack/vms/iso/update": {
+	"/vms/iso/update": {
 		"bodyKeys": [
 			"name",
 			"type"
@@ -5294,7 +5242,7 @@
 		"formatZH": "更新虚拟机镜像 [name] [type]",
 		"formatEN": "update VM ISO [name] [type]"
 	},
-	"/xpack/vms/networks": {
+	"/vms/networks": {
 		"bodyKeys": [
 			"name",
 			"type"
@@ -5304,7 +5252,7 @@
 		"formatZH": "创建虚拟机网络 [name] [type]",
 		"formatEN": "create VM network [name] [type]"
 	},
-	"/xpack/vms/networks/del": {
+	"/vms/networks/del": {
 		"bodyKeys": [
 			"id"
 		],
@@ -5322,7 +5270,7 @@
 		"formatZH": "删除虚拟机网络 [name]",
 		"formatEN": "delete VM network [name]"
 	},
-	"/xpack/vms/networks/update": {
+	"/vms/networks/update": {
 		"bodyKeys": [
 			"id"
 		],
@@ -5340,7 +5288,7 @@
 		"formatZH": "更新虚拟机网络 [name]",
 		"formatEN": "update VM network [name]"
 	},
-	"/xpack/vms/operate": {
+	"/vms/operate": {
 		"bodyKeys": [
 			"name",
 			"operate"
@@ -5350,14 +5298,14 @@
 		"formatZH": "操作虚拟机 [name] [operate]",
 		"formatEN": "operate VM [name] [operate]"
 	},
-	"/xpack/vms/orphans/clean": {
+	"/vms/orphans/clean": {
 		"bodyKeys": [],
 		"paramKeys": [],
 		"beforeFunctions": [],
 		"formatZH": "清理虚拟机孤立数据",
 		"formatEN": "clean VM orphaned data"
 	},
-	"/xpack/vms/rename": {
+	"/vms/rename": {
 		"bodyKeys": [
 			"name",
 			"newName"
@@ -5367,7 +5315,7 @@
 		"formatZH": "重命名虚拟机 [name] 为 [newName]",
 		"formatEN": "rename VM [name] to [newName]"
 	},
-	"/xpack/vms/snapshots": {
+	"/vms/snapshots": {
 		"bodyKeys": [
 			"name",
 			"snapshotName"
@@ -5377,7 +5325,7 @@
 		"formatZH": "创建虚拟机 [name] 快照 [snapshotName]",
 		"formatEN": "create VM [name] snapshot [snapshotName]"
 	},
-	"/xpack/vms/snapshots/del": {
+	"/vms/snapshots/del": {
 		"bodyKeys": [
 			"name",
 			"snapshotName"
@@ -5387,7 +5335,7 @@
 		"formatZH": "删除虚拟机 [name] 快照 [snapshotName]",
 		"formatEN": "delete VM [name] snapshot [snapshotName]"
 	},
-	"/xpack/vms/snapshots/recover": {
+	"/vms/snapshots/recover": {
 		"bodyKeys": [
 			"name",
 			"snapshotName"
@@ -5397,7 +5345,7 @@
 		"formatZH": "恢复虚拟机 [name] 快照 [snapshotName]",
 		"formatEN": "recover VM [name] snapshot [snapshotName]"
 	},
-	"/xpack/vms/storages": {
+	"/vms/storages": {
 		"bodyKeys": [
 			"name",
 			"type"
@@ -5407,7 +5355,7 @@
 		"formatZH": "创建虚拟机存储 [name] [type]",
 		"formatEN": "create VM storage [name] [type]"
 	},
-	"/xpack/vms/storages/del": {
+	"/vms/storages/del": {
 		"bodyKeys": [
 			"id"
 		],
@@ -5425,7 +5373,7 @@
 		"formatZH": "删除虚拟机存储 [name]",
 		"formatEN": "delete VM storage [name]"
 	},
-	"/xpack/vms/storages/update": {
+	"/vms/storages/update": {
 		"bodyKeys": [
 			"id"
 		],
@@ -5443,14 +5391,14 @@
 		"formatZH": "更新虚拟机存储 [name]",
 		"formatEN": "update VM storage [name]"
 	},
-	"/xpack/vms/sync": {
+	"/vms/sync": {
 		"bodyKeys": [],
 		"paramKeys": [],
 		"beforeFunctions": [],
 		"formatZH": "同步虚拟机",
 		"formatEN": "sync virtual machines"
 	},
-	"/xpack/vms/templates": {
+	"/vms/templates": {
 		"bodyKeys": [
 			"name",
 			"templateName"
@@ -5460,7 +5408,7 @@
 		"formatZH": "创建虚拟机 [name] 模板 [templateName]",
 		"formatEN": "create VM [name] template [templateName]"
 	},
-	"/xpack/vms/templates/del": {
+	"/vms/templates/del": {
 		"bodyKeys": [
 			"id"
 		],
@@ -5478,7 +5426,7 @@
 		"formatZH": "删除虚拟机模板 [name]",
 		"formatEN": "delete VM template [name]"
 	},
-	"/xpack/vms/update": {
+	"/vms/update": {
 		"bodyKeys": [
 			"name"
 		],

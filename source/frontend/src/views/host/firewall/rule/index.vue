@@ -109,6 +109,7 @@
                             <ComplexTable
                                 :selection-context="() => [searchName, selectedRuleFilters]"
                                 v-model:selects="selects"
+                                :cache-pagination="false"
                                 :pagination-config="paginationConfig"
                                 :data="allRows"
                                 :heightDiff="320 + noticeHeight"
@@ -136,7 +137,7 @@
                                             <el-tooltip
                                                 v-if="row.observed.protected && !row.isWhitelist"
                                                 :content="$t('firewall.builtinRuleProtected')"
-                                                placement="top"
+                                                v-bind="TABLE_TOOLTIP_OPTIONS"
                                                 :show-after="200"
                                                 :popper-style="{ maxWidth: '320px' }"
                                             >
@@ -204,7 +205,7 @@
                                         <div v-else class="firewall-used-cell">
                                             <el-tooltip
                                                 :content="usageEntryLabel(usageEntriesByRow[row.rowKey][0])"
-                                                placement="top"
+                                                v-bind="TABLE_TOOLTIP_OPTIONS"
                                             >
                                                 <el-tag
                                                     class="cursor-pointer firewall-used-entry"
@@ -244,7 +245,7 @@
                                                         v-for="entry in usageEntriesByRow[row.rowKey]"
                                                         :key="`${row.rowKey}:${entry.key}`"
                                                         :content="usageEntryLabel(entry)"
-                                                        placement="top"
+                                                        v-bind="TABLE_TOOLTIP_OPTIONS"
                                                     >
                                                         <el-tag
                                                             class="cursor-pointer firewall-used-popover-entry"
@@ -304,7 +305,7 @@
 <script lang="ts" setup>
 import { useSearchState } from '@/utils/search-reset';
 import { Firewall } from '@/api/interface/firewall';
-import type { FuTableOperationButton } from '@/components/table/shared';
+import { TABLE_TOOLTIP_OPTIONS, type FuTableOperationButton } from '@/components/table/shared';
 import { buildHostRuleExport } from './transfer';
 import { Process } from '@/api/interface/process';
 import {

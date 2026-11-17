@@ -154,9 +154,15 @@ func nginxModuleUserConfigPaths(install model.AppInstall) []string {
 // directory is injected so unit tests do not need the settings database.
 func nginxModuleUserConfigPathsWithSiteDir(install model.AppInstall, siteDir string) []string {
 	paths := []string{nginxMainConfigPath(install)}
-	paths = append(paths, globConfFiles(path.Join(siteDir, "conf.d"))...)
-	paths = append(paths, globConfFiles(path.Join(install.GetPath(), nginxModuleConfDir, "default"))...)
-	return paths
+	return append(paths, nginxHTTPUserIncludePaths(install, siteDir)...)
+}
+
+// nginxHTTPUserIncludePaths lists the files nginx.conf includes at http level
+// that users edit: site configs and anything else dropped into conf.d, and
+// the default server. http.d and the WAF config are written by the panel.
+func nginxHTTPUserIncludePaths(install model.AppInstall, siteDir string) []string {
+	paths := globConfFiles(path.Join(siteDir, "conf.d"))
+	return append(paths, globConfFiles(path.Join(install.GetPath(), nginxModuleConfDir, "default"))...)
 }
 
 func globConfFiles(dir string) []string {
@@ -224,17 +230,36 @@ func getNginxBrotliParams() (*response.NginxBrotliRes, error) {
 		fileName := nginxHTTPConfigFileName(nginxModuleRuntimeOrder(nginxBrotliModuleName), nginxBrotliModuleName)
 		current = readNginxHTTPDirectives(path.Join(nginxHTTPConfigDir(install), fileName))
 	}
-	res := &response.NginxBrotliRes{
-		ManagedExternally: managedExternally,
-		// Without the include, values the panel would write would never reach
-		// nginx, so they are reported as unavailable rather than shown as if
-		// they were in effect.
-		ManagedUnavailable: !managedExternally && !nginxHTTPIncludePresent(install),
+	res := &response.NginxBrotliRes{ManagedExternally: managedExternally}
+	if !managedExternally {
+		res.ManagedPending, res.ManagedUnavailable = nginxBrotliManagedState(install)
 	}
 	for _, directive := range mergeNginxRuntimeDirectives(nginxModuleRuntimeDefaults[nginxBrotliModuleName], current) {
 		res.Params = append(res.Params, response.NginxParam{Name: directive.Name, Params: directive.Params})
 	}
 	return res, nil
+}
+
+// nginxBrotliManagedState reports whether the managed brotli file is missing
+// from what nginx loads, and if so whether saving from the settings page can
+// fix that. Either way the reported values are not in effect, so they must
+// not be presented as if they were.
+//
+// A missing include is the common case for installs that enabled brotli
+// before the panel managed its directives, and the save path inserts it. Only
+// a config without a safe insertion point is reported as unavailable.
+func nginxBrotliManagedState(install model.AppInstall) (pending, unavailable bool) {
+	if !nginxHTTPIncludePresent(install) {
+		if nginxHTTPIncludeInsertable(install) {
+			return true, false
+		}
+		return false, true
+	}
+	fileName := nginxHTTPConfigFileName(nginxModuleRuntimeOrder(nginxBrotliModuleName), nginxBrotliModuleName)
+	if _, err := os.Stat(path.Join(nginxHTTPConfigDir(install), fileName)); os.IsNotExist(err) {
+		return true, false
+	}
+	return false, false
 }
 
 // readNginxUserBrotliDirectives collects the brotli directives the user wrote
@@ -313,26 +338,19 @@ func updateNginxBrotliParams(params []dto.NginxParam) error {
 			return updateUserNginxBrotliParams(install, values)
 		}
 		// A managed write needs the include. Installations missing it are
-		// upgraded in place here; when nginx.conf cannot be edited safely the
-		// write is refused with an actionable error instead of writing values
-		// nginx would never load.
-		if !nginxHTTPIncludePresent(install) {
-			configPath := nginxMainConfigPath(install)
-			content, readErr := os.ReadFile(configPath)
-			if readErr != nil {
-				return readErr
-			}
-			updated, insErr := insertNginxHTTPInclude(string(content))
-			if insErr != nil {
+		// upgraded in place here, through the same path that enabling the
+		// module takes; when nginx.conf cannot be edited safely the write is
+		// refused with an actionable error instead of writing values nginx
+		// would never load.
+		_, confSnapshot, includeErr := ensureNginxHTTPIncludeActive(install)
+		if includeErr != nil {
+			if errors.Is(includeErr, errNginxHTTPIncludeNoInsertionPoint) {
 				return buserr.New("ErrBrotliUnsupported")
 			}
-			if err = writeNginxFileAtomic(configPath, []byte(updated)); err != nil {
-				return err
-			}
-			if err = os.MkdirAll(nginxHTTPConfigDir(install), constant.DirPerm); err != nil {
-				return err
-			}
-			if err = nginxCheckAndReload(string(content), configPath, install.ContainerName); err != nil {
+			return includeErr
+		}
+		if confSnapshot != nil {
+			if err = nginxCheckAndReload(string(confSnapshot), nginxMainConfigPath(install), install.ContainerName); err != nil {
 				return err
 			}
 		}

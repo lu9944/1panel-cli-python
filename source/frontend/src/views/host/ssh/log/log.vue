@@ -26,7 +26,13 @@
             </template>
 
             <template #main>
-                <ComplexTable :pagination-config="paginationConfig" :data="data" @search="search" :heightDiff="400">
+                <ComplexTable
+                    :cache-pagination="false"
+                    :pagination-config="paginationConfig"
+                    :data="data"
+                    @search="search"
+                    :heightDiff="400"
+                >
                     <el-table-column min-width="80" :label="$t('logs.loginIP')" prop="address" />
                     <el-table-column min-width="60" :label="$t('ssh.belong')" prop="area" />
                     <el-table-column min-width="60" :label="$t('commons.table.port')" prop="port" />
@@ -42,7 +48,12 @@
                                 <el-tag type="success">{{ $t('commons.status.success') }}</el-tag>
                             </div>
                             <div v-else>
-                                <el-tooltip class="box-item" effect="dark" :content="row.message" placement="top-start">
+                                <el-tooltip
+                                    class="box-item"
+                                    effect="dark"
+                                    :content="row.message"
+                                    v-bind="TABLE_TOOLTIP_OPTIONS"
+                                >
                                     <el-tag type="danger">{{ $t('commons.status.failed') }}</el-tag>
                                 </el-tooltip>
                             </div>
@@ -93,6 +104,7 @@
 </template>
 
 <script setup lang="ts">
+import { TABLE_TOOLTIP_OPTIONS } from '@/components/table/shared';
 import { useSearchState } from '@/utils/search-reset';
 import ConfirmDialog from '@/components/confirm-dialog/index.vue';
 import { dateFormatServerTimezone } from '@/utils/date';

@@ -5,8 +5,10 @@
                 <el-radio-group v-model="activeName" @change="handleChange">
                     <el-radio-button
                         class="router_card_button"
+                        :class="{ 'opacity-50': button.disabled }"
                         :label="button.label"
                         :value="button.label"
+                        :disabled="button.disabled"
                         v-for="(button, index) in buttonArray"
                         size="large"
                         :key="index"
@@ -50,7 +52,7 @@
 </template>
 
 <script lang="ts" setup>
-import { routerToNameWithQuery, routerToPathWithQuery } from '@/utils/router';
+import { openPage } from '@/utils/router';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { hasPermissionMetaAccess, hasRouteAccess } from '@/utils/rbac';
@@ -92,12 +94,18 @@ const expiresInfo = ref(0);
 const expiresAlertVisible = ref(false);
 const expiresAlertKey = computed(() => (isEnterprise.value ? 'xpack.expiresEnterpriseAlert' : 'xpack.expiresProAlert'));
 
-const handleChange = (label: string) => {
+const handleChange = async (label: string) => {
     const btn = buttonArray.value.find((btn) => btn.label === label);
-    if (!btn) return;
-    if (btn.path) routerToPathWithQuery(btn.path, { uncached: 'true' });
-    else if (btn.name) routerToNameWithQuery(btn.name, { uncached: 'true' });
-    activeName.value = btn.label;
+    if (!btn || btn.disabled) {
+        syncActiveName();
+        return;
+    }
+    try {
+        if (btn.path) await openPage({ path: btn.path });
+        else if (btn.name) await openPage({ name: btn.name });
+    } finally {
+        syncActiveName();
+    }
 };
 
 onMounted(() => {
@@ -154,7 +162,9 @@ function syncActiveName() {
     if (buttonArray.value.length) {
         let isPathExist = false;
         const btn = buttonArray.value.find((btn) => {
-            return btn.path && router.currentRoute.value.path.startsWith(btn.path);
+            return btn.path
+                ? router.currentRoute.value.path.startsWith(btn.path)
+                : btn.name && router.currentRoute.value.name === btn.name;
         });
         if (btn) {
             isPathExist = true;

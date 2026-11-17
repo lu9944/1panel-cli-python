@@ -1,386 +1,318 @@
 <template>
     <div class="model-page">
-        <RouterButton :buttons="tabs" />
-        <component
-            :is="downloaderView"
-            v-if="isFiles && downloaderView"
-            @deploy="(modelDir) => createRef.open('vllm', modelDir)"
-        />
-        <LayoutContent v-else-if="isFiles">
-            <template #main><el-empty :description="$t('license.levelUpPro')" /></template>
-        </LayoutContent>
-        <LocalView v-else-if="isManagement" />
-        <template v-else>
-            <LayoutContent v-loading="loading">
-                <template #leftToolBar>
-                    <el-button v-permission type="primary" @click="createRef.open()">
-                        {{ $t(isLocal ? 'aiTools.model.addEngine' : 'aiTools.model.addService') }}
-                    </el-button>
-                    <el-button
-                        v-if="isLocal && isProductPro && vllmAvailable"
-                        v-permission
-                        @click="routerToName('VllmCommandTemplates')"
+        <RouterButton :buttons="[{ label: $t('aiTools.model.services'), path: '/ai/model-services' }]" />
+        <LayoutContent v-loading="loading">
+            <template #leftToolBar>
+                <el-button v-permission type="primary" @click="createRef.open()">
+                    {{ $t('aiTools.model.addService') }}
+                </el-button>
+            </template>
+            <template #rightToolBar>
+                <el-select
+                    v-model="apiType"
+                    clearable
+                    filterable
+                    placeholder=""
+                    class="model-filter"
+                    @change="resetPageAndSearch"
+                >
+                    <template #prefix>{{ 'API ' + $t('commons.table.type') }}</template>
+                    <el-option v-for="item in apiTypeOptions" :key="item" :label="item" :value="item" />
+                </el-select>
+                <el-select
+                    v-model="provider"
+                    clearable
+                    filterable
+                    class="model-filter"
+                    placeholder=""
+                    @change="resetPageAndSearch"
+                >
+                    <template #prefix>{{ $t('aiTools.agents.provider') }}</template>
+                    <el-option
+                        v-for="item in providerOptions"
+                        :key="item.value"
+                        :label="item.label"
+                        :value="item.value"
                     >
-                        {{ $t('aiTools.model.deploymentTemplates') }}
-                    </el-button>
-                </template>
-                <template #rightToolBar>
-                    <el-select
-                        v-if="!isLocal"
-                        v-model="apiType"
-                        clearable
-                        filterable
-                        placeholder=""
-                        class="model-filter"
-                        @change="resetPageAndSearch"
-                    >
-                        <template #prefix>{{ 'API ' + $t('commons.table.type') }}</template>
-                        <el-option v-for="item in apiTypeOptions" :key="item" :label="item" :value="item" />
-                    </el-select>
-                    <el-select
-                        v-if="isLocal"
-                        v-model="engine"
-                        clearable
-                        placeholder=""
-                        class="model-filter"
-                        @change="resetPageAndSearch"
-                    >
-                        <template #prefix>{{ $t('aiTools.model.engines') }}</template>
-                        <el-option label="Ollama" value="ollama" />
-                        <el-option label="vLLM" value="vllm" />
-                    </el-select>
-                    <el-select
-                        v-else
-                        v-model="provider"
-                        clearable
-                        filterable
-                        class="model-filter"
-                        placeholder=""
-                        @change="resetPageAndSearch"
-                    >
-                        <template #prefix>{{ $t('aiTools.agents.provider') }}</template>
-                        <el-option
-                            v-for="item in providerOptions"
-                            :key="item.value"
-                            :label="item.label"
-                            :value="item.value"
-                        >
-                            <ProviderLabel :provider="item.value" :display-name="item.label" />
-                        </el-option>
-                    </el-select>
-                    <TableSearch v-model:searchName="searchName" class="model-search" @search="resetPageAndSearch" />
-                    <TableRefresh @search="search" />
-                    <TableSetting v-if="isLocal" title="model-deployment-refresh" @search="!loading && search()" />
-                    <fu-table-column-select
-                        v-else
-                        :columns="accountColumns"
-                        trigger="hover"
-                        :title="$t('commons.table.selectColumn')"
-                        :only-icon="true"
-                    />
-                </template>
-                <template #main>
-                    <ComplexTable
-                        v-if="!isLocal"
-                        :data="connections"
-                        row-key="id"
-                        :pagination-config="pagination"
-                        :columns="accountColumns"
-                        local-key="modelServiceColumn"
-                        @search="search"
-                    >
-                        <el-table-column prop="name" :label="$t('commons.table.name')" min-width="220" fixed="left">
-                            <template #default="{ row }">
-                                <div class="service-name">
-                                    <div class="service-title cell-ellipsis" :title="row.name">{{ row.name }}</div>
-                                    <el-tag class="service-source-tag" type="info" size="small">
-                                        {{
-                                            $t(
-                                                !row.appInstallId
-                                                    ? 'aiTools.model.cloudAccount'
-                                                    : 'aiTools.model.localModel',
-                                            )
-                                        }}
-                                    </el-tag>
-                                </div>
-                            </template>
-                        </el-table-column>
-                        <el-table-column prop="provider" :label="$t('aiTools.model.engineProvider')" min-width="180">
-                            <template #default="{ row }">
-                                <div class="cell-ellipsis">
-                                    <ProviderLabel :provider="row.provider" :display-name="row.providerName" />
-                                </div>
-                            </template>
-                        </el-table-column>
-                        <el-table-column
-                            prop="apiType"
-                            :label="'API ' + $t('commons.table.type')"
-                            min-width="200"
-                            show-overflow-tooltip
-                        >
-                            <template #default="{ row }">
-                                {{ row.apiType || '—' }}
-                            </template>
-                        </el-table-column>
-                        <el-table-column prop="models" :label="$t('aiTools.model.model')" min-width="200">
-                            <template #default="{ row }">
-                                <div
-                                    v-for="(model, index) in (row.models || []).slice(0, 2)"
-                                    :key="model.id"
-                                    class="model-line"
+                        <ProviderLabel :provider="item.value" :display-name="item.label" />
+                    </el-option>
+                </el-select>
+                <TableSearch v-model:searchName="searchName" class="model-search" @search="resetPageAndSearch" />
+                <TableRefresh @search="search" />
+                <fu-table-column-select
+                    :columns="accountColumns"
+                    trigger="hover"
+                    :title="$t('commons.table.selectColumn')"
+                    :only-icon="true"
+                />
+            </template>
+            <template #prompt>
+                <el-alert type="info" :closable="false" :title="$t('aiTools.model.serviceHelper')" />
+            </template>
+            <template #main>
+                <ComplexTable
+                    :data="connections"
+                    row-key="id"
+                    :cache-pagination="false"
+                    :pagination-config="pagination"
+                    :columns="accountColumns"
+                    local-key="modelServiceColumn"
+                    @search="search"
+                >
+                    <el-table-column prop="name" :label="$t('commons.table.name')" min-width="220" fixed="left">
+                        <template #default="{ row }">
+                            <div class="service-name">
+                                <el-tooltip
+                                    :content="
+                                        $t(
+                                            row.appInstallId
+                                                ? 'aiTools.model.localService'
+                                                : 'aiTools.model.cloudService',
+                                        )
+                                    "
+                                    v-bind="TABLE_TOOLTIP_OPTIONS"
                                 >
-                                    <span class="cell-ellipsis" :title="model.id">{{ model.id }}</span>
-                                    <el-button
-                                        v-if="index === 1 && row.models.length > 2"
-                                        size="small"
-                                        class="model-more"
-                                        @click="poolRef.open(row)"
+                                    <el-icon
+                                        class="service-source-icon"
+                                        :aria-label="
+                                            $t(
+                                                row.appInstallId
+                                                    ? 'aiTools.model.localService'
+                                                    : 'aiTools.model.cloudService',
+                                            )
+                                        "
                                     >
-                                        +{{ row.models.length - 2 }}
-                                    </el-button>
-                                </div>
-                                <span v-if="!row.models?.length">—</span>
-                            </template>
-                        </el-table-column>
-                        <el-table-column prop="verified" :label="$t('aiTools.model.connectionStatus')" min-width="130">
-                            <template #default="{ row }">
-                                <el-tag :type="connectionStatus(row).type">
-                                    {{ connectionStatus(row).label }}
-                                </el-tag>
-                            </template>
-                        </el-table-column>
-                        <el-table-column
-                            prop="baseUrl"
-                            :label="$t('aiTools.model.endpoint')"
-                            min-width="280"
-                            show-overflow-tooltip
-                        >
-                            <template #default="{ row }">
-                                {{ row.baseUrl || '—' }}
-                            </template>
-                        </el-table-column>
-                        <el-table-column
-                            prop="createdAt"
-                            :label="$t('commons.table.createdAt')"
-                            :formatter="dateFormat"
-                            min-width="180"
-                            show-overflow-tooltip
-                        />
-                        <fu-table-operations
-                            :buttons="accountButtons"
-                            :label="$t('commons.table.operate')"
-                            fixed="right"
-                            :ellipsis="3"
-                            width="220"
-                        />
-                    </ComplexTable>
-                    <ComplexTable
-                        v-else
-                        :data="deploymentPage"
-                        :pagination-config="pagination"
-                        @search="resetPageIfNeeded"
-                    >
-                        <el-table-column :label="$t('commons.table.name')" min-width="190">
-                            <template #default="{ row }">
-                                <el-button link type="primary" @click="manageRef.open(row, 'connection', true)">
-                                    {{ row.name }}
+                                        <Monitor v-if="row.appInstallId" />
+                                        <Cloudy v-else />
+                                    </el-icon>
+                                </el-tooltip>
+                                <el-button
+                                    class="service-name-link"
+                                    link
+                                    type="primary"
+                                    @click="detailAccountID = row.id"
+                                >
+                                    <span class="cell-ellipsis" :title="row.name">{{ row.name }}</span>
                                 </el-button>
-                            </template>
-                        </el-table-column>
-                        <el-table-column :label="$t('app.version')" min-width="150">
-                            <template #default="{ row }">
-                                <div class="flex items-center gap-2">
-                                    <span>{{ row.version || '—' }}</span>
+                            </div>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="provider" :label="$t('aiTools.agents.provider')" min-width="180">
+                        <template #default="{ row }">
+                            <div class="cell-ellipsis">
+                                <ProviderLabel :provider="row.provider" :display-name="row.providerName" />
+                            </div>
+                        </template>
+                    </el-table-column>
+                    <el-table-column
+                        prop="apiType"
+                        :label="'API ' + $t('commons.table.type')"
+                        min-width="200"
+                        show-overflow-tooltip
+                    >
+                        <template #default="{ row }">
+                            {{ row.apiType || '—' }}
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="models" :label="$t('aiTools.model.model')" min-width="200">
+                        <template #default="{ row }">
+                            <AiModelList
+                                v-if="row.models?.length"
+                                :models="row.models.map((item) => item.id)"
+                                :visible-count="1"
+                            >
+                                <template v-if="!row.appInstallId" #footer>
+                                    <el-button link type="primary" @click="poolRef.open(row)">
+                                        {{ $t('aiTools.agents.modelPool') }}
+                                    </el-button>
+                                </template>
+                            </AiModelList>
+                            <span v-if="!row.models?.length">—</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="verified" :label="$t('aiTools.model.connectionStatus')" min-width="130">
+                        <template #default="{ row }">
+                            <div class="verification-status">
+                                <el-tooltip
+                                    :disabled="!row.verifiedAt && !row.verifyError"
+                                    v-bind="TABLE_TOOLTIP_OPTIONS"
+                                >
+                                    <template #content>
+                                        <div v-if="row.verifiedAt">
+                                            {{ $t('aiTools.model.verifiedAt') }}:
+                                            {{ dateFormatSimpleWithSecond(row.verifiedAt) }}
+                                        </div>
+                                        <div v-if="row.verifyModel">
+                                            {{ $t('aiTools.agents.verifyModel') }}: {{ row.verifyModel }}
+                                        </div>
+                                        <div v-if="row.verifyError" class="max-w-md break-words">
+                                            {{ row.verifyError }}
+                                        </div>
+                                    </template>
+                                    <el-tag :type="connectionStatus(row).type">
+                                        {{ connectionStatus(row).label }}
+                                    </el-tag>
+                                </el-tooltip>
+                                <el-tooltip
+                                    v-if="row.validateAvailability"
+                                    :content="$t('aiTools.model.reverify')"
+                                    v-bind="TABLE_TOOLTIP_OPTIONS"
+                                >
                                     <el-button
-                                        v-if="row.upgradable && hasPermission('app_manage')"
                                         v-permission
                                         link
                                         type="primary"
-                                        class="shrink-0"
-                                        :disabled="operationDisabled(row)"
-                                        @click="manageRef.open(row, 'upgrade', true)"
-                                    >
-                                        {{ $t('commons.button.upgrade') }}
-                                    </el-button>
-                                </div>
-                            </template>
-                        </el-table-column>
-                        <el-table-column :label="$t('aiTools.model.model')" min-width="200">
-                            <template #default="{ row }">
-                                <div v-for="(model, index) in row.models.slice(0, 2)" :key="model" class="model-line">
-                                    <span class="cell-ellipsis" :title="model">{{ model }}</span>
-                                    <el-button
-                                        v-if="row.engine === 'ollama' && index === 1 && row.models.length > 2"
-                                        size="small"
-                                        class="model-more"
-                                        @click="manageDeployment(row)"
-                                    >
-                                        +{{ row.models.length - 2 }}
-                                    </el-button>
-                                </div>
-                                <span v-if="!row.models.length">—</span>
-                            </template>
-                        </el-table-column>
-                        <el-table-column :label="$t('commons.table.status')" min-width="150">
-                            <template #default="{ row }">
-                                <el-dropdown placement="bottom" :disabled="statusDisabled(row, 'stop')">
-                                    <Status
-                                        v-permission
-                                        :status="row.status"
-                                        operate
-                                        :disabled="statusDisabled(row, 'stop')"
+                                        :icon="RefreshRight"
+                                        :aria-label="$t('aiTools.model.reverify')"
+                                        :disabled="verifyingAccounts.has(`${currentNode}:${row.id}`)"
+                                        @click="verifyTarget = { account: row, node: currentNode }"
                                     />
-                                    <template #dropdown>
-                                        <el-dropdown-menu>
-                                            <el-dropdown-item
-                                                :disabled="statusDisabled(row) || row.status === 'Running'"
-                                                @click="operate(row, 'start')"
-                                            >
-                                                {{ $t('commons.operate.start') }}
-                                            </el-dropdown-item>
-                                            <el-dropdown-item
-                                                :disabled="
-                                                    statusDisabled(row, 'stop') ||
-                                                    ['Stopped', 'Exited'].includes(row.status)
-                                                "
-                                                @click="operate(row, 'stop')"
-                                            >
-                                                {{ $t('commons.operate.stop') }}
-                                            </el-dropdown-item>
-                                            <el-dropdown-item
-                                                :disabled="statusDisabled(row)"
-                                                @click="operate(row, 'restart')"
-                                            >
-                                                {{ $t('commons.button.restart') }}
-                                            </el-dropdown-item>
-                                        </el-dropdown-menu>
-                                    </template>
-                                </el-dropdown>
-                            </template>
-                        </el-table-column>
-                        <el-table-column :label="$t('container.source')" min-width="170">
-                            <template #default="{ row }">
-                                <template v-if="row.status === 'Running' && row.containerName">
-                                    <ContainerResource
-                                        v-if="resourceStats[row.containerName]"
-                                        :stats="resourceStats[row.containerName]"
-                                    />
-                                    <el-icon
-                                        v-else-if="resourceStats[row.containerName] === undefined"
-                                        class="is-loading"
-                                    >
-                                        <Loading />
-                                    </el-icon>
-                                    <el-tooltip v-else :content="$t('aiTools.model.loadFailed')">
-                                        <span>—</span>
-                                    </el-tooltip>
-                                </template>
-                                <span v-else>—</span>
-                            </template>
-                        </el-table-column>
-                        <fu-table-operations
-                            :buttons="deploymentButtons"
-                            :label="$t('commons.table.operate')"
-                            fixed="right"
-                            :ellipsis="2"
-                            width="240"
-                        />
-                    </ComplexTable>
-                </template>
-            </LayoutContent>
-        </template>
-        <CreateService
-            ref="createRef"
-            :engines-only="isLocal || isFiles"
-            :vllm-only="isFiles"
-            @search="search"
-            @manage="manageDeployment"
+                                </el-tooltip>
+                            </div>
+                        </template>
+                    </el-table-column>
+                    <el-table-column
+                        prop="baseUrl"
+                        :label="$t('aiTools.model.endpoint')"
+                        min-width="280"
+                        show-overflow-tooltip
+                    >
+                        <template #default="{ row }">
+                            {{ row.baseUrl || '—' }}
+                        </template>
+                    </el-table-column>
+                    <el-table-column
+                        prop="createdAt"
+                        :label="$t('commons.table.createdAt')"
+                        :formatter="dateFormat"
+                        min-width="180"
+                        show-overflow-tooltip
+                    />
+                    <fu-table-operations
+                        :buttons="accountButtons"
+                        :label="$t('commons.table.operate')"
+                        align="left"
+                        fixed="right"
+                        :ellipsis="2"
+                        width="220"
+                    />
+                </ComplexTable>
+            </template>
+        </LayoutContent>
+        <DialogPro
+            v-model="verifyDialogVisible"
+            :title="$t('aiTools.model.verify')"
+            :size="isMobile ? 'w-90' : 'normal'"
+            class="verify-dialog"
+        >
+            <template #content>
+                <div v-if="verifyTarget" class="verify-content">
+                    <div class="verify-summary">
+                        <div class="verify-icon">
+                            <el-icon><Connection /></el-icon>
+                        </div>
+                        <div class="verify-heading">
+                            <h3>{{ verifyTarget.account.name }}</h3>
+                            <p>{{ $t('aiTools.model.verifyConfirm') }}</p>
+                        </div>
+                    </div>
+                    <dl class="verify-fields">
+                        <div class="verify-address">
+                            <dt>{{ $t('aiTools.model.endpoint') }}</dt>
+                            <dd>
+                                <code>{{ verifyTarget.account.baseUrl || '—' }}</code>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>{{ $t('aiTools.aiProxy.apiType') }}</dt>
+                            <dd>{{ verifyTarget.account.apiType || '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt>{{ $t('aiTools.agents.verifyModel') }}</dt>
+                            <dd>
+                                {{ verifyTarget.account.verifyModel || verifyTarget.account.models?.[0]?.id || '—' }}
+                            </dd>
+                        </div>
+                    </dl>
+                </div>
+            </template>
+            <template #footer>
+                <el-button @click="verifyDialogVisible = false">{{ $t('commons.button.cancel') }}</el-button>
+                <el-button v-permission type="primary" @click="verifyAccount">
+                    {{ $t('commons.button.confirm') }}
+                </el-button>
+            </template>
+        </DialogPro>
+        <ServiceDetails
+            v-if="detailAccount"
+            :model-value="true"
+            :account="detailAccount"
+            :status="connectionStatus(detailAccount)"
+            :verifying="verifyingAccounts.has(`${currentNode}:${detailAccount.id}`)"
+            @update:model-value="!$event && (detailAccountID = undefined)"
+            @edit="createRef.openAccount(detailAccount)"
+            @models="poolRef.open(detailAccount)"
+            @chat="openChat(detailAccount)"
+            @verify="verifyTarget = { account: detailAccount, node: currentNode }"
         />
-        <ManageDeployment
-            ref="manageRef"
-            @search="search"
-            @upgrade="(app) => upgradeRef.acceptParams(app, 'upgrade')"
-        />
-        <AppUpgrade ref="upgradeRef" @close="search" />
-        <AppDelete :key="`delete:${currentNode}:${route.fullPath}`" ref="appDeleteRef" @close="search" />
-        <AppResources :key="`resources:${currentNode}:${route.fullPath}`" ref="appResourcesRef" @close="search" />
-        <TaskLog ref="taskRef" width="70%" @close="search" />
+        <ModelChat ref="chatRef" />
+        <CreateService ref="createRef" @search="search" />
         <ModelPool ref="poolRef" @updated="search" />
-        <TerminalDialog :key="`terminal:${currentNode}:${route.fullPath}`" ref="terminalRef" />
-        <SyncService ref="syncRef" @search="search" />
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, reactive, ref, toRef, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import AiModelList from '@/components/ai-model-list/index.vue';
+import { computed, reactive, ref, toRef, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
+import { Cloudy, Connection, Monitor, RefreshRight } from '@element-plus/icons-vue';
 import type { AI } from '@/api/interface/ai';
-import type { Container } from '@/api/interface/container';
-import { containerListStats } from '@/api/modules/container';
-import ContainerResource from '@/components/container-resource/index.vue';
-import type { FuTableColumnConfig } from '@/components/table/shared';
-import { deleteAgentAccount, getAgentProviders, pageAgentAccounts, operateTensorRTLLM } from '@/api/modules/ai';
+import { TABLE_TOOLTIP_OPTIONS, type FuTableColumnConfig } from '@/components/table/shared';
+import { deleteAgentAccount, getAgentProviders, pageAgentAccounts, verifyAgentAccount } from '@/api/modules/ai';
 import { useGlobalStore } from '@/composables/useGlobalStore';
-import { getAgentProviderDisplayName, isAgentAccountVerificationSkipped } from '@/utils/agent';
-import { loadOptionalComponent } from '@/extensions/optional';
+import { getAgentProviderDisplayName } from '@/utils/agent';
 import i18n from '@/lang';
-import { appInstalledDeleteCheck, installedOp, searchAppInstalled } from '@/api/modules/app';
-import { hasPermission } from '@/utils/rbac';
-import { hasManagePermissionAccess } from '@/utils/permission';
-import { newUUID } from '@/utils/id';
-import { dateFormat } from '@/utils/date';
+import { dateFormat, dateFormatSimpleWithSecond } from '@/utils/date';
+import { MsgError, MsgSuccess } from '@/utils/message';
 import { useSearchState } from '@/utils/search-reset';
-import { MsgError } from '@/utils/message';
-import { routerToName } from '@/utils/router';
-import TaskLog from '@/components/log/task/index.vue';
-import LocalView from './local/index.vue';
-import CreateService from './components/create/index.vue';
-import ManageDeployment from './components/deployment-manage/index.vue';
-import AppUpgrade from '@/views/app-store/installed/upgrade/index.vue';
-import AppDelete from '@/views/app-store/installed/delete/index.vue';
-import AppResources from '@/views/app-store/installed/check/index.vue';
-import ModelPool from './components/model-pool/index.vue';
-import TerminalDialog from '@/views/container/container/terminal/index.vue';
-import SyncService from './components/sync/index.vue';
+import CreateService from './create/index.vue';
+import ModelPool from './model-pool/index.vue';
+import ModelChat from '@/components/model-chat/index.vue';
+import { supportsModelChat } from '@/api/modules/model-chat';
+import ServiceDetails from './details/index.vue';
 import ProviderLabel from '@/components/agent-provider-label/index.vue';
-import { loadModelOverview, loadVllmAPI, readPages, vllmAvailable, type Deployment } from './deployment';
 
 const route = useRoute();
-const router = useRouter();
 const pagePath = route.path;
 const isCurrentPage = computed(() => route.path === pagePath);
-const { isProductPro, isFxplay, isIntl, currentNode, isAdminOrNodeAdmin } = useGlobalStore();
-const isFiles = pagePath === '/ai/model/files';
-const isLocal = pagePath === '/ai/model/local';
-const isManagement = computed(
-    () => isCurrentPage.value && isLocal && ['vllm', 'tensorrt'].includes(String(route.query.tab)),
-);
-const tabs = computed(() => [
-    { label: i18n.global.t('aiTools.model.files'), path: '/ai/model/files' },
-    { label: i18n.global.t('aiTools.model.services'), path: '/ai/model/account' },
-    { label: i18n.global.t('aiTools.model.engines'), path: '/ai/model/local' },
-]);
-const downloaderModules = import.meta.glob('/src/xpack/views/model-downloader/index.vue');
-const downloaderView = Object.keys(downloaderModules).length
-    ? defineAsyncComponent(() => loadOptionalComponent('/src/xpack/views/model-downloader/index.vue'))
-    : null;
+const { isIntl, isMobile, currentNode } = useGlobalStore();
 const createRef = ref();
-const manageRef = ref();
-const upgradeRef = ref();
-const appDeleteRef = ref();
-const appResourcesRef = ref();
 const poolRef = ref();
-const terminalRef = ref<InstanceType<typeof TerminalDialog>>();
-const syncRef = ref<InstanceType<typeof SyncService>>();
+const chatRef = ref<InstanceType<typeof ModelChat>>();
 const loading = ref(false);
+const verifyingAccounts = reactive(new Set<string>());
+const verifyTarget = ref<{ account: AI.AgentAccountItem; node: string }>();
+const verifyDialogVisible = computed({
+    get: () => Boolean(verifyTarget.value),
+    set: (visible: boolean) => {
+        if (!visible) verifyTarget.value = undefined;
+    },
+});
 const connections = ref<AI.AgentAccountItem[]>([]);
+const detailAccountID = ref<number>();
+const detailAccount = computed(() => connections.value.find((item) => item.id === detailAccountID.value));
+watch(detailAccount, (account) => {
+    if (!account) detailAccountID.value = undefined;
+});
+watch([currentNode, () => route.path], () => {
+    detailAccountID.value = undefined;
+});
 const accountColumns = ref<FuTableColumnConfig[]>([]);
 const providers = ref<AI.ProviderInfo[]>([]);
 watch(
     currentNode,
     async (_, __, onCleanup) => {
-        if (isLocal || isFiles) return;
         let cancelled = false;
         onCleanup(() => (cancelled = true));
         providers.value = [];
@@ -393,33 +325,29 @@ watch(
     },
     { immediate: true },
 );
-const deployments = ref<Deployment[]>([]);
 const apiType = ref('');
-const engine = ref('');
 const provider = ref('');
 const searchName = ref('');
 const pagination = reactive({ currentPage: 1, pageSize: 10, total: 0 });
-if (!isLocal && !isFiles) {
-    useSearchState(
-        'ai/agents/model/index',
-        {
-            search: searchName,
-            apiType,
-            provider,
-            page: toRef(pagination, 'currentPage'),
-            pageSize: toRef(pagination, 'pageSize'),
+useSearchState(
+    'ai/agents/model/index',
+    {
+        search: searchName,
+        apiType,
+        provider,
+        page: toRef(pagination, 'currentPage'),
+        pageSize: toRef(pagination, 'pageSize'),
+    },
+    {
+        onRevisit: () => {
+            if (typeof route.query.name === 'string' && route.query.name !== searchName.value) {
+                searchName.value = route.query.name;
+                resetPage();
+            }
+            return search();
         },
-        {
-            onRevisit: () => {
-                if (typeof route.query.name === 'string' && route.query.name !== searchName.value) {
-                    searchName.value = route.query.name;
-                    resetPage();
-                }
-                return search();
-            },
-        },
-    );
-}
+    },
+);
 const apiTypeOptions = computed(() =>
     Array.from(new Set(providers.value.flatMap((item) => item.apiTypes.map((api) => api.apiType)))).sort(),
 );
@@ -430,50 +358,6 @@ const providerOptions = computed(() =>
             value: item.provider,
             label: getAgentProviderDisplayName(item.provider, item.displayName),
         })),
-);
-const filteredDeployments = computed(() => {
-    const keyword = searchName.value.trim().toLowerCase();
-    return deployments.value.filter(
-        (row) =>
-            (!engine.value || row.engine === engine.value) &&
-            (!keyword || [row.name, row.modelDir, ...row.models].join(' ').toLowerCase().includes(keyword)),
-    );
-});
-const deploymentPage = computed(() =>
-    filteredDeployments.value.slice(
-        (pagination.currentPage - 1) * pagination.pageSize,
-        pagination.currentPage * pagination.pageSize,
-    ),
-);
-const resourceStats = ref<Record<string, Container.ContainerListStats | null>>({});
-watch(
-    [deploymentPage, isCurrentPage, isManagement, currentNode],
-    async ([rows, active, management, node], _, onCleanup) => {
-        resourceStats.value = {};
-        const controller = new AbortController();
-        onCleanup(() => {
-            controller.abort();
-        });
-        if (!active || !isLocal || management) return;
-        const names = [
-            ...new Set(
-                rows.filter((row) => row.status === 'Running' && row.containerName).map((row) => row.containerName),
-            ),
-        ];
-        if (!names.length) return;
-        try {
-            const { data } = await containerListStats(node, undefined, {
-                signal: controller.signal,
-                skipErrorMessage: true,
-            });
-            if (controller.signal.aborted) return;
-            const statsByName = new Map((data || []).map((item) => [item.containerName, item]));
-            resourceStats.value = Object.fromEntries(names.map((name) => [name, statsByName.get(name) || null]));
-        } catch {
-            if (!controller.signal.aborted) resourceStats.value = Object.fromEntries(names.map((name) => [name, null]));
-        }
-    },
-    { immediate: true },
 );
 const resetPage = () => {
     pagination.currentPage = 1;
@@ -488,58 +372,86 @@ const resetPageIfNeeded = () => {
         Math.max(1, Math.ceil(pagination.total / pagination.pageSize)),
     );
 };
-watch(filteredDeployments, () => {
-    if (!isLocal) return;
-    pagination.total = filteredDeployments.value.length;
-    resetPageIfNeeded();
-});
-
 let searchVersion = 0;
 const search = async () => {
     const version = ++searchVersion;
-    if (!isCurrentPage.value || isFiles || isManagement.value) return;
+    if (!isCurrentPage.value) return;
     loading.value = true;
     try {
-        if (isLocal) {
-            const data = await loadModelOverview(isProductPro.value, isFxplay.value);
-            if (version !== searchVersion) return;
-            deployments.value = data;
-        } else {
-            const result = await pageAgentAccounts({
-                page: pagination.currentPage,
-                pageSize: pagination.pageSize,
-                apiType: apiType.value,
-                provider: provider.value,
-                name: searchName.value,
-            });
-            if (version !== searchVersion) return;
-            connections.value = result.data.items || [];
-            pagination.total = result.data.total;
-            const previousPage = pagination.currentPage;
-            resetPageIfNeeded();
-            if (previousPage !== pagination.currentPage) await search();
-        }
+        const result = await pageAgentAccounts({
+            page: pagination.currentPage,
+            pageSize: pagination.pageSize,
+            apiType: apiType.value,
+            provider: provider.value,
+            name: searchName.value,
+        });
+        if (version !== searchVersion) return;
+        connections.value = result.data.items || [];
+        pagination.total = result.data.total;
+        const previousPage = pagination.currentPage;
+        resetPageIfNeeded();
+        if (previousPage !== pagination.currentPage) await search();
     } catch {
         if (version !== searchVersion) return;
         connections.value = [];
         pagination.total = 0;
-        deployments.value = [];
     } finally {
         if (version === searchVersion) loading.value = false;
     }
 };
 
 const connectionStatus = (row: AI.AgentAccountItem) => {
-    if (isAgentAccountVerificationSkipped(row.provider)) {
-        return { type: 'info' as const, label: i18n.global.t('aiTools.agents.verifySkipped') };
+    if (verifyingAccounts.has(`${currentNode.value}:${row.id}`)) {
+        return { type: 'info' as const, label: i18n.global.t('aiTools.model.verifying') };
+    }
+    if (!row.validateAvailability) {
+        return { type: 'success' as const, label: i18n.global.t('aiTools.agents.verifySkipped') };
+    }
+    if (row.verifyError) {
+        return { type: 'danger' as const, label: i18n.global.t('aiTools.model.verifyFailed') };
     }
     return {
         type: row.verified ? ('success' as const) : ('warning' as const),
         label: i18n.global.t(row.verified ? 'aiTools.agents.verified' : 'aiTools.model.unverified'),
     };
 };
-const manageDeployment = (row: Deployment) => manageRef.value.open(row);
+
+const verifyAccount = async () => {
+    if (!verifyTarget.value) return;
+    const { account: row, node } = verifyTarget.value;
+    verifyTarget.value = undefined;
+    const key = `${node}:${row.id}`;
+    if (!row.validateAvailability || currentNode.value !== node || !isCurrentPage.value || verifyingAccounts.has(key))
+        return;
+    verifyingAccounts.add(key);
+    try {
+        await verifyAgentAccount({ id: row.id }, node);
+        MsgSuccess(i18n.global.t('aiTools.agents.verified'));
+    } catch (error: any) {
+        MsgError(String(error?.response?.data?.message || error?.message || i18n.global.t('commons.res.commonError')));
+    } finally {
+        verifyingAccounts.delete(key);
+        if (currentNode.value === node) await search();
+    }
+};
+const openChat = (row: AI.AgentAccountItem) => {
+    const models = row.models || [];
+    chatRef.value?.open({
+        kind: 'account',
+        id: row.id,
+        name: row.name,
+        model: models.find((item) => item.id === row.verifyModel)?.id || models[0]?.id || '',
+        models,
+    });
+};
 const accountButtons = [
+    {
+        label: i18n.global.t('aiTools.chat.title'),
+        permission: true,
+        show: (row: AI.AgentAccountItem) => supportsModelChat(row.apiType),
+        disabled: (row: AI.AgentAccountItem) => !row.models?.length,
+        click: openChat,
+    },
     {
         label: i18n.global.t('commons.button.edit'),
         permission: true,
@@ -547,6 +459,7 @@ const accountButtons = [
     },
     {
         label: i18n.global.t('aiTools.agents.modelPool'),
+        disabled: (row: AI.AgentAccountItem) => row.provider === 'vllm',
         click: (row: AI.AgentAccountItem) => poolRef.value.open(row),
     },
     {
@@ -563,208 +476,131 @@ const accountButtons = [
         },
     },
 ];
-const taskRef = ref();
-const pending = ref('');
-const operationDisabled = (row: Deployment, operation = '') =>
-    Boolean(pending.value) ||
-    ['Installing', 'Starting', 'Rebuilding', 'Waiting', 'Uninstalling'].includes(row.status) ||
-    (['ReStarting', 'Restarting'].includes(row.status) && !['stop', 'delete'].includes(operation));
-const statusDisabled = (row: Deployment, operation = '') =>
-    operationDisabled(row, operation) ||
-    !hasManagePermissionAccess() ||
-    (row.engine === 'ollama' && !hasPermission('app_manage'));
-const operate = async (row: Deployment, operation: 'start' | 'stop' | 'restart') => {
-    if (statusDisabled(row, operation)) return;
-    const node = currentNode.value;
-    await ElMessageBox.confirm(
-        i18n.global.t('app.operatorHelper', [i18n.global.t('commons.operate.' + operation)]),
-        i18n.global.t('commons.operate.' + operation),
-        { type: 'warning' },
-    );
-    if (node !== currentNode.value || statusDisabled(row, operation)) return;
-    pending.value = `${row.engine}:${row.id}`;
-    try {
-        if (row.engine === 'ollama') {
-            await installedOp({ installId: row.id, operate: operation });
-        } else if (row.engine === 'tensorrt') {
-            await operateTensorRTLLM({ id: row.id, operate: operation });
-        } else {
-            const taskID = newUUID();
-            await (await loadVllmAPI()).operateVllm({ id: row.id, operate: operation, taskID });
-            if (node !== currentNode.value) return;
-            if (row.version.toLowerCase().startsWith('nvidia-gb10-dspark-')) {
-                await search();
-                taskRef.value.openWithTaskID(taskID);
-                return;
-            }
-        }
-        if (node !== currentNode.value) return;
-        await search();
-    } finally {
-        pending.value = '';
-    }
-};
-const deploymentButtons = [
-    {
-        label: i18n.global.t('commons.button.edit'),
-        permission: true,
-        show: (row: Deployment) => row.engine === 'vllm' || (row.engine === 'ollama' && hasPermission('app_manage')),
-        disabled: operationDisabled,
-        click: (row: Deployment) => manageRef.value.open(row, 'config', true),
-    },
-    {
-        label: i18n.global.t('aiTools.model.manage'),
-        show: (row: Deployment) => row.engine !== 'vllm',
-        click: manageDeployment,
-    },
-    {
-        label: i18n.global.t('menu.monitor'),
-        show: (row: Deployment) => row.engine === 'vllm',
-        click: (row: Deployment) => manageRef.value.open(row, 'monitor', true),
-    },
-    {
-        label: i18n.global.t('menu.terminal'),
-        show: (row: Deployment) => row.engine === 'ollama' || row.engine === 'vllm',
-        disabled: (row: Deployment) =>
-            operationDisabled(row) || row.status !== 'Running' || !row.containerName || !isAdminOrNodeAdmin.value,
-        click: (row: Deployment) =>
-            terminalRef.value?.acceptParams({
-                containerID: row.containerName,
-                title: row.name,
-                node: currentNode.value,
-            }),
-    },
-    {
-        label: i18n.global.t('commons.button.sync'),
-        permission: true,
-        show: (row: Deployment) => row.engine === 'ollama' || row.engine === 'vllm',
-        disabled: operationDisabled,
-        click: (row: Deployment) => syncRef.value.open(row),
-    },
-    {
-        label: i18n.global.t('commons.button.log'),
-        click: (row: Deployment) => manageRef.value.open(row, 'log', true),
-    },
-    {
-        label: i18n.global.t('commons.button.delete'),
-        permission: true,
-        show: (row: Deployment) => row.engine === 'ollama' && hasPermission('app_manage'),
-        disabled: (row: Deployment) => operationDisabled(row, 'delete'),
-        click: async (row: Deployment) => {
-            const node = currentNode.value;
-            const path = route.fullPath;
-            pending.value = `${row.engine}:${row.id}`;
-            try {
-                const [apps, resources] = await Promise.all([
-                    readPages((page) => searchAppInstalled({ ...page, name: row.name, update: false }, node)),
-                    appInstalledDeleteCheck(row.id, node),
-                ]);
-                if (node !== currentNode.value || path !== route.fullPath) return;
-                const app = apps.find((item) => item.id === row.id && item.appKey === 'ollama');
-                if (!app) {
-                    MsgError(i18n.global.t('commons.res.notFound'));
-                    return;
-                }
-                if (resources.data?.length) {
-                    appResourcesRef.value.acceptParams({ items: resources.data, key: app.appKey, installID: app.id });
-                } else {
-                    await appDeleteRef.value.acceptParams(app);
-                }
-            } finally {
-                pending.value = '';
-            }
-        },
-    },
-    {
-        label: i18n.global.t('commons.button.delete'),
-        permission: true,
-        show: (row: Deployment) => row.engine === 'vllm',
-        disabled: (row: Deployment) => operationDisabled(row, 'delete') && row.status !== 'Uninstalling',
-        click: (row: Deployment) => manageRef.value.open(row, 'delete', true),
-    },
-];
 watch(
-    [
-        () => route.path,
-        () => route.query.tab,
-        () => route.query.name,
-        () => route.query.open,
-        currentNode,
-        isProductPro,
-        isFxplay,
-    ],
-    async (_, previous, onCleanup) => {
-        let cancelled = false;
-        onCleanup(() => (cancelled = true));
+    [() => route.path, () => route.query.name, currentNode],
+    async (_, previous) => {
+        if (verifyTarget.value?.node !== currentNode.value || !isCurrentPage.value) {
+            verifyTarget.value = undefined;
+        }
         if (!isCurrentPage.value) {
             searchVersion++;
             loading.value = false;
             return;
         }
-        if (isLocal && route.query.tab === 'downloader') {
-            await router.replace('/ai/model/files');
-            return;
-        }
-        if (isLocal || isFiles) {
-            apiType.value = '';
-            engine.value = '';
-            provider.value = '';
-            searchName.value = '';
+        if (previous.length && previous[0] !== pagePath) return;
+        if (typeof route.query.name === 'string' && route.query.name !== searchName.value) {
+            searchName.value = route.query.name;
             resetPage();
-        } else {
-            if (previous.length && previous[0] !== pagePath) return;
-            if (typeof route.query.name === 'string' && route.query.name !== searchName.value) {
-                searchName.value = route.query.name;
-                resetPage();
-            }
         }
         await search();
-        if (cancelled) return;
-        if (
-            isCurrentPage.value &&
-            isLocal &&
-            route.query.open === 'create' &&
-            (route.query.engine === 'ollama' || route.query.tab === 'ollama')
-        ) {
-            await nextTick();
-            if (cancelled) return;
-            await createRef.value.open('ollama');
-            if (cancelled) return;
-            const query = { ...route.query };
-            delete query.open;
-            delete query.tab;
-            await router.replace({ path: route.path, query });
-        }
     },
     { immediate: true },
 );
 </script>
 
 <style scoped lang="scss">
+.verification-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.verify-dialog {
+    max-width: 560px;
+}
+.verify-content {
+    padding: 4px 0 8px;
+}
+.verify-summary {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.verify-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--el-color-primary-light-9);
+    color: var(--el-color-primary);
+    font-size: 20px;
+}
+.verify-heading {
+    min-width: 0;
+    h3 {
+        margin: 0 0 6px;
+        font-size: 15px;
+        color: var(--el-text-color-primary);
+        overflow-wrap: anywhere;
+    }
+    p {
+        margin: 0;
+        color: var(--el-text-color-secondary);
+        font-size: 13px;
+        line-height: 1.6;
+    }
+}
+.verify-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    margin: 0;
+    padding: 16px;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 8px;
+    background: var(--el-fill-color-extra-light);
+    dt {
+        margin-bottom: 8px;
+        color: var(--el-text-color-secondary);
+        font-size: 12px;
+    }
+    dd {
+        margin: 0;
+        color: var(--el-text-color-primary);
+        font-size: 13px;
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+    }
+    code {
+        font-family: var(--el-font-family-monospace, monospace);
+    }
+}
+.verify-address {
+    grid-column: 1 / -1;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--el-border-color-lighter);
+}
+@media (max-width: 480px) {
+    .verify-fields {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 .service-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     min-width: 0;
 }
-.service-title {
-    font-weight: 600;
+.service-name-link {
+    min-width: 0;
+    font-weight: 400;
+    :deep(> span) {
+        min-width: 0;
+    }
 }
-.service-source-tag {
-    margin-top: 4px;
+.service-source-icon {
+    flex-shrink: 0;
+    font-size: 16px;
+    color: var(--el-text-color-secondary);
 }
 .cell-ellipsis {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-}
-.model-line {
-    display: flex;
-    align-items: center;
-    & + & {
-        margin-top: 6px;
-    }
-}
-.model-more {
-    flex-shrink: 0;
-    margin-left: 8px;
 }
 .model-filter {
     width: 220px;

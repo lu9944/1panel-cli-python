@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/1Panel-dev/1Panel/agent/utils/aihttp"
 )
 
 type APIConfig struct {
@@ -48,7 +50,7 @@ var catalog = map[string]Meta{
 	},
 	// llmman (https://github.com/llmmanorg/llmman): local runner with Ollama/OpenAI-compatible routes on 127.0.0.1:17434.
 	"llmman": {
-		Key: "llmman", DisplayName: "llmman", Sort: 16, DefaultAPIType: "openai-responses",
+		Key: "llmman", DisplayName: "llmman", Sort: 75, DefaultAPIType: "openai-responses",
 		APIConfigs: []APIConfig{
 			{APIType: "openai-responses", BaseURL: "http://127.0.0.1:17434/v1", EditableBaseURL: true},
 			{APIType: "openai-completions", BaseURL: "http://127.0.0.1:17434/v1", EditableBaseURL: true},
@@ -58,6 +60,10 @@ var catalog = map[string]Meta{
 	"vllm": {
 		Key: "vllm", DisplayName: "vLLM", Sort: 20, DefaultAPIType: "openai-completions", EnvKey: "VLLM_API_KEY",
 		APIConfigs: editableAPIConfigs(false, "openai-completions", "openai-responses", "anthropic-messages", "openai-images", "openai-embeddings"),
+	},
+	"1panel-ai-gateway": {
+		Key: "1panel-ai-gateway", DisplayName: "1Panel AI Gateway", DisplayNameKey: "AIProvider1PanelGateway", Sort: 21, DefaultAPIType: "openai-completions", EnvKey: "ONEPANEL_AI_GATEWAY_API_KEY",
+		APIConfigs: editableAPIConfigs(true, "openai-completions", "openai-responses", "anthropic-messages", "openai-images", "openai-embeddings"),
 	},
 	"deepseek": {
 		Key: "deepseek", DisplayName: "DeepSeek", Sort: 25, DefaultAPIType: "openai-completions", EnvKey: "DEEPSEEK_API_KEY",
@@ -369,7 +375,7 @@ func ResolveBaseURL(key, apiType, requested string) (string, error) {
 		return "", fmt.Errorf("base url is required")
 	}
 	parsed, err := url.Parse(baseURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+	if err != nil || aihttp.ValidateURL(baseURL) != nil {
 		return "", fmt.Errorf("invalid base url")
 	}
 	if key == "custom" && (IsImageAPIType(config.APIType) || IsEmbeddingAPIType(config.APIType)) {

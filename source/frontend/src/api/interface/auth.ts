@@ -73,7 +73,6 @@ export namespace Login {
     export interface LoginSetting {
         isDemo: boolean;
         isIntl: boolean;
-        isFxplay: boolean;
         language: string;
         menuTabs: string;
         menuAccordion: string;
@@ -82,6 +81,7 @@ export namespace Login {
         theme: string;
         isOffline: boolean;
         isEnterprise: boolean;
+        isMasterProductPro: boolean;
         needCaptcha: boolean;
         passkeySetting: boolean;
     }

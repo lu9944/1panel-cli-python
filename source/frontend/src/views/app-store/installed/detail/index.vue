@@ -121,7 +121,7 @@
                     </div>
                 </component>
                 <GPUConfig v-if="showModelGPU" ref="gpuRef" v-model="paramModel.gpu" />
-                <details v-if="appKey === 'ollama'" open class="form-section">
+                <details v-if="appKey === 'ollama'" ref="syncSectionRef" open class="form-section">
                     <summary class="form-section-header">
                         <span>{{ $t('aiTools.model.syncModelAccount') }}</span>
                         <el-switch
@@ -129,6 +129,7 @@
                             @keydown.stop
                             v-model="paramModel.syncModelAccount"
                             :aria-label="$t('aiTools.model.syncModelAccount')"
+                            @change="(enabled) => enabled && syncSectionRef && (syncSectionRef.open = true)"
                         />
                     </summary>
                     <div v-show="paramModel.syncModelAccount" class="form-section-body">
@@ -234,9 +235,9 @@
     </DrawerPro>
 </template>
 <script lang="ts" setup>
-import { expandInvalidFormSection } from '@/views/ai/model/components/form-section';
-import AccountAddress from '@/views/ai/model/components/account-address/index.vue';
-import GPUConfig from '@/views/ai/model/components/gpu-config/index.vue';
+import { expandInvalidFormSection } from '@/components/form-section';
+import AccountAddress from '@/views/ai/components/account-address/index.vue';
+import GPUConfig from '@/views/ai/components/gpu-config/index.vue';
 import Diff from '@/views/app-store/installed/upgrade/diff/index.vue';
 
 import { App } from '@/api/interface/app';
@@ -298,6 +299,7 @@ const appType = ref('');
 const appKey = ref('');
 const showModelGPU = computed(() => props.modelGPU && appKey.value === 'ollama');
 const accountRef = ref<InstanceType<typeof AccountAddress>>();
+const syncSectionRef = ref<HTMLDetailsElement>();
 const gpuRef = ref<InstanceType<typeof GPUConfig>>();
 const appConfigUpdate = ref<App.AppConfigUpdate>({
     installID: 0,
@@ -581,7 +583,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="scss" scoped>
-@use '@/views/ai/model/components/form-section.scss';
+@use '@/components/form-section/index.scss';
 .change-button {
     margin-top: 5px;
 }

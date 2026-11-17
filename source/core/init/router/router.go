@@ -59,7 +59,7 @@ func setWebStatic(rootRouter *gin.RouterGroup) {
 		if !security.CheckSecurity(c) {
 			return
 		}
-		entrance = authService.GetSecurityEntrance()
+		entrance := authService.GetSecurityEntrance()
 		if entrance != "" {
 			appauth.SetSecurityEntranceCookie(c, entrance)
 		}
@@ -70,10 +70,13 @@ func setWebStatic(rootRouter *gin.RouterGroup) {
 
 func Routers() *gin.Engine {
 	Router = gin.New()
+	_ = Router.SetTrustedProxies(nil)
+	Router.Use(middleware.AuditClientIP())
+	Router.Use(middleware.MCPErrorMetadata())
 	Router.Use(middleware.MCPTokenBoundary())
 	Router.Use(middleware.MCPAPIIdentity())
 	Router.Use(i18n.UseI18n())
-	Router.Use(middleware.WhiteAllow())
+	Router.Use(middleware.WhiteAllow(middleware.MCPSourcePolicy()))
 	Router.Use(middleware.BindDomain(middleware.MCPDomainPolicy))
 
 	swaggerRouter := Router.Group("1panel")
@@ -92,13 +95,13 @@ func Routers() *gin.Engine {
 
 	Router.Use(middleware.FrontendFallback())
 	Router.Use(middleware.WebSocketOriginGuard())
-	Router.Use(middleware.OperationLog())
+	Router.Use(middleware.OperationLog(middleware.MCPLogPolicy))
 	Router.Use(middleware.GlobalLoading())
 	Router.Use(xpack.AuthProvider.CoreAPIAuthMiddleware())
 	Router.Use(middleware.PasswordExpired())
 	Router.Use(middleware.CSRFTokenGuard())
 	Router.Use(xpack.AuthProvider.CoreRBACMiddlewares()...)
-	Router.Use(Proxy(panelMCPTaskProxyPolicy()))
+	Router.Use(Proxy(panelMCPTaskProxyPolicy(), opsReportProxyPolicy()))
 
 	PrivateGroup := Router.Group("/api/v2/core")
 	PrivateGroup.Use(middleware.SetPasswordPublicKey())

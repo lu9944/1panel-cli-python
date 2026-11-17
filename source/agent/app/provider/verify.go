@@ -3,14 +3,12 @@ package provider
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"github.com/1Panel-dev/1Panel/agent/utils/aihttp"
 )
 
 type VerifyRequest struct {
@@ -20,48 +18,32 @@ type VerifyRequest struct {
 	Body    []byte
 }
 
-type verifyErrorResponse struct {
-	Error struct {
-		Message string `json:"message"`
-	} `json:"error"`
-	Message string `json:"message"`
-}
-
 const (
 	defaultVerifyTimeout   = 30 * time.Second
 	defaultVerifyMaxTokens = 16
 )
 
-func SkipVerification(provider string) bool {
-	switch provider {
-	case "vllm", "ollama", "llmman", "kimi-coding":
-		return true
-	default:
-		return false
-	}
-}
-
 func VerifyAccount(provider, apiType, authMode, baseURL, apiKey, model string) error {
 	req := BuildVerifyRequest(provider, apiType, authMode, baseURL, apiKey, model)
 	httpReq, err := http.NewRequest(req.Method, req.URL, bytes.NewReader(req.Body))
 	if err != nil {
-		return err
+		return buserr.WithErr("ErrAgentAccountUnavailable", aihttp.ErrTarget)
 	}
 	for key, value := range req.Headers {
 		httpReq.Header.Set(key, value)
 	}
 	httpReq.Header.Set("Accept", "application/json")
-	resp, err := (&http.Client{Timeout: defaultVerifyTimeout}).Do(httpReq)
+	resp, err := aihttp.NewClient(defaultVerifyTimeout).Do(httpReq)
 	if err != nil {
-		return buserr.WithErr("ErrAgentAccountUnavailable", err)
+		return buserr.WithErr("ErrAgentAccountUnavailable", aihttp.SafeError(err, req.URL, apiKey))
 	}
 	defer resp.Body.Close()
+	body, readErr := aihttp.ReadResponseBody(resp.Body)
+	if readErr != nil {
+		return buserr.WithErr("ErrAgentAccountUnavailable", readErr)
+	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
-		if readErr != nil {
-			return buserr.WithErr("ErrAgentAccountUnavailable", readErr)
-		}
-		return buserr.WithErr("ErrAgentAccountUnavailable", errors.New(verifyHTTPError(resp.StatusCode, body)))
+		return buserr.WithErr("ErrAgentAccountUnavailable", aihttp.HTTPError(resp.StatusCode, body, req.URL, apiKey))
 	}
 	return nil
 }
@@ -144,6 +126,9 @@ func BuildVerifyRequest(provider, apiType, authMode, baseURL, apiKey, model stri
 		}
 		request.Body = mustJSON(body)
 	}
+	if strings.TrimSpace(apiKey) == "" && (provider == "vllm" || provider == "ollama" || provider == "llmman") {
+		delete(headers, "Authorization")
+	}
 	return request
 }
 
@@ -163,22 +148,6 @@ func imageVerifyURL(provider, baseURL, endpoint string) string {
 		return baseURL
 	}
 	return baseURL + endpoint
-}
-
-func verifyHTTPError(statusCode int, body []byte) string {
-	message := strings.TrimSpace(string(body))
-	var payload verifyErrorResponse
-	if err := json.Unmarshal(body, &payload); err == nil {
-		if value := strings.TrimSpace(payload.Error.Message); value != "" {
-			message = value
-		} else if value := strings.TrimSpace(payload.Message); value != "" {
-			message = value
-		}
-	}
-	if message == "" {
-		return fmt.Sprintf("validation request returned status %d", statusCode)
-	}
-	return message
 }
 
 func mustJSON(value interface{}) []byte {

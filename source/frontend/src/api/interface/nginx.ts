@@ -5,11 +5,14 @@ export namespace Nginx {
     export interface NginxParam {
         name: string;
         params: string[];
+        // Included file that sets an http-level directive nginx.conf leaves unset.
+        source?: string;
     }
 
     export interface NginxBrotliRes {
         params: NginxParam[];
         managedExternally: boolean;
+        managedPending: boolean;
         managedUnavailable: boolean;
     }
 

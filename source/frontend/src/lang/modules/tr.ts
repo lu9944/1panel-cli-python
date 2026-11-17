@@ -367,6 +367,8 @@ const message = {
             serviceNotStarted: '{0} servisi başlatılmadı.',
         },
         status: {
+            autoSyncEnabled: 'Otomatik eşitleme açık',
+            autoSyncDisabled: 'Otomatik eşitleme kapalı',
             running: 'Çalışıyor',
             done: 'Tamamlandı',
             scanFailed: 'Eksik',
@@ -499,7 +501,7 @@ const message = {
         quickDirDelete: '({0}) silinsin mi?',
         quickDir: 'Hızlı Erişim',
         minQuickJump: 'En az bir hızlı erişim girdisi ekleyin',
-        maxQuickJump: 'En fazla dört hızlı erişim girdisi ekleyebilirsiniz',
+        maxQuickJump: 'En fazla beş hızlı erişim girdisi ekleyebilirsiniz',
         database: 'Veritabanı - Tümü',
         restart_1panel: 'Paneli yeniden başlat',
         restart_system: 'Sunucuyu yeniden başlat',
@@ -778,6 +780,82 @@ const message = {
         localIP: 'Yerel IP',
     },
     aiTools: {
+        chat: {
+            outputLimit:
+                'Yanıt modelin çıktı sınırına ulaştı ve tamamlanamadı. Bu tur sonraki mesajlara dahil edilmeyecek. Yeniden gönderebilirsiniz.',
+            filtered:
+                'Model hizmeti içerik filtrelemesi nedeniyle yanıtı durdurdu. Bu tur sonraki mesajlara dahil edilmeyecek. Yeniden gönderebilirsiniz.',
+            incomplete:
+                'Model yanıtı tamamlamadı. Bu tur sonraki mesajlara dahil edilmeyecek. Yeniden gönderebilirsiniz.',
+            limitReached: '100 tur sınırına ulaşıldı. Devam etmek için mevcut sohbeti temizleyin.',
+            welcome: 'Yeni bir sohbet başlatın',
+            temporary: 'Sohbet geçicidir; paneli kapattığınızda veya sayfayı yenilediğinizde temizlenir.',
+            title: 'Sohbet',
+            empty: 'Bu modelle sohbet etmek için mesaj gönderin',
+            you: 'Siz',
+            thinking: 'Akıl yürütme',
+            placeholder: 'Göndermek için Enter, yeni satır için Shift+Enter',
+            clear: 'Mevcut sohbeti temizle',
+            send: 'Gönder',
+            failed: 'Sohbet isteği başarısız oldu',
+            interrupted:
+                'Üretim durduruldu veya kesildi. Bu tur sonraki mesajlara dahil edilmeyecek. Yeniden gönderebilirsiniz.',
+            waiting: 'Üretiliyor…',
+        },
+        gpuGroup: {
+            singleGPU:
+                'GPU grupları birden fazla GPU bulunan makineler içindir. Bu düğümde yalnızca bir GPU olduğundan gruplama gerekmez.',
+            relationTopology: 'İlişki topolojisi',
+            relationHelp: 'Üyelik ilişkilerini vurgulamak için bir GPU veya grup seçin.',
+            selectionHelp:
+                'Aynı aygıt türündeki GPU’ları seçin ve grubu yapılandırmak için ilerleyin. Kesik çizgiler kaydedilmemiş üyelikleri gösterir.',
+            allRelations: 'Tüm ilişkileri göster',
+            pendingChanges: 'Kaydedilmedi',
+            hardware: 'Donanım yerleşimi',
+            editMembers: 'Üyeleri düzenle',
+            usageScope:
+                'İlişkiler, bu düğümde 1Panel tarafından yönetilen uygulama yapılandırmalarından alınır; bellek değerleri GPU’nun tamamı için ölçülür.',
+            usageTitle: 'GPU kullanımı',
+            usageHelp:
+                'Seçilen GPU’lar başka dağıtımlar tarafından kullanılıyor olabilir. Devam etmek GPU belleğinin yetersiz kalmasına veya performansın düşmesine neden olabilir. Yine de devam edebilirsiniz.',
+            usageUnknown: 'GPU kullanımı tam olarak kontrol edilemedi. Devam etmeden önce kaynakları doğrulayın.',
+            usagePossible: 'Sayıya göre ayrılır; bu GPU kullanılabilir',
+            usageMemory: 'GPU belleği (kullanılan / toplam)',
+            dimension: 'Boyut',
+            namePlaceholder: 'Örn. Üretim çıkarımı GPU çifti',
+            descriptionPlaceholder: 'İsteğe bağlı: grubun amacını veya kullanımını açıklayın',
+            selectedGPU: '{count} GPU seçildi',
+
+            byGroup: 'Gruba göre',
+            byNUMA: 'NUMA düğümüne göre',
+            ungrouped: 'Gruplanmamış',
+
+            unknownNode: 'NUMA düğümü bilinmiyor',
+            unknownNodeHelp:
+                'Sistem bu GPU’ların NUMA ilişkisini bildirmedi. GPU seçimi ve gruplama kullanılmaya devam edilebilir.',
+            memoryNode: 'Bellek düğümü',
+            selectNode: 'Bu düğümün GPU birimlerini seç',
+            noDevices: 'Bu düğümde GPU yok',
+            affinity: 'CPU / bellek yakınlığı',
+            followGPU: 'GPU düğümlerini izle',
+            bindingPreview: 'Bağlama önizlemesi',
+
+            overview: 'Cihaz özeti',
+            groups: 'GPU grupları',
+            history: 'İzleme geçmişi',
+            source: 'GPU kaynağı',
+            custom: 'Özel',
+            selectRequired: 'Bir GPU grubu seçin',
+            snapshotHelp:
+                'Dağıtımlar mevcut yapılandırmayı kaydeder. Grup değişiklikleri mevcut dağıtımlara otomatik uygulanmaz.',
+            changed: 'Kaynak grup değiştirildi veya silindi. Kaydedilen yapılandırma kullanılmaya devam ediyor.',
+            applyLatest: 'En son grup yapılandırmasını uygula',
+            deployments: 'İlişkili dağıtımlar',
+            help: 'Gruplar GPU ve NUMA ayarlarını yeniden kullanır. Cihazlar birden fazla grupta olabilir; özel GPU tahsisi veya bellek yalıtımı sağlanmaz.',
+            deleteHelp: '“{name}” grubu silinsin mi? Mevcut dağıtımlar yapılandırmalarını koruyacak.',
+            vendor: 'Cihaz türü',
+            topology: 'NUMA topolojisi',
+        },
         agents: {
             feishuUpgradeNotice:
                 'Yükseltmeden önce eski Feishu eklentisi ele alınmalıdır. Tam yedek gerekir; hata durumunda eski imaj ve verileri geri yüklenir. Yapılandırılmamış eklenti yalnızca devre dışı bırakılır.',
@@ -808,7 +886,7 @@ const message = {
             nativeAgentAccessUnavailable:
                 'Mevcut kurulumda uyumlu HTTPS erişim adresi veya bağlantı noktası yok. Uygulama ayarlarını kontrol edin.',
             agent: 'Ajan',
-            account: 'Model hesabı',
+            account: 'Model hizmeti',
             batchOperation: 'Toplu işlem',
             operationType: 'İşlem türü',
             batchAction: 'Toplu {0}',
@@ -822,10 +900,10 @@ const message = {
             skillSource: 'Skill Kaynağı',
             skillKeyword: 'Skill Anahtar Kelimesi',
             clawHubSkillPlaceholder: 'Önce bir Skill arayın ve seçin',
-            noAccountHint: 'Mevcut bir model hesabını seçin veya yeni bir tane ekleyin.',
-            accountCount: '{0} model hesabı',
+            noAccountHint: 'Mevcut bir model hizmetinı seçin veya yeni bir tane ekleyin.',
+            accountCount: '{0} model hizmeti',
             syncAgents: 'İlişkili ajanları senkronize et',
-            syncAgentsHelper: 'Bu model hesabını kullanan ajanlar için openclaw.json dosyasını güncelleyin',
+            syncAgentsHelper: 'Bu model hizmetinı kullanan ajanlar için openclaw.json dosyasını güncelleyin',
             appVersion: 'Uygulama sürümü',
             webuiPort: 'WebUI portu',
             tokenOrAuth: 'Token/Kimlik Doğrulama',
@@ -836,6 +914,7 @@ const message = {
             accountModelsHelper:
                 "Bu hesabın OpenClaw'a sunacağı modelleri yapılandırın; seçim ve ayarlarda kullanılacaktır.",
             accountModelsRequired: 'En az bir model seçin',
+            accountModelsSingle: 'Bu sağlayıcı için en fazla bir model yapılandırılabilir',
             verifyModel: 'Doğrulama Modeli',
             verifyModelHelper:
                 'Bu hesabın erişebildiği bir model seçin. Kaydederken bağlantıyı doğrulamak için en küçük istek gönderilir.',
@@ -849,6 +928,8 @@ const message = {
             discoverModelsFailedUseDefaults: 'Modeller alınamadı. Varsayılan modeller kullanılıyor.',
             accountModelsDuplicate: 'Katalogda yinelenen modeller bulundu',
             modelPool: 'Model kataloğu',
+            ollamaRegisterOnly: 'Yalnızca bu Ollama hizmetinde mevcut modeller kaydedilir. İndirme başlatılmaz.',
+            deleteModelFiles: 'Model dosyalarını da Ollama hizmetinden sil',
             fallbackModels: 'Yedek modeller',
             addFallbackModel: 'Yedek model ekle',
             fallbackModelsEmpty: 'Yapılandırılmış yedek model yok',
@@ -863,7 +944,7 @@ const message = {
             useModelDefault: 'Model varsayılanını kullan',
             reasoning: 'Akıl yürütme modeli',
             verified: 'Doğrulandı',
-            verifySkipped: 'Doğrulama yok',
+            verifySkipped: 'Doğrulama gerekmiyor',
             skillsTab: 'Yetenekler',
             pluginsTab: 'Eklentiler',
             pluginsInstalled: 'Yüklü',
@@ -1042,11 +1123,78 @@ const message = {
                 'Custom hesaplar için tam görsel oluşturma uç noktası URL’sini girin. Yol otomatik eklenmez. Örnek: {0}',
             apiTypeBaseURLMismatch:
                 'Geçerli Base URL bir {0} yolu gibi görünüyor, ancak {1} seçildi. Önerilen URL: {2}',
-            validateAvailability: 'Hesap kullanılabilirliğini doğrula',
+            validateAvailability: 'Kaydederken kullanılabilirliği doğrula',
             validateAvailabilityHelper: 'Kaydetmeden önce API’yi doğrulamak için en küçük iletiyi gönderir',
             validateImageAvailabilityHelper: 'Kaydetmeden önce bir küçük görsel üretir ve ücret doğurabilir',
         },
         model: {
+            externalInspect: 'Kontrol et ve getir',
+            externalHealthPassed: 'Sağlık kontrolü başarılı',
+            externalHealthFailed: 'Sağlık kontrolü başarısız',
+            externalServiceAddress: 'Hizmet adresi',
+            externalAddressHelper: 'HTTP/HTTPS desteklenir. Portu adrese ekleyin.',
+            externalMetricsURL: 'Özel metrik URL’si',
+            externalAccessToken: 'API Key (Bearer Token)',
+            externalAccessTokenHelper:
+                'API isteklerinin kimliğini doğrulamak için uzak hizmette yapılandırılan API anahtarını veya erişim tokenını girin.',
+            metricsURLHelper: 'Varsayılan /metrics adresi için boş bırakın.',
+            addExternal: 'Harici örnek ekle',
+            external: 'Harici',
+            externalTokenHelper: 'Mevcut tokenı korumak için boş bırakın.',
+            clearAccessToken: 'Erişim tokenını sil',
+            deleteExternalHelper: 'Bağlantıyı ve izleme geçmişini siler. Harici hizmet etkilenmez.',
+
+            searchTitle: 'Model ara ve indir',
+            searchHelper:
+                'ModelScope veya Hugging Face üzerinde model bulun, ardından Model Hazırlığı bölümünde dağıtın veya bir Recipe oluşturun.',
+            modelScopeSearchHelper: 'Çin ana karasında kararlı erişim',
+            huggingFaceNetworkHelper:
+                'Hugging Face araması ve indirmeleri için sunucunun siteye erişebilmesi gerekir. Erişim yoksa Ayarlar bölümünde erişilebilir bir Hugging Face ayna URL adresi yapılandırın veya ModelScope seçin. Çevrimdışı ortamlarda modelleri elle yükleyin.',
+            huggingFaceSearchHelper: 'Geniş model koleksiyonu',
+            searchPlaceholder: 'Model adı veya depo kimliği girin, ör. Qwen/Qwen3-8B',
+            popularSearches: 'Popüler aramalar',
+            searchSort: 'Sırala',
+            onlyTokenizer: 'Yalnızca belirteç ayırıcı',
+            downloadStatus: 'İndirme durumu',
+            downloaded: 'İndirildi',
+            alreadyExists: 'Zaten mevcut',
+            downloadCompleted: 'İndirme tamamlandı',
+            localFilesMissing: 'Yerel dosyalar bulunamadı',
+            ollamaNameHelper: 'Ollama kütüphanesindeki tam model adını girin. Etiket belirtilmezse latest kullanılır.',
+            downloadHelper:
+                'ModelScope veya Hugging Face üzerinden model ya da tokenizer indirin veya {requirements} ile yerel dosyalar ekleyin.',
+            localModelSizeHelper:
+                'Bu, dizinin mevcut boyutudur; tüm dosyaların yüklenmesinin tamamlandığını doğrulamaz.',
+            localModelLayoutTitle: 'Örnekler',
+            localLayoutDirect: 'Doğrudan yerleştirme',
+            localLayoutGrouped: 'Kuruluşa göre (isteğe bağlı)',
+            serviceHelper:
+                'Genel bulutlardan, yerel çıkarım motorlarından ve AI ağ geçitlerinden model hizmetlerini bağlayarak yerleşik 1Panel ajanları ve WorkBuddy gibi harici ajanlar için kullanıma sunun.',
+            gpuType: 'GPU türü',
+            vllmVersion: 'vLLM sürümü',
+            vllmImage: 'vLLM imajı',
+            servicePort: 'Hizmet portu',
+            vllmAPIKeyHelper:
+                'Kimlik doğrulamayı etkinleştirmek için bir API anahtarı girin. Devre dışı bırakmak için boş bırakın.',
+            numaBinding: 'NUMA bağlama',
+            numaOff: 'Bağlama yok',
+            numaAuto: 'Otomatik',
+            numaManual: 'Elle',
+            numaNodes: 'NUMA düğümleri',
+            numaOffHelp: 'Seçilen GPU’lar kullanılır; CPU ve bellek sistem tarafından yönetilir.',
+            numaAutoHelp: 'CPU ve bellek, seçilen GPU’ların bulunduğu NUMA düğümüne bağlanır.',
+            numaManualHelp: 'GPU seçimini değiştirmeden uygulamanın CPU ve bellek düğümlerini belirtin.',
+            numaResolved: 'NUMA {node} düğümüne bağlanacak.',
+            numaHelp: 'GPU seçimi kullanılacak GPU’ları, yakınlık ise CPU ve bellek düğümlerini belirler.',
+            numaRequirements:
+                'İmaj numactl içermelidir. Bağlama etkinleştirildiğinde gerekirse SYS_NICE otomatik eklenir.',
+            numaUnknown:
+                'GPU ile ilişkili CPU ve bellek düğümü belirlenemedi. Bağlamayı kapalı bırakın veya donanım düzenini biliyorsanız düğümleri elle seçin.',
+            numaCross: 'Seçilen GPU aygıtları birden fazla NUMA düğümüne yayılıyor. Elle seçin.',
+            numaCount: 'Otomatik bağlama için belirli GPU aygıtlarını veya tümünü seçin.',
+            numaRequired: 'En az bir NUMA düğümü seçin.',
+            numaTopologyUnavailable: 'NUMA topolojisi bilgisi kullanılamıyor.',
+            numaUnavailable: 'NUMA düğümü kullanılamıyor veya CPU ya da belleği yok.',
             gpuAcceleration: 'GPU hızlandırma',
             gpuMode: 'Hızlandırıcı seçimi',
             gpuAll: 'Tüm hızlandırıcılar',
@@ -1058,7 +1206,7 @@ const message = {
             gpuCountRequired: '0’dan büyük bir tam sayı girin',
             gpuDevices: 'GPU aygıtları',
             gpuCapabilitiesHelper:
-                'GPU erişimi zorunludur; izleme ve yönetimi (utility) ve hesaplama desteğini (compute) gerektiğinde etkinleştirin.',
+                'Kapsayıcı için NVIDIA GPU yeteneklerini yapılandırın. Genellikle varsayılan seçenekleri korumanız önerilir.\n• gpu: Kapsayıcının GPU erişimine izin verir. Zorunludur.\n• utility: nvidia-smi gibi araçlarla GPU durum sorgularını ve izlemeyi destekler.\n• compute: CUDA dahil GPU hesaplamalarını destekler. Genellikle model çıkarımı için gereklidir.',
             gpuSelectRequired: 'En az bir kullanılabilir GPU aygıtı seçin.',
             gpuUnsupported: 'Desteklenmiyor',
             gpuNotDetected: 'Desteklenen hızlandırıcı algılanmadı',
@@ -1069,51 +1217,152 @@ const message = {
             backboneParams: 'MoE omurga parametreleri',
             activeParams: 'Etkin parametreler',
             engram: 'Engram',
+            weightProvider: 'Ağırlık sağlayıcısı',
             weightFootprint: 'Ağırlık boyutu',
             undisclosed: 'Açıklanmadı',
             featuredModels: 'Öne çıkan modeller',
             deploy: 'Dağıt',
             approxWeightSize: 'Yaklaşık {0} GB',
             services: 'Model hizmetleri',
-            addService: 'Model hizmeti ekle',
-            addEngine: 'Çıkarım motoru ekle',
+            addInstance: 'Örnek ekle',
+            modelScopeEndpointHelper:
+                'ModelScope modellerini aramak ve indirmek için kullanılır. Varsayılan, resmî URL adresidir.',
+            modelTokenHelper: 'İsteğe bağlı. Özel veya kısıtlı modeller için erişim yetkili bir token kullanın.',
+            tokenizerDir: 'Tokenizer dizini',
+            tokenizerDirHelper:
+                'Tokenizer indirmeleri ve yerel liste için kullanılan dizin. Değiştirmek mevcut dosyaları taşımaz.',
+            modelDirHelper:
+                'Modellerin indirildiği ve yerel model listesinin okunduğu dizin. Değiştirmek mevcut dosyaları taşımaz.',
+            featuredModelsHelper:
+                '1Panel tarafından seçilen modelleri inceleyin, özellikleri, kullanım alanlarını ve indirme kaynaklarını görüntüleyerek uygun modeli indirin.',
+            featuredModelsSyncHelper:
+                'Otomatik eşitleme, model dosyalarını indirmeden öne çıkan model kataloğunu her gün sabahın erken saatlerinde günceller. İstediğiniz zaman elle de eşitleyebilirsiniz.',
+            recipeSyncHelper:
+                'Otomatik eşitleme, özel tarifleri etkilemeden eşitlenen tarifleri her gün sabahın erken saatlerinde günceller. İstediğiniz zaman elle de eşitleyebilirsiniz.',
+            serviceStatus: 'Hizmet durumu',
+            readinessNotRunning: 'Çalışmıyor',
+            readinessWaiting: 'Hazır olması bekleniyor',
+            readinessPreparing: 'Hazırlanıyor',
+            readinessReady: 'Hazır',
+            readinessNotReady: 'Hazır değil',
+            readinessPreparingHelper:
+                'Konteyner başlatıldı ancak henüz sağlık kontrolünü geçmedi. Model hâlâ yükleniyor olabilir. Lütfen bekleyin.',
+            readinessReadyHelper: 'Konteynerin son sağlık kontrolü başarılı oldu. Hizmet hazır.',
+            readinessNotReadyHelper:
+                'Konteyner çalışıyor ancak art arda yapılan sağlık kontrolleri başarısız oldu. Hizmet henüz hazır değil. Konteyner günlüklerini kontrol edin.',
+            addInstanceHelper: 'İndirilen modelleri sunmak için bir vLLM örneği oluşturun.',
+            addService: 'Ekle',
             onlineModel: 'Çevrimiçi modeller',
             instanceDeployment: 'Örnek bazında dağıtım',
-            nvidiaDeployment: 'NVIDIA için optimize edilmiş dağıtım',
             engines: 'Yerel çıkarım motorları',
             modelManagement: 'Model yönetimi',
+            ollamaManagement: 'Ollama yönetimi',
+            vllmManagement: 'vLLM yönetimi',
             serviceDetails: 'Hizmet ayrıntıları',
-            deployments: 'Yerel dağıtımlar',
-            files: 'Model merkezi',
+            deleteDeploymentHelper: 'Bu örnek durdurulacak ve silinecektir',
+            deleteDeploymentServiceHelper:
+                'Bu örnek durdurulacak ve ilişkili model hizmetleriyle birlikte silinecektir',
+            connectionInfo: 'Bağlantı bilgileri',
+            deploymentInfo: 'Dağıtım bilgileri',
+            serviceAPIHelper: 'Bu hizmet OpenAI uyumlu bir API sağlar.',
+            serviceAddressHelper:
+                'Konteyner uygulamaları için konteyner adresini, ana makine veya harici uygulamalar için harici adresi kullanın.',
+            externalAddress: 'Harici adres',
+            createVllmInstance: 'vLLM örneği oluştur',
+            previewDeployment: 'Dağıtım yapılandırmasını önizle',
+            deploymentOverview: 'Dağıtım özeti',
+            backToForm: 'Düzenlemeye dön',
+            composePreviewHelper:
+                'Formda bulunmayan alanları ekleyebilirsiniz. Mevcut ayarları formdan değiştirin. Compose düzenlemeleri formu veya hesap eşitleme ayarlarını güncellemez.',
+            envPreviewHelper: 'Ortam değişkenleri formdan oluşturulur. Değişiklik yapmak için forma dönün.',
+            generateCompose: 'Oluştur ve önizle',
+            saveDeploy: 'Kaydet ve dağıt',
+            composeRegenerateHelper:
+                'Form değiştirildi. Compose yeniden oluşturulursa elle yapılan düzenlemeler silinir. Devam edilsin mi?',
+            deploymentNameHelper:
+                'Uygulama örneğinin adı, kurulum dizininde kullanılır ve oluşturulduktan sonra değiştirilemez. Görünen adı değiştirmek için takma ad belirleyin.',
+            deploymentAliasHelper:
+                'Listede gösterilecek isteğe bağlı takma ad. Boş bırakılırsa örnek adı kullanılır. Takma adı değiştirmek hizmeti yeniden başlatmaz.',
+            deploymentContainerNameHelper:
+                'Docker konteyner adı. Varsayılan olarak uygulama adı kullanılır ve ayrı ayarlanabilir. Değiştirilirse konteyner yeniden oluşturulur.',
+            imageVersion: 'İmaj sürümü',
+            deployments: 'Model dağıtımı',
+            files: 'Model hazırlığı',
             connectExternal: 'Harici hizmete bağlan',
-            deploymentTemplates: 'vLLM başlatma komutu şablonları',
+            recipes: 'vLLM Recipes',
+            recipeConfig: 'Recipe yapılandırması',
+            selectRecipe: 'Recipe seç',
+            createRecipe: 'Recipe oluştur',
+            recipeSynced: 'Eşitlenmiş',
+            recipeCustom: 'Özel',
+            recipeHelper:
+                'Farklı donanımlar için model dağıtım tariflerini yönetin, hızlı dağıtım için başlatma argümanlarını yeniden kullanın veya {link} üzerinden komutları içe aktarın.',
+            recipeFormHelper:
+                '{link} adresine gidin, önce model sağlayıcısını, ardından hedef modeli seçin. Son başlatma komutunu oluşturmak için donanımı, kuantizasyon sürümünü, dağıtım stratejisini ve diğer seçenekleri yapılandırın.',
+            recipeArguments: 'Başlatma parametreleri',
+            recipeImportCommand: 'Komut içe aktar',
+            recipeImportPlaceholder:
+                'pip/uv veya docker biçimindeki başlatma komutunu buraya yapıştırın. 1Panel komutu otomatik olarak ayrıştırıp form alanlarını doldurur.',
+            recipeVariablesNotSupported:
+                'Komutlarda değişken başvuruları desteklenmez. Açık değerler girin; ortam değişkenlerini ilgili alanda yapılandırın.',
+            recipeImportError:
+                'Geçerli bir başlatma komutu algılanmadı. Model içeren bir pip/uv veya docker komutu yapıştırın.',
             engineProvider: 'Motor / Sağlayıcı',
             endpoint: 'Uç nokta',
+            localService: 'Yerel',
+            cloudService: 'Bulut',
             cloudAccount: 'Bulut hesabı',
             connectionStatus: 'Bağlantı durumu',
+            verify: 'Doğrula',
+            verifying: 'Doğrulanıyor',
+            verifyFailed: 'Doğrulama başarısız',
+            verificationInfo: 'Doğrulama bilgileri',
+            verifiedAt: 'Doğrulama zamanı',
+            verifyModelChangeHelper:
+                'Doğrulama modeli değiştirildiğinde hizmet, model çağrılmadan doğrulanmamış olarak işaretlenir.',
+            reverify: 'Yeniden doğrula',
+            verifyConfirm: 'Model aşağıdaki ayarlarla doğrulanacak. Devam edilsin mi?',
+            apiKeyHelper: 'Hizmet API Key gerektirmiyorsa unused gibi boş olmayan herhangi bir yer tutucu değer girin.',
+            verifyOnChangeHelper:
+                'Etkinleştirildiğinde veya bağlantı ayarları ya da doğrulama modeli değiştiğinde API kısa bir mesajla doğrulanır.',
+            verifyImageOnChangeHelper:
+                'Etkinleştirildiğinde veya bağlantı ayarları ya da doğrulama modeli değiştiğinde API küçük bir görsel üretilerek doğrulanır; ücret oluşabilir.',
             unverified: 'Doğrulanmadı',
             manage: 'Yönet',
             loadFailed: 'Yüklenemedi. Yenileyip tekrar deneyin.',
             model: 'Model',
             localModel: 'Yerel Modeller',
             create_helper: '"{0}" çek',
-            ollama_doc: 'Daha fazla model aramak ve bulmak için Ollama resmi web sitesini ziyaret edebilirsiniz.',
+            ollama_doc:
+                'Modelleri {link} adresinde bulun. Model eklendikten sonra otomatik olarak indirilir. Ollama hizmetinin çalıştığından ve yeterli disk alanı olduğundan emin olun.',
             container_conn_helper: 'Konteynerler arası erişim veya bağlantı için bu adresi kullanın',
             from_remote: 'Bu model 1Panel aracılığıyla indirilmedi, ilgili çekme logları yok.',
             no_logs: 'Bu modelin çekme logları silindi ve görüntülenemiyor.',
-            vllmVersionHelper: 'FusionXpark GB10 sunucuları için lütfen -cu130 sürümünü seçin.',
+            vllmVersionHelper: {
+                ascend: 'Ascend A2 serisi cihazlar için resmi Ascend standart sürümü.',
+                ascendA3: 'Ascend A3 serisi cihazlar için resmi Ascend A3 sürümü.',
+                ascendA5: '950DT cihazları için resmi Ascend A5 sürümü.',
+                ascend310P: 'Atlas 300I DUO ve Atlas 200I Pro cihazları için resmi Ascend 310P sürümü.',
+                default:
+                    'Yeni sürücüler ve yeni GPU mimarileri için CUDA 13.0 içeren resmî vLLM topluluk standart sürümü.',
+                rtxPro5000:
+                    'NVIDIA RTX Pro 5000 için DeepSeek-V4.1-Flash-1017’ye optimize edilmiş özel sürüm. İmajın bakımı 1Panel tarafından yapılır.',
+                dspark: 'İki NVIDIA GB10 cihazı için DeepSeek-V4-Flash’a optimize edilmiş özel sürüm. İmajın bakımı 1Panel tarafından yapılır.',
+            },
             vllmDeployProfile: 'Dağıtım modeli',
             vllmProfileFlash0731: 'DeepSeek V4 Flash 0731',
             vllmProfileVisionExp: 'DeepSeek V4 Flash Vision Exp',
-            vllmCommandPortHelper:
-                'Başlatma komutu {0} numaralı bağlantı noktasını kullanmalıdır; aksi halde hizmete erişilemez.',
-            ascendVisibleDevices: 'Görünür Ascend cihazları (ASCEND_RT_VISIBLE_DEVICES)',
-            syncModelAccount: 'Model hesabına senkronize et',
+            syncModelAccount: 'Model hizmetine senkronize et',
             modelAccountAddressHelper:
                 'Konteyner adresi ajan konteynerleri içindir; 127.0.0.1, sistem IP veya özel adres AI Gateway ya da harici servisler içindir.',
             containerAddress: 'Konteyner adresi',
             customAddress: 'Özel adres',
-            downloader: 'İndirme yönetimi',
+            downloader: 'Model indirme',
+            modelDirectoryHelper:
+                'Model listesi varsayılan olarak Model Hazırlığı > Ayarlar bölümünde yapılandırılan dizine indirilen modelleri gösterir.',
+            modelDirectoryPlaceholder: 'Model arayın veya tam yol girin',
+            selectModel: 'Model seç',
+            selectModelDirectory: 'Dizin seç',
             modelDir: 'Model dizini',
             modelSource: 'Model kaynağı',
             repoID: 'Depo ID',
@@ -1121,7 +1370,7 @@ const message = {
             acceleratedEndpointLabel: '{0} hızlandırma endpointi',
             tokenLabel: '{0} Token',
             hfEndpointHelper:
-                'HuggingFace erişimi kararsız olduğunda bir hızlandırma endpointi yapılandırın. Arama, ayrıntılar ve indirmeler bunu kullanır.',
+                'HuggingFace model aramaları, ayrıntıları ve indirmeleri için isteğe bağlı ayna URL adresi.',
             sortDefault: 'Varsayılan sıralama',
             sortMostParameters: 'En çok parametre',
             sortLeastParameters: 'En az parametre',
@@ -1164,9 +1413,9 @@ const message = {
             notInstalled: 'Kurulu değil',
             usage: 'Kullanım',
             accountPool: 'Hesap Havuzu',
-            importModelAccount: 'Model hesabını içe aktar',
-            editModelAccount: 'Model hesabını düzenle',
-            selectModelAccount: 'Mevcut bir model hesabı seçin',
+            importModelAccount: 'Model hizmetinı içe aktar',
+            editModelAccount: 'Model hizmetinı düzenle',
+            selectModelAccount: 'Mevcut bir model hizmeti seçin',
             upstreamApiAddress: 'Yukarı Akış API Adresi',
             priority: 'Öncelik',
             healthStatus: 'Sağlık durumu',
@@ -1222,8 +1471,8 @@ const message = {
             waitingQueue: 'Mevcut bekleme kuyruğu',
             currentActiveUsers: 'Şu anda aktif kullanıcılar',
             activeStreamingRequests: 'Aktif akış istekleri',
-            modelAccountConcurrency: 'Model hesabı eşzamanlılığı',
-            accountAvailability: 'Model hesabı kullanılabilirliği',
+            modelAccountConcurrency: 'Model hizmeti eşzamanlılığı',
+            accountAvailability: 'Model hizmeti kullanılabilirliği',
             capacityFull: 'Kapasite dolu',
             groupConcurrency: 'Kullanıcı grubu eşzamanlılığı',
             apiKeyConcurrency: 'API Key eşzamanlılığı',
@@ -1277,7 +1526,7 @@ const message = {
             esLogCircuitUntil: 'ES devresi şu zamana kadar',
             serviceOperateConfirm: 'AI Ağ Geçidi servisini {0} onaylıyor musunuz?',
             deleteTargetConfirm: '{0} {1} silinsin mi?',
-            deleteBackendTitle: 'Model hesabını sil',
+            deleteBackendTitle: 'Model hizmetinı sil',
             userFallback: 'Silinen kullanıcı (ID: {0})',
             requestModel: 'İstek modeli',
             upstreamModel: 'Upstream model',
@@ -1290,7 +1539,7 @@ const message = {
             usageTrend: 'Kullanım eğilimi',
             distributionBy: '{0} dağılımı',
             unmatched: 'Eşleşmedi',
-            modelAccount: 'Model hesabı',
+            modelAccount: 'Model hizmeti',
             serviceProvider: 'Sağlayıcı',
             tokenUsage: 'Token kullanımı',
             percent: 'Yüzde',
@@ -1560,6 +1809,8 @@ const message = {
         },
         benchmark: {
             title: 'Benchmark',
+            description:
+                'Model hizmetlerini farklı istek uzunlukları ve eşzamanlılık ayarlarıyla test ederek aktarım hızı, ilk token süresi ve istek gecikmesi gibi metrikleri ölçün.',
             launchCommand: 'Başlatma Komutu',
             retest: 'Yeniden test et',
             statusRunning: 'Çalışıyor',
@@ -1598,6 +1849,43 @@ const message = {
             extraHeaders: 'Ek Başlıklar',
         },
         vllmMonitor: {
+            peakSummaryHelp:
+                'Büyük sayılar seçilen yüksek eşzamanlılık döneminin ortalamalarıdır. Alttaki değerler, Sonra seçeneğiyle belirlenen sonraki {0} dakikanın ortalamalarıdır. Karşılaştırma içindir, normal değerleri göstermez.',
+            chartHelp: {
+                running:
+                    'Kuyruktakiler hariç işlenen istek sayısıdır. Yüksek değer daha fazla eşzamanlı iş demektir; mutlaka daha iyi performans anlamına gelmez.',
+                generationThroughput:
+                    'Hizmetin saniyede ürettiği toplam çıktı token sayısıdır. Yüksek değer toplam verimin arttığını gösterir, her isteğin daha hızlı olduğunu değil.',
+                timeToFirstToken:
+                    'İsteğin gelişinden ilk token üretilene kadar ortalama bekleme süresidir. Düşük değer yanıtın daha erken başlaması demektir.',
+                timePerOutputToken:
+                    'İlk tokendan sonraki tokenların ortalama üretim süresidir. Düşük değer sonraki içeriğin daha hızlı üretilmesi demektir.',
+                averagePromptTokens:
+                    'İstek başına ortalama girdi token sayısıdır. Yüksek değer daha uzun girdi demektir; tek başına iyi veya kötü değildir.',
+                averageGenerationTokens:
+                    'İstek başına ortalama çıktı token sayısıdır. Yüksek değer daha uzun yanıt demektir, daha hızlı üretim değil.',
+            },
+            averagePromptTokens: 'İstek başına ortalama girdi token sayısı',
+            itl: 'Ortalama ITL',
+            peakITLHelper:
+                'Girdi/çıktı uzunlukları istek sayısıyla, ITL çıktı aralığı örnek sayısıyla ağırlıklandırılır; mevcut izleme verileri kullanılır.',
+            peakMaxConcurrency: 'En yüksek çalışan istek sayısı',
+            peakAnalysis: 'Tepe analizi',
+            peakAuto: 'En yüksek eşzamanlılığı bul',
+            peakAtLeast: 'Çalışan istekler ≥',
+            peakEqual: 'Çalışan istekler =',
+            peakPeriods: 'Yüksek eşzamanlılık dönemleri',
+            peakPeriodsHelper: '{1} dönemden son {0} dönem gösteriliyor',
+            peakBefore: 'Önce',
+            peakAfter: 'Sonra',
+            peakDuring: 'Yüksek eşzamanlılık sırasında',
+            peakAfterWindow: 'Sonraki gözlem aralığı',
+            peakNearby: 'Tepe çevresindeki performans',
+            peakDuration: 'Örnekler arası süre',
+            peakSingleSample: 'Tek örnek',
+            peakSingleSampleHelp: 'Yalnızca bir örnek koşulları karşılıyor. Gerçek süre belirlenemiyor.',
+            peakHelper:
+                'Dönemler ham örneklerden belirlenir; tek örneğin süresi 0 saniyedir. TPS zamanla, TTFT istek sayısıyla ağırlıklandırılır. İstatistikler örnek zamanına aittir ve dönem sınırlarını aşabilir. Eğriler aynı isteklerin performansını değil, zamansal ilişkiyi gösterir.',
             concurrency: 'Mevcut eşzamanlı istekler',
             sampleMoment: 'Örnekleme anında',
             sampleWindow: 'Örnekleme aralığı',
@@ -1638,10 +1926,14 @@ const message = {
             timeToFirstToken: 'Ortalama ilk token gecikmesi',
             timePerOutputToken: 'Ortalama token arası gecikme',
             requestLatency: 'Ortalama istek gecikmesi',
+            noMetrics:
+                'Metrik uç noktasına erişilebiliyor, ancak henüz desteklenen vLLM metrikleri yok. Bazı metrikler yalnızca ilk çıkarım isteğinden sonra görünebilir.',
             unavailable:
                 'Metrikler kullanılamıyor. Örneğin çalıştığını ve /metrics yolunun erişilebilir olduğunu kontrol edin.',
             loadFailed: 'İzleme verileri yüklenemedi. Tekrar deneyin.',
-            helper: 'Toplama, aralık ve saklama süresini izleme ayarlarından yönetin.',
+            settings: 'İzleme ayarları',
+            historyCollection: 'İzleme geçmişini topla',
+            helper: 'Yalnızca bu örneğe uygulanır. Devre dışı bırakıldığında zamanlanmış toplama ve süresi dolan geçmişin temizlenmesi durur. Canlı izleme ve geçmiş sorguları kullanılabilir olmaya devam eder.',
             cache: 'KV önbelleği',
             throughput: 'İstek hızı',
             phaseTime: 'Ön doldurma ve çözümleme süresi',
@@ -1652,6 +1944,76 @@ const message = {
             timePerOutputTokenChart: 'Token arası gecikme',
         },
         gpu: {
+            environment: {
+                hostGPU: 'Ana makine GPU’su',
+                containerGPU: 'Konteyner GPU desteği',
+                monitorAvailable: 'İzleme kullanılabilir',
+                monitorPartial: 'Kısmi izleme',
+                notReady: 'Hazır değil',
+                ready: 'Hazır',
+                checkedAt: 'Kontrol zamanı',
+                checkDetailsHelp: 'Kontrol ayrıntılarını inceleyin, ortam durumunu doğrulayın ve yeniden kontrol edin.',
+                driverActionTitle: 'Önce ana makine GPU sürücüsünü kontrol edin',
+                driverActionHelp:
+                    'Konteyner ortamını kontrol etmeye devam etmeden önce sorunlu aygıtın sürücüsünü kurun veya onarın.',
+                driverGuide: 'Sürücü kurulum kılavuzunu görüntüle',
+                toolkitActionTitle: 'Konteyner GPU desteği hazır değil',
+                toolkitActionHelp:
+                    'Önce NVIDIA Container Toolkit’i kurun veya onarın, ardından Docker yapılandırmasını kontrol edin.',
+                toolkitGuide: 'Toolkit kurulum kılavuzunu görüntüle',
+                dockerActionTitle: 'Docker NVIDIA GPU desteği hazır değil',
+                dockerActionHelp:
+                    'Docker içindeki NVIDIA çalışma zamanı yapılandırmasını kontrol edip yeniden deneyin.',
+                monitorUnaffected: 'Bu sorun ana makine GPU izlemesini etkilemez.',
+                title: 'Ortam denetimleri',
+                passedLabel: 'Kontrol başarılı',
+                issuesLabel: 'Ortam sorunları · {count}',
+                loadFailedLabel: 'Kontrol başarısız',
+                notDetectedLabel: 'Cihaz algılanmadı',
+                unknownLabel: 'Durum bilinmiyor',
+                passed: 'Ortam denetimleri başarılı',
+                issues: '{count} ortam sorunu algılandı. Denetlemek için yönergeleri izleyin.',
+                recheck: 'Yeniden denetle',
+                installGuide: 'Kurulum kılavuzunu görüntüle',
+                goContainerSettings: 'Kapsayıcı ayarlarını aç',
+                details: 'Denetim ayrıntıları',
+                vendor: 'Üretici',
+                gpuCount: 'GPU sayısı',
+                cardCount: 'Kart sayısı',
+                notDetected: 'Geçerli düğümde desteklenen GPU/NPU/XPU aygıtı algılanmadı.',
+                unknown: 'Aygıt durumu doğrulanamadı. Denetim ayrıntılarını inceleyip yeniden deneyin.',
+                loadFailed: 'Aygıt bilgileri okunamadı. Lütfen yeniden deneyin.',
+                notApplicable: 'Uygulanamaz',
+                cudaHelper:
+                    'Bu, sürücünün desteklediği CUDA sürümüdür; ana makinede kurulu CUDA Toolkit sürümü değildir.',
+                partialMemory: 'Bazı bellek verileri alınamadı',
+                sharedMemory: 'Paylaşılan sistem belleği: {memory}',
+                driver: 'Sürücü ve aygıt yönetim araçları',
+                nvidiaDriver: 'NVIDIA sürücüsü',
+                toolkit: 'NVIDIA Container Toolkit',
+                docker: 'Docker NVIDIA GPU yapılandırması',
+                statusPassed: 'Normal',
+                statusMissing: 'Algılanmadı',
+                statusUnconfigured: 'Yapılandırma gerekli',
+                statusFailed: 'Denetim başarısız',
+                statusUnknown: 'Bilinmiyor',
+                driverMissing:
+                    '{vendor} sürücüsü algılanmadı. Sürücüyü kurun veya denetleyin (algılama aracı: {tool}).',
+                driverFailed: 'Aygıt bilgileri {tool} ile okunamadı. Sürücü durumunu denetleyin.',
+                driverUnknown: 'Aygıt sürücüsünün durumu doğrulanamadı. {tool} aracını denetleyin.',
+                toolkitMissing:
+                    'NVIDIA Container Toolkit algılanmadı. Kapsayıcılarda NVIDIA GPU kullanmadan önce kurulum ve yapılandırmayı tamamlayın.',
+                toolkitFailed: 'NVIDIA Container Toolkit denetlenemedi. Hata ayrıntılarını inceleyin.',
+                dockerConfigMissing:
+                    'Varsayılan Docker yapılandırma dosyasında runtimes.nvidia girdisi algılanmadı. Yapılandırmayı belgelere göre tamamlayın.',
+                dockerConfigInvalid:
+                    'Docker NVIDIA çalışma zamanı yapılandırması geçersiz. daemon.json dosyasındaki runtimes.nvidia.path değerini denetleyin.',
+                dockerConfigPending:
+                    'Varsayılan yapılandırma dosyasında NVIDIA çalışma zamanı yapılandırması var, ancak mevcut Docker hizmeti bunu henüz yüklemedi. Yapılandırma dosyasını doğrulayın, Docker hizmetini yeniden başlatıp tekrar denetleyin.',
+                dockerConfigUnreadable: 'Docker yapılandırma dosyası okunamadı. Denetim ayrıntılarını inceleyin.',
+                dockerUnconfigured: 'Docker NVIDIA GPU yapılandırması tamamlanmadı.',
+                dockerFailed: 'Docker NVIDIA GPU yapılandırması denetlenemedi. Hata ayrıntılarını inceleyin.',
+            },
             systemMemory: 'Paylaşılan sistem belleği',
             systemMemoryUsed: 'Kullanılan sistem belleği',
             systemMemoryTotal: 'Toplam sistem belleği',
@@ -1709,7 +2071,10 @@ const message = {
             legacyHistory: 'Bu kayıtların sabit cihaz kimliği yoktur. Cihaz kimliği ve eksik değerler doğrulanamaz.',
             pcieGeneration: 'PCIe nesli (geçerli / en yüksek)',
             pcieWidth: 'PCIe genişliği (geçerli / en yüksek)',
-            gpu: 'GPU İzleme',
+            gpu: 'GPU Yönetimi',
+            monitoringTitle: 'GPU İzleme',
+            currentHelper:
+                'Geçerli düğümdeki GPU/NPU/XPU aygıtlarının anlık durumunu ve kaynak kullanımını görüntüleyin. Üstteki özet tüm aygıtları kapsar; ayrıntılı ölçümler aygıt bazında gösterilir.',
             gpuHelper: 'Desteklenen bir GPU/XPU/NPU yönetim komutu algılanmadı. Lütfen kontrol edip tekrar deneyin!',
             process: 'İşlem Bilgisi',
             type: 'Tür',
@@ -1766,6 +2131,7 @@ const message = {
             migModeNA: 'Desteklenmiyor',
             current: 'Gerçek Zamanlı Durum',
             history: 'İzleme Verileri',
+            viewHistory: 'İzleme verilerini görüntüle',
             notSupport: 'Mevcut sürüm veya sürücü bu parametrenin görüntülenmesini desteklemiyor.',
             processCount: 'Süreç sayısı',
         },
@@ -1796,18 +2162,10 @@ const message = {
             connectionSuccess: 'Bağlantı başarılı',
             connectionFailed: 'Bağlantı başarısız',
         },
-        tensorRT: {
-            llm: 'TensorRT LLM',
-            modelDir: 'Model Dizini',
-            commandHelper:
-                'Harici erişim gerekiyorsa, komuttaki bağlantı noktasını uygulama bağlantı noktasıyla aynı olacak şekilde ayarlayın',
-            imageAlert:
-                'Görüntü boyutu büyük olduğundan, kurulumdan önce görüntüyü sunucuya manuel olarak indirmeniz önerilir',
-            modelSpeedup: 'Model hızlandırmayı etkinleştir',
-            modelType: 'Model türü',
-        },
     },
     panelMCP: {
+        accessTitle: '1Panel MCP Erişimi',
+        servicesTitle: 'MCP Hizmetleri',
         websiteCancelPendingBind: 'Bağlamayı iptal et',
         websiteBinding: 'Web sitesi bağlama',
         websiteBind: 'Web sitesi bağla',
@@ -1818,30 +2176,27 @@ const message = {
         websiteUnavailable: 'Bağlantı kullanılamıyor',
         websiteDomainInvalid: 'Geçerli bir alan adı girin; isteğe bağlı olarak bağlantı noktası ekleyebilirsiniz.',
         websiteCertificateRequired: 'Bu alan adını kapsayan geçerli bir sertifika seçin.',
-        websiteCertificateEmpty:
-            'Eşleşen sertifika yok. Sertifika yönetiminden bir sertifika isteyin veya içe aktarın.',
-        websiteUnbind: 'Web sitesi bağlantısını kaldır',
+        websiteCertificatesLoadFailed: 'Sertifika listesi yüklenemedi. Yenileyip tekrar deneyin.',
+        websiteCertificateEmpty: 'Uygun sertifika yok. Başvurun veya içe aktarın.',
+        websiteUnbind: 'Bağlantıyı kaldır ve siteyi sil',
         websiteUnbindConfirm:
-            'MCP ters proxy ve bağlantı kaldırılacak; web sitesi ve sertifika korunacak. Devam edilsin mi?',
-        websiteUncertain:
-            'İşlem sonucu doğrulanmadı. Durumu yenileyin; bekleyen işlem özgün istekle yeniden denenebilir.',
+            'Bağlantı, site ve dizini silinsin mi? Sertifika korunur. Yeniden bağlama yeni site oluşturur.',
+        websiteUncertain: 'Sonuç doğrulanmadı. Durumu yenileyip özgün isteği yeniden deneyin.',
         websiteRetry: 'Bekleyen işlemi yeniden dene',
         websiteSettings: 'Web sitesi ayarları',
         websiteCertificateUpdate: 'Sertifikayı değiştir',
-        websiteStatusLoadFailed: 'Web sitesi bağlantı durumu okunamadı. Yenileyip tekrar deneyin.',
-        websiteOperationFailed: 'Web sitesi bağlama işlemi başarısız oldu. Durumu ve yapılandırmayı kontrol edin.',
-        websiteConflict: 'Bağlantı yapılandırması değişti. Durumu yenileyip inceleyin.',
+        websiteStatusLoadFailed: 'Bağlantı durumu okunamadı. Yenileyin.',
+        websiteOperationFailed: 'Site işlemi başarısız. Durum ve ayarları kontrol edin.',
+        websiteConflict: 'Bağlantı ayarları değişti. Yenileyip kontrol edin.',
         websiteBoundAddressHelp: 'Bağlantı adresi bağlı web sitesinden oluşturulur. Web sitesi ayarlarından yönetin.',
         hideToken: 'Token değerini gizle',
         copyTokenFailed: 'Token kopyalanamadı. Lütfen tekrar deneyin.',
         exportFailed: 'Bağlantı kılavuzu dışa aktarılamadı. Lütfen tekrar deneyin.',
         rotateTokenFailed: 'Token yeniden oluşturulamadı. Lütfen tekrar deneyin.',
-        rotateTokenUncertain:
-            'Yeniden oluşturma sonucu doğrulanamadı. Devam etmeden önce kimlik bilgisini yenileyin ve geçerli Token değerini görüntüleyin.',
+        rotateTokenUncertain: 'Token değişikliği doğrulanmadı. Yenileyip mevcut Token değerini görüntüleyin.',
         allowedIPs: 'İzin verilen IP / CIDR adresleri',
         allowedIPsPlaceholder: 'Her satıra bir IP adresi veya CIDR; en fazla 64 kayıt',
-        allowedIPsInvalid:
-            'Her biri en fazla 64 karakter olan, en fazla 64 geçerli IP adresi veya CIDR girin. Kaynaklar kısıtlandığında hizmet listesi boş bırakılamaz.',
+        allowedIPsInvalid: 'En çok 64 geçerli IP/CIDR, her biri en çok 64 karakter. Kısıtlı liste boş bırakılamaz.',
         accessPolicy: 'MCP kaynak politikası',
         accessInherit: 'Panel erişim politikasını devral',
         accessRestricted: 'Yalnızca listedeki IP / CIDR adreslerine izin ver',
@@ -1860,10 +2215,10 @@ const message = {
         alreadyCreated: 'Kimlik bilgisi oluşturuldu. Token değerini bağlantı ayrıntılarında görüntüleyin.',
         nodes: 'Allowed nodes',
         primaryNode: 'Primary node',
-        targetNode: 'Target node ID',
+        targetNode: 'Hedef düğüm',
+        nodeNameUnavailable: 'Düğüm adı kullanılamıyor',
         selectNodes: 'Select at least one node.',
-        nodeGrantHelp:
-            'Erişim, düğüm ve araç yetkileri ile hesap izinleriyle sınırlıdır. Yeni düğümler ayrıca yetkilendirilmelidir.',
+        nodeGrantHelp: 'Düğüm, araç ve hesap izinleri geçerlidir. Yeni düğümler ayrı yetki ister.',
         nodeUnavailable: 'Düğüm {0} kullanılamıyor. Kaydetmeden önce kaldırın.',
         allCategories: 'Tüm kategoriler',
         toolCategory: 'Araç kategorisi',
@@ -1881,7 +2236,7 @@ const message = {
         clearVisible: 'Eşleşen {0} aracın iznini kaldır',
         readOnlyVisible: 'Eşleşen {0} araç için yalnızca okuma iznini koru',
         bulkHelp:
-            'Toplu işlemler, "Yalnızca seçilenler" seçeneğinden bağımsız olarak gizli öğeler dahil tüm kategorilerdeki eşleşen araçları etkiler. Yeni araçlar ayrıca yetkilendirilmelidir.',
+            'Toplu işlemler, “Yalnızca seçilenler” filtresinden bağımsız tüm kategorilerdeki gizli eşleşmeleri kapsar. Yeni araçlar ayrı yetki ister.',
         groupSelected: '{0} / {1} granted',
         endpointUnavailable: 'Connection URL unavailable. Refresh or contact an administrator.',
         internalEndpoint: 'Internal listening address',
@@ -1905,9 +2260,9 @@ const message = {
         readOnly: 'Read only',
         write: 'Write',
         writeHelp: 'Write tools modify server resources. Grant access as required.',
-        catalogUnavailable: 'Tool catalog unavailable. Check service status and refresh.',
+        catalogUnavailable: 'Araç listesi kullanılamıyor. Hizmeti kontrol edip yenileyin.',
         catalogEmpty: 'No tools available for authorization.',
-        catalogChanged: 'Araç listesi güncellendi. Devam etmek için düzenleyiciyi yeniden açın.',
+        catalogChanged: 'Araç listesi güncellendi. Düzenleyiciyi yeniden açın.',
         grantsNeedReview: 'Bazı araç yetkilerinin yeniden onaylanması gerekir.',
         acceptToolPolicy: 'I have reviewed and confirmed the current tool authorization.',
         removeGrant: 'Remove grant',
@@ -1916,13 +2271,12 @@ const message = {
         clientConfig: 'Client configuration',
         connectionHelp: 'Yapılandırmadaki <MCP_TOKEN> değerini kimlik bilgisinin Token değeriyle değiştirin.',
         uncertain:
-            'Creation has not been confirmed. Retry in this window or check the credential list before creating another.',
-        revokeConfirm: 'Revoke credential “{0}”? This cannot be undone. New calls will be rejected.',
-        deleteConfirm:
-            '“{0}” kimlik bilgisi silinsin mi? Hemen geçersiz olacaktır. Geçmiş çağrı kayıtları korunacaktır.',
+            'Oluşturma doğrulanmadı. Bu pencerede yeniden deneyin veya tekrar oluşturmadan önce listeyi kontrol edin.',
+        revokeConfirm: '“{0}” iptal edilsin mi? Geri alınamaz; yeni çağrılar reddedilir.',
+        deleteConfirm: '“{0}” silinsin mi? Erişim hemen sonlanır; çağrı geçmişi korunur.',
         disableConfirm: 'Disable credential “{0}”? New calls will be rejected.',
         enableConfirm: 'Enable credential “{0}” with the current authorization?',
-        conflict: 'The data has changed. Reload the latest values before submitting.',
+        conflict: 'Veriler değişti. Göndermeden önce yeniden yükleyin.',
         invocations: 'Call records',
         requestId: 'Request ID',
         duration: 'Duration (ms)',
@@ -1935,7 +2289,7 @@ const message = {
         serviceStatus: 'Service status',
         statusUnknown: 'Unknown',
         serviceUnsupported: 'This environment does not support 1Panel MCP deployment.',
-        serviceUnhealthy: 'Service health checks failed. Check logs and version compatibility.',
+        serviceUnhealthy: 'Hizmet kontrolü başarısız. Günlükleri ve sürüm uyumluluğunu kontrol edin.',
         statusUnsupported: 'Unsupported environment',
         statusNotInstalled: 'Not installed',
         statusStopped: 'Stopped',
@@ -1945,14 +2299,18 @@ const message = {
         ready: 'Service ready',
         installTitle: 'Install 1Panel MCP',
         installEnable: 'Install and enable',
+        deleteOldImage: 'Eski imajı sil',
+        deleteOldImageHelp:
+            'Başarılı yükseltmeden sonra kullanılmayan eski imajı siler. Temizleme hataları yükseltmeyi etkilemez; görev günlüklerini inceleyin.',
         installEmpty:
-            '1Panel MCP hizmeti henüz yüklü değil. Erişim kimlik bilgileri oluşturmak ve MCP araçlarını çağırmak için hizmeti yükleyip etkinleştirin.',
+            '1Panel MCP hizmeti henüz kurulu değil. Erişim kimlik bilgileri oluşturmak ve MCP araçlarını çağırmak için hizmeti kurup etkinleştirin.',
+        installWithCredentials: 'MCP kurulu değil. Kimlik bilgileri korunur; çağrılar kullanılamaz.',
         installTaskLog: 'Kurulum günlüğü',
         installNow: 'Şimdi yükle',
         upgradeTitle: 'Upgrade service',
         serviceConfiguration: 'Service configuration',
         imageUpgrade: 'Image upgrade',
-        reloadInstallConfirm: 'Yeniden yükleme, kaydedilmemiş yapılandırmayı değiştirir. Devam edilsin mi?',
+        reloadInstallConfirm: 'Yeniden yüklenip kaydedilmemiş ayarlar değiştirilsin mi?',
         serviceOperateConfirm: 'Confirm {0} for the 1Panel MCP service?',
         serviceAdminOnly: 'Only super administrators can manage the MCP service.',
         dockerImage: 'Docker image',
@@ -1960,15 +2318,18 @@ const message = {
         boundWebsiteHelp: 'Manage the bound website from the website list. Delete it to disable the proxy.',
         containerName: 'Container name',
         imageId: 'Image ID',
-        externalUrlHelp: 'Panel adresini kullanmak için boş bırakın. Yol /mcp olmalıdır.',
-        invalidUrl:
-            'Kimlik bilgileri, sorgu parametreleri veya parça içermeyen, /mcp yoluna sahip bir HTTP/HTTPS adresi girin.',
+        externalUrlHelp:
+            'Panel adresini kullanmak için boş bırakın. Kendi ters proxy sunucunuz için tam erişim adresini girin.',
+        invalidUrl: 'Kimlik bilgisi, sorgu parametresi veya parça içermeyen geçerli bir HTTP(S) adresi girin.',
         listenPort: 'Local listening port',
         listenPortInvalid: 'Enter an integer port from 1024 to 65535.',
         logEmpty: 'No service logs',
         statusUnavailable: 'Service status unavailable. Refresh to retry.',
     },
     benchmarkPlan: {
+        logAutoRefresh: 'Otomatik yenileme',
+        logWindowHelp:
+            'Yalnızca son günlük kayıtları gösterilir. Tam içeriği görmek için seçili günlük dosyasını indirin.',
         prefixTokens: 'Önek token sayısı',
         seed: 'Rastgelelik tohumu',
         report: 'Rapor',
@@ -2045,6 +2406,9 @@ const message = {
             'Uzun girdiler ve ortak önekler dahil, farklı senaryolar ve eşzamanlılık düzeylerinde tekrarlı ölçümler.',
         customDescription: 'Bir senaryoyla başlayın, parametrelerini ayarlayın ve gerektiğinde yenilerini ekleyin.',
         scenarios: 'Senaryolar',
+        scenarioCount: 'Senaryolar (toplam {count})',
+        scenarioHelp:
+            'Her senaryo giriş/çıkış token sayılarını, eşzamanlılık düzeylerini ve istek parametrelerini tanımlar. Eşzamanlılık düzeyleri sırayla test edilir; her düzey ayarlanan tekrar sayısı kadar çalıştırılır ve her çalıştırma bir ölçüm noktası oluşturur.',
         builtIn: 'Yerleşik',
         builtInHelp: 'Yerleşik planlar düzenlenemez veya silinemez. Test oluştururken bir kopyayı ayarlayın.',
         modified: 'Değiştirildi',
@@ -2083,6 +2447,50 @@ const message = {
         secretHelp: 'Kopyalar API anahtarlarını ve başlıkları içermez. Gerekiyorsa yeniden girin.',
         resultHelp:
             'Medyan ve en düşük/en yüksek değerler yalnızca istek anomalisi olmayan başarılı çalışmaları içerir. P99, çalışma başına P99 değerlerinin medyanıdır. Önbellek ve dış trafik kontrol edilmez.',
+    },
+    benchmarkSettings: {
+        imagePullHelp:
+            '{image} imajı büyük olduğundan indirme işlemi ağ hızınıza bağlı olarak uzun sürebilir. İndirmeyi hızlandırmak için bir kayıt defteri aynası yapılandırabilirsiniz. Görev penceresini kapatabilirsiniz; indirme arka planda devam eder. İlerlemeyi görev merkezinden takip edebilirsiniz.',
+        settingsHelp:
+            'Önce Benchmark imajını ve bir test planını hazırlayın. Her ikisi de hazır olduğunda bir kıyaslama testi oluşturabilirsiniz.',
+        imageAvailable: 'Benchmark imajı hazır ({image})',
+        imageUnavailable: 'Benchmark imajı bulunamadı ({image})',
+        retestServiceHelp:
+            'Yeniden testler görev parametrelerini korur. Geçerli model hizmetini doğrulayın; kimlik bilgileri seçilen hizmetten alınır.',
+        prepareHelp:
+            'Bir kıyaslama oluşturmadan önce {settings} bölümünde Benchmark imajını ve test planlarını hazırlayın.',
+        image: 'Benchmark imajı',
+        ready: 'Hazır',
+        unconfigured: 'Yapılandırılmadı',
+        checkFailed: 'Kontrol başarısız',
+        imageMissing: 'Gerekli imaj bulunamadı. İmaj yönetiminde {image} imajını indirin.',
+        imageReady: 'Benchmark imajı test oluşturmaya hazır.',
+        imageHelp: 'Benchmark imajı yük testi istemcisini çalıştırır ve seçilen model hizmetine istek gönderir.',
+        mainNodeHelp: 'Testler ana düğümde çalışır. İmajı ve tokenizer dosyalarını bu düğümde hazırlayın.',
+        goImages: 'İmaj yönetimine git',
+        goModels: 'Model indirmelerine git',
+        tokenizerHelp: 'Test metnini kodlamak ve token saymak için tokenizer dizininden bir tokenizer seçin.',
+        tokenizerEmpty: 'Kullanılabilir model yok. Model indirmelerinden tokenizer dosyaları içeren bir model indirin.',
+        tokenizerEmptyWithDownload: 'Kullanılabilir tokenizer yok. İndirmek için {download} sayfasını açın.',
+        tokenizerInvalid: 'Bu tokenizer kullanılamıyor. Başka birini seçin veya yeniden indirin.',
+        schemeHelp:
+            'Test planları istek parametrelerini, eşzamanlılığı ve yürütme kurallarını tanımlar. En az bir kullanılabilir plan hazırlayın.',
+        schemeEmpty: 'Kullanılabilir test planı yok. Önce bir plan oluşturun.',
+        manageSchemes: 'Test planlarını yönet',
+        selectService: 'Bir model hizmeti seçin',
+        serviceHelp: 'Model hizmetini seçin; gerekirse istek URL’sini düzenleyin.',
+        noServices: 'Kullanılabilir model hizmeti yok. Önce bir model hizmeti ekleyin.',
+        goModelServices: 'Model hizmetlerine git',
+        serviceUnsupported: 'Henüz desteklenmiyor',
+        unsupportedProtocol:
+            'Bu API protokolü desteklenmiyor: {0}. OpenAI Chat Completions kullanan bir model hizmeti seçin.',
+        unsupportedAuth:
+            'Bu kimlik doğrulama yöntemi desteklenmiyor: {0}. Bearer kimlik doğrulaması kullanan bir hizmet seçin.',
+        serviceModelsMissing: 'Bu hizmette yapılandırılmış model yok. Model hizmeti yönetiminden model ekleyin.',
+        prerequisitesTitle: 'Önce test ayarlarını tamamlayın',
+        prerequisitesMissing: 'Şu ön koşullar hazır değil: {0}. Ayarlardan tamamlayın.',
+        precheckFailed: 'Test ön koşulları kontrol edilemedi. Ayarları açıp tekrar kontrol edin.',
+        goSettings: 'Ayarlara git',
     },
     benchmarkOverview: {
         comparison: 'Senaryo ve eşzamanlılık karşılaştırması',
@@ -2141,6 +2549,16 @@ const message = {
         missing: 'Mevcut değil',
     },
     container: {
+        nvidiaSupport: 'NVIDIA GPU desteği',
+        nvidiaHelper:
+            'NVIDIA konteyner çalışma zamanını kaydeder. Önce NVIDIA Container Toolkit kurun. GPU’ları her konteynere ayrı ayrı atayın.',
+        nvidiaLocalOnly: 'Yalnızca yerel varsayılan Docker soketi desteklenir.',
+        nvidiaChangeHelper:
+            'Devre dışı bırakmak NVIDIA çalışma zamanını kullanan konteynerlerin başlamasını engelleyebilir. Bu anahtar GPU erişimini engellemez.',
+        imageRemoteSearch: 'Uzak arama',
+        imageRemoteSearchHelper: 'Yalnızca Docker Hub deposu imajları aranabilir',
+        imageRemoteSearchProxyRequired:
+            'Geçerli çalışma ortamında uzak imajları aramak için önce bir proxy sunucusu yapılandırın.',
         batchUpgrade: 'Batch upgrade',
         batchUpgradeLog: 'View log',
         batchUpgradeCheck: 'Check task',
@@ -2152,6 +2570,19 @@ const message = {
         batchUpgradeWaiting: 'Queued',
         batchUpgradeRunning: 'Upgrading',
         batchUpgradeSubmitted: 'Upgrade task submitted',
+        imageCheckUpdateProxyRequired:
+            'Geçerli çalışma ortamında imaj güncellemelerini kontrol etmek için önce bir proxy sunucusu yapılandırın.',
+        imageCheckUpdateConfigureProxy: 'Yapılandır',
+        imageCheckUpdateAvailableVersion: 'Yükseltilebilir sürüm “{version}”',
+        imageCheckUpdateContentChanged: '(imaj içeriği değişti)',
+        imageCheckUpdates: 'İmaj güncellemelerini denetle',
+        imageCheckUpdateNow: 'Şimdi denetle',
+        imageCheckUpdateSchedule: 'Zamanlanmış denetim',
+        imageCheckUpdateDisable: 'Zamanlanmış denetimi kapat',
+        imageCheckUpdateStarted: 'Bu düğümdeki tüm konteynerlerin imaj güncellemeleri denetleniyor',
+        imageCheckUpdateResult:
+            'Denetim tamamlandı: denetlenen {checked}, güncellenebilir {updates}, başarısız {failed}, atlanan {skipped}',
+
         createByCommand: 'Komutla oluştur',
         importContainerBackupTip: 'Konteyner yedek dosyasını içe aktar, yalnızca .tar.gz desteklenir',
         importComposeBackupTip: 'Compose yedek dosyasını içe aktar, yalnızca .tar.gz desteklenir',
@@ -2540,6 +2971,7 @@ const message = {
         default_download_path: 'Varsayılan indirme bağlantısı',
         saveLocal: 'Yerel yedeklemeleri sakla (bulut depolama kopyalarının sayısı ile aynı)',
         url: 'URL Adresi',
+        userAgentInvalid: 'User-Agent satır sonu veya NUL karakterleri içeremez',
         urlHelper: 'Lütfen geçerli bir URL adresi girin',
         targetHelper: 'Yedekleme hesapları panel ayarlarında sürdürülür.',
         withImageHelper: 'Uygulama mağazası imajlarını yedekle, ancak bu anlık görüntü dosya boyutunu artıracaktır.',
@@ -2598,6 +3030,8 @@ const message = {
         library: {
             script: 'Script',
             syncNow: 'Hemen Senkronize Et',
+            autoSyncHelper:
+                'Otomatik eşitleme, özel betikleri etkilemeden sistem betiklerini her gün sabahın erken saatlerinde günceller. İstediğiniz zaman elle de eşitleyebilirsiniz.',
             turnOnSync: 'Otomatik Senkronizasyonu Aç',
             turnOnSyncHelper:
                 'Otomatik senkronizasyonu açmak, her gün sabahın erken saatlerinde otomatik senkronizasyon gerçekleştirecektir',
@@ -2785,7 +3219,7 @@ const message = {
         scrollSensitivity: 'Kaydırma Hassasiyeti',
         aiAssistant: 'AI Asistani',
         aiAccountHelper:
-            'Komut üretmek ve doldurmak için seçili model hesabını kullanın. Ollama ve vLLM gibi yerel modeller için özel model hesabı kullanın.',
+            'Komut üretmek ve doldurmak için seçili model hizmetinı kullanın. Ollama ve vLLM gibi yerel modeller için özel model hizmeti kullanın.',
         aiPrefix: 'Tetikleme öneki',
         aiPrefixHelper:
             '"Önek + boşluk" girip Enter tuşuna bastığınızda AI komut üretimi tetiklenir; örneğin: {0} disk bilgisini sorgulamama yardım et.',
@@ -3041,7 +3475,7 @@ const message = {
         aiSearchHint:
             'Dosya içeriğini satır satır arar. Arama satırının sağındaki düğmeleri ve alttaki "Gelişmiş koşullar"ı kullanın. AI hesabı etkinleştirilip kaydedildiğinde Markdown özeti de oluşturulabilir.',
         aiSearchAccountTitle: 'AI hesabı',
-        aiSearchAccountIntro: 'Özet için kullanılacak model hesabını seçin, ardından kaydedin.',
+        aiSearchAccountIntro: 'Özet için kullanılacak model hizmetinı seçin, ardından kaydedin.',
         aiSearchAccountEnable: 'Dosya AI aramasını etkinleştir',
         aiSearchSaveAccount: 'Hesap yapılandırmasını kaydet',
         aiSearchSectionQuery: 'Arama',
@@ -3657,6 +4091,9 @@ const message = {
             'Bir bulut sağlayıcısı S3 protokolüyle uyumluysa, yedekleme için doğrudan Amazon S3 kullanılabilir.',
         domain: 'Hızlandırma alanı',
         backupAccount: 'Yedekleme hesabı | Yedekleme hesapları',
+        backupCACert: 'CA sertifikası (PEM)',
+        backupCACertHelp:
+            "Sistem CA'larını kullanmak için boş bırakın. Kendi HTTPS depolamanız için CA sertifikasını yapıştırın. Sertifika doğrulaması her zaman etkindir.",
         loadBucket: 'Kova al',
         accountName: 'Hesap adı',
         accountKey: 'Hesap anahtarı',
@@ -3996,18 +4433,25 @@ const message = {
         monitor:
             'Ticari sürüme yükselterek web sitesinin gerçek zamanlı durumunu, ziyaretçi eğilimlerini, kaynaklarını ve istek günlüklerini görüntüleyebilirsiniz.',
         alert: 'Ticari sürüme yükselterek SMS uyarıları alabilir, uyarı günlüklerini görüntüleyebilir ve kritik olayları takip edebilirsiniz.',
-        vm: '1Panel ile sanal makineleri, imajları, şablonları, sanal ağları ve depolama kaynaklarını yönetmek için ticari sürüme yükseltin.',
         node: 'Ticari sürüme yükselterek 1Panel ile birden fazla Linux sunucusunu yönetebilirsiniz.',
         nodeApp:
             'Ticari sürüme yükselterek düğümleri manuel değiştirmeden çok düğümlü uygulama sürümlerini toplu olarak yükseltebilirsiniz.',
         nodeDashboard:
             'Ticari sürüme yükselterek çok düğümlü uygulamaları, web sitelerini, veritabanlarını ve zamanlanmış görevleri merkezi olarak yönetebilirsiniz.',
+        imageExchange:
+            'Ticari sürüme yükselterek konteyner imajlarını düğümler arasında toplu olarak aktarabilirsiniz.',
+        appExchange:
+            'Ticari sürüme yükselterek yüklü uygulamaları hedef düğümlere taşıyabilir ve gerekli kaynak bağımlılıklarını doğrulayabilirsiniz.',
+        sslSync:
+            'Ticari sürüme yükselterek kaynak düğümdeki sertifikaları bir veya daha fazla hedef düğümle eşitleyebilirsiniz.',
+        phpExtensionsSync:
+            'Ticari sürüme yükselterek PHP uzantı şablonlarını bir veya daha fazla hedef düğümle eşitleyebilirsiniz.',
         fileExchange: 'Ticari sürüme yükselterek birden fazla sunucu arasında dosyaları hızlıca aktarabilirsiniz.',
         app: 'Ticari sürüme yükselterek mobil uygulamada hizmet bilgilerini ve anormallik izlemeyi görüntüleyebilirsiniz.',
         cluster: 'Ticari sürüme yükselterek MySQL/Postgres/Redis birincil-kopya kümelerini yönetebilirsiniz.',
-        vllm: 'Ticari sürüme yükselterek vLLM hizmetlerini 1Panel içinde merkezi olarak dağıtabilir, yapılandırabilir, yaşam döngüsünü yönetebilir ve görevleri izleyebilirsiniz.',
+        vllm: 'vLLM dağıtımı, hizmet izleme, günlük görüntüleme ve günlük işlemleri tek yerden yönetmek için ticari sürüme yükseltin.',
         'model-downloader':
-            'Ticari sürüme yükselterek HuggingFace, ModelScope veya uyumlu aynalardan yerel model dosyalarını arayabilir, indirebilir ve yönetebilir; model dizinlerini ve indirme görevlerini merkezi olarak takip edebilirsiniz.',
+            'Öne çıkan modelleri incelemek, indirmeleri yönetmek, vLLM Recipes içeriklerini yeniden kullanmak ve indirme kaynakları ile erişim bilgilerini yapılandırmak için ticari sürüme yükseltin.',
     },
     clean: {
         scan: 'Taramayı başlat',
@@ -4639,7 +5083,12 @@ const message = {
         serverNamesHashBucketSizeHelper: 'Sunucu adının karma tablosu boyutu',
         clientHeaderBufferSizeHelper: 'İstemci tarafından istenen başlık arabelleği boyutu',
         clientMaxBodySizeHelper: 'Maksimum Yükleme Dosyası',
-        keepaliveTimeoutHelper: 'Bağlantı Zaman Aşımı',
+        keepaliveTimeoutHelper: 'İstemci keep-alive bağlantılarının boşta kalma süresi',
+        proxyConnectTimeoutHelper: 'Arka uca bağlantı kurma zaman aşımı',
+        proxySendTimeoutHelper: 'Arka uca istek gönderme zaman aşımı',
+        proxyReadTimeoutHelper: 'Arka uç yanıtını bekleme zaman aşımı',
+        timeValueError: 'Geçersiz süre, örn. 60s, 5m, 1m30s',
+        directiveSourceHelper: '{0} dosyasında ayarlanmış; o dosyada düzenleyin',
         gzipMinLengthHelper: 'Minimum Sıkıştırılmış Dosya',
         gzipCompLevelHelper: 'Sıkıştırma Oranı',
         gzipHelper: 'İletim için sıkıştırmayı etkinleştir',
@@ -4647,6 +5096,7 @@ const message = {
         brotliCompLevelHelper: 'Brotli sıkıştırma oranı, 0 ile 11 arası',
         brotliManagedExternallyHelper:
             'Brotli, nginx.conf dosyasında elle yapılandırıldı; panel yalnızca geçerli değerleri gösterir ve üzerine yazmaz.',
+        brotliManagedPendingHelper: 'Brotli ayarları henüz etkin değil; kaydettikten sonra etkinleşir.',
         brotliManagedUnavailableHelper:
             'Panel, yönetilen brotli yapılandırmasını nginx.conf dosyasına otomatik olarak ekleyemedi; aşağıdaki değerler etkin olmayacak.',
         brotliMinLengthHelper: 'brotli ile sıkıştırılacak minimum yanıt boyutu',
@@ -5089,8 +5539,6 @@ const message = {
         customScriptHelper:
             'Lütfen tam başlatma komutunu girin, örneğin: npm run start. PM2 başlatma komutları için lütfen pm2-runtime ile değiştirin, aksi takdirde başlatma başarısız olacaktır.',
         portError: 'Aynı portu tekrarlamayın.',
-        systemRestartHelper:
-            'Durum açıklaması: Kesinti - sistem yeniden başlatılması nedeniyle durum alımı başarısız oldu',
         javaScriptHelper: 'Tam bir başlatma komutu sağlayın. Örneğin, "java -jar halo.jar -Xmx1024M -Xms256M".',
         javaDirHelper: 'Dizin, jar dosyalarını içermeli, alt dizinler de kabul edilir',
         goHelper: 'Tam bir başlatma komutu sağlayın. Örneğin, "go run main.go" veya "./main".',
@@ -5311,9 +5759,67 @@ const message = {
             history: 'Dışa Aktarma Geçmişi',
             setting: 'Ayarlar',
             page: {
-                enterprise: 'Kurumsal',
+                historyDeleteConfirm:
+                    '“{0}” düğümünden seçilen {1} rapor kaydı ve bunların dosyaları silinsin mi? Bu işlem geri alınamaz.',
+                historyClearConfirm:
+                    '“{0}” düğümündeki tüm tamamlanmış rapor kayıtları ve dosyaları temizlensin mi? Geçerli filtrelerden bağımsız olarak başarılı ve başarısız kayıtlar dahildir. Oluşturulmakta olan raporlar ve yükseltme öncesi geçmiş korunur. Bu işlem geri alınamaz.',
+                historyDeleteResult: 'Silinen: {0}; atlanan: {1}; başarısız: {2}.',
+                coreArchiveMasterOnly:
+                    'Yükseltme öncesi rapor kayıtları bulundu. Asıl dosyaları ana düğümde görüntülemek için bir yöneticiye başvurun.',
+                legacyHistoryReports: 'Yükseltme öncesi raporlar',
+                legacyHistoryManageHint: 'Yükseltme öncesi raporları burada görüntüleyip yönetebilirsiniz.',
+                legacyHistoryIntegrityHint: 'İndirme sırasında dosya bütünlüğü doğrulanır.',
+                legacyHistoryListFailed: 'Eski raporlar yüklenemedi. Listeyi yenileyip tekrar deneyin.',
+                legacyHistoryDownloadFailed:
+                    'İndirme başarısız oldu. Dosya durumunu kontrol edin veya daha sonra tekrar deneyin.',
+                legacyHistoryFileExists: 'Dosya mevcut',
+                legacyHistoryFileMissing: 'Dosya eksik',
+                legacyHistoryFileUnavailable: 'Dosya kullanılamıyor',
+                legacyHistoryNoFile: 'Dosya yok',
+                legacyHistoryFileMissingHint:
+                    'Asıl dosya artık mevcut değil ve indirilemiyor. İlgili kayıt silinebilir.',
+                legacyHistoryFileUnavailableHint:
+                    'Dosya yolu veya doğrulama bilgileri geçersiz. İndirme kullanılamıyor.',
+                legacyHistoryNoFileHint: 'Bu oluşturma kaydına bağlı bir rapor dosyası yok.',
+                legacyHistoryRemove: 'Sil',
+                legacyHistoryRemoveSelected: 'Seçilenleri sil ({0})',
+                legacyHistoryRemoveAll: 'Tümünü temizle',
+                legacyHistorySelectedScope: 'Seçilen {0} eski rapor ve dosyaları silinsin mi? Bu işlem geri alınamaz.',
+                legacyHistorySelectionChanged: 'Rapor kapsamı değişti. Listeyi yenileyip tekrar seçin.',
+                legacyHistoryQueryFailed: 'Yükseltme öncesi rapor geçmişi sorgulanamadı.',
+                legacyHistoryCleanup: 'Eski raporları temizle',
+                legacyHistoryCleanupScope:
+                    'Tüm düğümlerin eski geçmişi dahil ana düğümdeki tüm eski raporlar ve dosyaları silinsin mi? Bu işlem geri alınamaz.',
+                legacyHistoryCleanupFailed: 'Temizleme tamamlanmadı. Yeniden denemeden önce listeyi yenileyin.',
+                legacyHistoryCleanupPartial:
+                    '{0} eski kayıt temizlenemedi. Tekrar denemeden önce ana düğümdeki dosya izinlerini veya günlükleri kontrol edin.',
+                legacyHistoryCleanupSuccess: 'Seçilen eski raporlar silindi.',
+
+                introContactAdmin: 'Lisans veya düğüm yükseltme sorunlarını çözmek için yöneticiyle iletişime geçin.',
+                introDescription:
+                    'Bu düğümün çalışma durumunu, güvenlik risklerini ve görev yürütmesini görüntüleyin; raporları dışa aktarın ve otomatik günlük raporları kullanın.',
+                introNodeOverview: 'Düğüm özeti',
+                introReportExport: 'Rapor dışa aktarma',
+                introDaily: 'Otomatik günlük raporlar',
+                introSecurityDescription:
+                    'Ana makine kaynakları, giriş güvenliği ve web sitesi sertifika risklerini; puanları ve puan kesintisi nedenlerini inceleyin.',
+                introNodeDescription:
+                    'Bu düğümün uygulamalarını, konteynerlerini, zamanlanmış görevlerini ve uyarılarını görüntüleyin.',
+                introExportDescription: 'Arşivlemek için raporları PDF, HTML veya Markdown biçiminde dışa aktarın.',
+                introDailyDescription:
+                    "Etkinleştirildiğinde, düğümün yerel saat diliminde her gün 09:00'da günlük rapor oluşturur.",
+                introNodeManagement: 'Düğüm yönetimine git',
+
+                licenseRequired:
+                    'Raporları ve geçmişi görüntülemek için geçerli bir lisans gereklidir. Lisansı yenileyin veya geçerli bir lisansı içe aktarın.',
+                agentUpgradeRequired:
+                    'Bu düğümün Agent bileşenini yerel operasyon raporlarını destekleyen bir sürüme yükseltin.',
+                contextFailed:
+                    'Bu düğümün rapor bilgileri yüklenemedi. Düğüm bağlantısını ve rapor okuma izinlerini kontrol edin.',
+                generationPending:
+                    'Bu istek hâlâ işleniyor. Raporu yeniden oluşturmadan önce rapor geçmişinden durumunu kontrol edin.',
+
                 reportNode: 'Rapor Düğümü',
-                selectReportNode: 'Rapor düğümü seçin',
                 currentNode: 'Geçerli Düğüm',
                 scoreMeta: '{0} puan düşüldü · {1} risk',
                 hostAddress: 'Ana Makine Adresi',
@@ -5390,9 +5896,16 @@ const message = {
                 statSslDesc: '{0} sertifika kontrol edildi',
                 statContainerDesc: '{0} konteyner kontrol edildi',
                 assetHostDesc: 'Disk en yüksek kullanım %{0}',
-                assetWebsiteDesc: '{0} sertifika süresi dolmak üzere, {1} anormal web sitesi',
+                assetWebsiteDesc: '{0} sertifikanın süresi dolmuş veya dolmak üzere, {1} anormal web sitesi',
                 assetResourceDesc: '{0} anormal uygulama, {1} anormal konteyner',
-                assetCronjobDesc: 'Son 7 günde {0} başarısızlık kaydı, {1} görev devre dışı',
+
+                scoreDataUnavailable:
+                    'Önemli veriler eksik olduğu için puan gösterilmiyor. Bilinen riskler aşağıda listelenir. Yenileyip tekrar deneyin.',
+                scoreDataProvisional: 'Bazı veriler eksik veya yaklaşık. Bu puan geçicidir.',
+                reportWindow: 'Rapor dönemi: {0} - {1} ({2})',
+                snapshotScoreScope:
+                    'Ana makine puanı güncel ölçümleri kullanır; 24 saatlik eğilimler ayrı gösterilir. Elle dışa aktarma verileri yeniden toplar, değerler değişebilir.',
+                assetCronjobDesc: 'Son 24 saatte {0} başarısızlık kaydı, {1} görev devre dışı',
                 app: 'Uygulamalar',
                 website: 'Web Siteleri',
                 websiteSsl: 'Web Siteleri / Sertifikalar',
@@ -5589,7 +6102,6 @@ const message = {
                 statAlertDesc: '{0} etkin görev · {1} kanal',
                 assetAlertDesc: '{0} başarısız günlük, {1} senkronizasyon bekleyen günlük',
                 failedExecutionRecords: 'Başarısız Yürütme Kayıtları',
-                taskID: 'Görev ID',
                 executeTime: 'Yürütme Zamanı',
                 backupTasks: 'Yedekleme Görevleri',
                 systemMetrics: 'Çalışma Metrikleri',
@@ -5611,12 +6123,11 @@ const message = {
                 dataSource: 'Veri Kaynağı',
                 noHighUsagePeriod: 'Yüksek kullanım dönemi yok',
                 monitorDisabledOrNoData: 'Ana makine izleme devre dışı veya izleme verisi yok',
-                systemHealthStatus: 'Son 24 saat ana makine çalışma risk durumu',
+                systemHealthStatus: 'Ana makine çalışma risk durumu',
                 mainReasons: 'Başlıca Nedenler',
                 viewHostMonitor: 'Ana Makine İzlemeyi Gör',
-                systemHealthAttentionDesc:
-                    'Son 24 saatte {0} risk öğesi algılandı. Kaynak zirvelerine ve disk kullanımına öncelik verin.',
-                systemHealthNormalDesc: 'Son 24 saatte ana makine çalışma metrikleri normaldi',
+                systemHealthAttentionDesc: 'Bu değerlendirmede {0} risk öğesi bulundu. Aşağıdaki metrikleri inceleyin.',
+                systemHealthNormalDesc: 'Bu değerlendirmede ana makine çalışma riski bulunmadı.',
                 monitorEnabled: 'İzleme Etkin',
                 cpuCoreUsage: '{0} / {1} çekirdek',
                 load1Minute: '1 dk yük',
@@ -5647,7 +6158,7 @@ const message = {
                 wafSourceIpTop: 'WAF Kaynak IP TOP5',
                 wafAffectedSiteTop: 'Etkilenen Siteler TOP5',
                 sslRisk: 'Sertifika Riskleri',
-                sslExpiring: 'Süresi Dolan Sertifikalar',
+                sslExpiring: 'Sertifika Süre Sonu Riskleri',
                 includedInReport: 'Rapora dahil edildi',
                 needRenewal: 'Yenileme öneriliyor',
                 fromExpireInfo: 'Son kullanma bilgisinden',
@@ -5772,7 +6283,9 @@ const message = {
                 receiver: 'Alıcı',
                 systemThreshold: 'Sistem eşiği',
                 metric: 'Metrik',
-                currentRule: 'Mevcut Kural',
+                currentRule: 'Ölçütleri karşılıyor mu',
+                criteriaMet: 'Karşılıyor',
+                criteriaNotMet: 'Karşılamıyor',
                 hostMonitor: 'Ana Makine İzleme',
                 monitorInterval: 'İzleme Aralığı',
                 exportSettings: 'Dışa Aktarma Ayarları',
@@ -7081,6 +7594,37 @@ const message = {
             nodeContent3: 'Her düğümün çalışma durumunu gerçek zamanlı olarak izler',
             nodeTitle4: 'Hızlı Uzak Bağlantı',
             nodeContent4: 'Düğümlere tek tıkla doğrudan uzak terminal bağlantısı',
+            imageExchangeTitle1: 'Kaynak imajları seçin',
+            imageExchangeContent1: 'Kaynak düğümdeki konteyner imajlarını inceleyin ve aktarılacak imajları seçin.',
+            imageExchangeTitle2: 'İmajları dağıtın',
+            imageExchangeContent2: 'Seçilen imajları bir veya daha fazla hedef düğüme aktarın.',
+            imageExchangeTitle3: 'Aktarım günlüklerini görüntüleyin',
+            imageExchangeContent3: 'İmaj aktarımının ilerlemesini ve sonuçlarını görev günlüklerinden takip edin.',
+            appExchangeTitle1: 'Bir uygulama seçin',
+            appExchangeContent1: 'Kaynak düğümde yüklü uygulamaları inceleyin ve taşınacak uygulamayı seçin.',
+            appExchangeTitle2: 'Bağımlılıkları doğrulayın',
+            appExchangeContent2:
+                'Taşıma işleminden önce hedef düğümleri ve veritabanları gibi gerekli kaynakları doğrulayın.',
+            appExchangeTitle3: 'Uygulamaları taşıyın',
+            appExchangeContent3:
+                'Uygulama yedeklerini geri yüklemek için hedef düğümlere aktarın ve sonuçları görev günlüklerinde görüntüleyin.',
+            sslSyncTitle1: 'Sertifikaları seçin',
+            sslSyncContent1: 'Kaynak düğümdeki sertifika bilgilerini inceleyin ve eşitlenecek sertifikaları seçin.',
+            sslSyncTitle2: 'Düğümler arasında eşitleyin',
+            sslSyncContent2:
+                'Kaynak düğüm otomatik olarak hariç tutularak seçilen sertifikaları hedef düğümlerle eşitleyin.',
+            sslSyncTitle3: 'Eşitleme görevlerini onaylayın',
+            sslSyncContent3:
+                'İşlemden önce hedef düğümleri ve sertifikaları gözden geçirin, ardından sonuçları görev günlüklerinde görüntüleyin.',
+            phpExtensionsSyncTitle1: 'Bir şablon seçin',
+            phpExtensionsSyncContent1:
+                'Kaynak düğümdeki şablon adlarını ve uzantı listelerini inceleyin ve eşitlenecek şablonu seçin.',
+            phpExtensionsSyncTitle2: 'Şablonları eşitleyin',
+            phpExtensionsSyncContent2:
+                'Kaynak düğüm otomatik olarak hariç tutularak seçilen şablonu hedef düğümlerle eşitleyin.',
+            phpExtensionsSyncTitle3: 'Mevcut şablonları kontrol edin',
+            phpExtensionsSyncContent3:
+                'Adı ve içeriği aynı olan şablonlar atlanır. İçerik farklıysa üzerine yazılmadan çakışma bildirilir.',
             fileExchangeTitle1: 'Anahtar Kimlik Doğrulama İletimi',
             fileExchangeContent1: 'İletim güvenliğini sağlamak için SSH anahtarları ile kimlik doğrulaması yapar.',
             fileExchangeTitle2: 'Verimli Dosya Senkronizasyonu',
@@ -7109,30 +7653,27 @@ const message = {
             clusterTitle3: 'Çoğaltma Durumu',
             clusterContent3:
                 'Ana-çalışan çoğaltma durumunu ve gecikme bilgilerini görüntüleyerek senkronizasyon sorunlarını gidermeye yardımcı olur',
-            modelDownloaderTitle1: 'Model Keşfi',
+            modelDownloaderTitle1: 'Öne Çıkan Modeller',
             modelDownloaderContent1:
-                'HuggingFace model depolarını doğrudan arayın; indirme sayısı, beğeni, model ayrıntıları ve dosya listesini görüntüleyin.',
-            modelDownloaderTitle2: 'Hızlandırılmış İndirme',
+                'Öne çıkan modelleri inceleyin, aile ve ağırlık sağlayıcısına göre filtreleyin, model ayrıntılarını görüntüleyin ve indirmeyi başlatın.',
+            modelDownloaderTitle2: 'Model İndirme',
             modelDownloaderContent2:
-                'Resmi site, aynalar ve özel modeller için HuggingFace hızlandırma endpointi ve HuggingFace Token yapılandırın.',
-            modelDownloaderTitle3: 'Görev Takibi',
+                'Hugging Face ve ModelScope üzerinden model indirin, ilerlemeyi izleyin, görevleri iptal edin veya yeniden deneyin ve yerel dosyaları yönetin.',
+            modelDownloaderTitle3: 'vLLM Recipes',
             modelDownloaderContent3:
-                'İndirme kuyruğunu, görev durumunu, ilerlemeyi ve hataları görüntüleyin; iptal, yeniden deneme ve kayıt temizlemeyi destekler.',
-            modelDownloaderTitle4: 'Yerel Yönetim',
+                'Resmî Recipes içeriklerini inceleyip eşitleyin, özel tarifleri yönetin ve modellere uygun dağıtım parametrelerini yeniden kullanın.',
+            modelDownloaderTitle4: 'Yapılandırma',
             modelDownloaderContent4:
-                'Yerel model dizinlerini tek yerden yönetin; yolları, boyutları, zamanları görüntüleyin ve kullanılmayan model dosyalarını silin.',
-            vllmTitle1: 'Merkezi Yönetim',
+                'Model indirme dizinini, kaynak adreslerini, erişim belirteçlerini ve öne çıkan modellerin otomatik eşitlenmesini yapılandırın.',
+            vllmTitle1: 'Model Dağıtımı',
             vllmContent1:
-                "Dağıtık vLLM örneklerini 1Panel'e entegre edin ve sürümleri, çalışma durumlarını ve çalışma dizinlerini merkezi olarak yönetin.",
-            vllmTitle2: 'Hızlı Dağıtım',
+                'Model dizinini ve konteyner imajını seçin, GPU, port ve başlatma parametrelerini yapılandırın ve vLLM örnekleri oluşturun.',
+            vllmTitle2: 'Hizmet İzleme',
             vllmContent2:
-                'Görsel formlar aracılığıyla sürüm seçimi, model dizini bağlama ve başlatma parametrelerinin yapılandırılmasını tamamlayarak manuel yapılandırma karmaşıklığını azaltın.',
-            vllmTitle3: 'Operasyonel Verimlilik',
+                'Model hizmetinin performansını izlemek için örnek durumunu, istek sayısını, işlem hacmini ve gecikmeyi görüntüleyin.',
+            vllmTitle3: 'Günlük İşlemler',
             vllmContent3:
-                'Örnek oluşturma, düzenleme, başlatma, durdurma, yeniden başlatma, silme ve görev takibini tek bir arayüzden gerçekleştirerek yerel model hizmetlerinin yönetim verimliliğini artırın.',
-            vllmTitle4: 'Esnek Yapılandırma',
-            vllmContent4:
-                'Gelişmiş ayarlar aracılığıyla portları, konteynerleri, başlatma komutlarını ve Compose yapılandırmalarını merkezi olarak yönetin; standartlaştırılmış dağıtım ve sonraki ayarlamaları kolaylaştırın.',
+                'Örnekleri başlatın, durdurun, yeniden başlatın ve silin; günlükleri görüntüleyin, terminalleri açın ve işlem görevlerini takip edin.',
         },
         node: {
             master: 'Ana Düğüm',
@@ -7277,6 +7818,7 @@ const message = {
             local: 'Yerel Yol',
             remote: 'Uzak Bağlantı',
             imagePrefix: 'Görüntü Öneki',
+            disableImagePrefixConfirm: 'Görüntü önekini devre dışı bırakıp mevcut değeri temizlemek istiyor musunuz?',
             imagePrefixHelper:
                 'İşlev: Görüntü önekini özelleştirir ve compose dosyasındaki görüntü alanını değiştirir. Örneğin, görüntü öneki 1panel/custom olarak ayarlandığında, MaxKB için görüntü alanı 1panel/custom/maxkb:v1.10.0 olarak değişir',
             closeHelper: 'Özel uygulama deposunu kullanmayı iptal et',
@@ -7605,6 +8147,13 @@ const message = {
             imageBatchConfirmPrefix: '{0} imaj {1} düğüme aktarılacak, toplam {2} görev oluşturulacak.',
 
             ssl: 'Sertifika Senkronizasyonu',
+            phpExtensions: 'PHP Uzantı Şablonu Eşitleme',
+            phpExtensionsTitle: 'Uzantı Şablonu Eşitleme',
+            phpExtensionsDesc: 'PHP uzantı şablonunu hedef düğümlerle eşitlemek için bir kaynak düğüm seçin.',
+            phpExtensionsList: 'PHP uzantıları',
+            phpExtensionsConfirm: '{0} PHP uzantı şablonu {1} düğümle eşitlenecek.',
+            phpExtensionsConflictHint:
+                'Aynı şablonlar atlanır. Adı aynı ancak içeriği farklı olan şablonlar çakışma olarak bildirilir ve üzerlerine yazılmaz.',
             sslBatchDesc:
                 'Kaynak düğüm seçildikten sonra belirtilen sertifikalar mevcut panel ortamına senkronize edilebilir.',
             sslBatchConfirmPrefix: '{0} sertifika {1} düğüme senkronize edilecek, toplam {2} görev oluşturulacak.',
@@ -7634,8 +8183,7 @@ const message = {
             submitSuccess: 'Senkronizasyon görevi başarıyla gönderildi.',
         },
         vm: {
-            countLimitHelper:
-                'Professional sürümü en fazla {0} sanal makine oluşturulmasına izin verir. Enterprise sürümünde sayı sınırı yoktur.',
+            countLimitHelper: 'Mevcut sürüm en fazla {0} sanal makine oluşturulmasına izin verir.',
             vm: 'Sanal Makine',
             title: 'Sanal Makine Yönetimi',
             healthCheck: 'Sağlık kontrolü',

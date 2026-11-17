@@ -14,13 +14,12 @@ import (
 )
 
 var (
-	DB            *gorm.DB
-	MonitorDB     *gorm.DB
-	GPUMonitorDB  *gorm.DB
-	VLLMMonitorDB *gorm.DB
-	TaskDB        *gorm.DB
-	CoreDB        *gorm.DB
-	AlertDB       *gorm.DB
+	DB           *gorm.DB
+	MonitorDB    *gorm.DB
+	GPUMonitorDB *gorm.DB
+	TaskDB       *gorm.DB
+	CoreDB       *gorm.DB
+	AlertDB      *gorm.DB
 
 	LOG   *logrus.Logger
 	CONF  ServerConfig
@@ -30,10 +29,11 @@ var (
 
 	Dir SystemDir
 
-	Cron              *cron.Cron
-	MonitorCronID     cron.EntryID
-	VLLMMonitorCronID cron.EntryID
-	GPUMonitorCronID  cron.EntryID
+	Cron             *cron.Cron
+	MonitorCronID    cron.EntryID
+	GPUMonitorCronID cron.EntryID
+
+	CleanupVLLMMonitor func(uint) error
 
 	IsMaster bool
 
@@ -69,9 +69,6 @@ func RepoURL() string {
 	if CONF.Base.IsEnterprise {
 		return "https://resource.fit2cloud.com/1panel/package/enterprise"
 	}
-	if CONF.Base.IsFxplay {
-		return "https://resource.fit2cloud.com/1panel/package/fusionxplay"
-	}
 	if CONF.Base.Edition != "intl" {
 		return "https://resource.fit2cloud.com/1panel/package/v2"
 	}
@@ -81,9 +78,6 @@ func ResourceURL() string {
 	if CONF.Base.IsEnterprise {
 		return "https://resource.fit2cloud.com/1panel/resource/v2"
 	}
-	if CONF.Base.IsFxplay {
-		return "https://resource.fit2cloud.com/1panel/resource/v2"
-	}
 	if CONF.Base.Edition != "intl" {
 		return "https://resource.fit2cloud.com/1panel/resource/v2"
 	}
@@ -91,9 +85,6 @@ func ResourceURL() string {
 }
 func AppRepoURL() string {
 	if CONF.Base.IsEnterprise {
-		return "https://apps-assets.fit2cloud.com"
-	}
-	if CONF.Base.IsFxplay {
 		return "https://apps-assets.fit2cloud.com"
 	}
 	if CONF.Base.Edition != "intl" {

@@ -1,16 +1,16 @@
-# 1panel-cli v2.4.2 命令速查(Python / 1Panel v2.4.2)
+# 1panel-cli v2.5.1 命令速查(Python / 1Panel v2.5.1)
 
 首次使用先运行 `1panel-cli init` 自动生成 `.env`(无需手填账号);然后运行 `1panel-cli doctor`,确认六项检查通过。所有命令支持全局参数 `--env <PATH>`、`--profile <NAME>`、`--node <NODE>`;节点也可由 `PANEL_NODE` 设置。全局参数放在子命令前后均可。
 
-> 本清单面向 1Panel v2.4.2 验证;旧版面板(v2.2.x)的旧防火墙接口与中间版本(带 `rules/check` 的统一接口)会自动探测并回退。
+> 本清单面向 1Panel v2.5.1 验证;旧版面板(v2.2.x)的旧防火墙接口与中间版本(带 `rules/check` 的统一接口)会自动探测并回退。v2.5.1 新增的虚拟机、GPU 组、容器镜像更新检查、PHP 扩展模板等接口暂无专用命令,可先用 `api list` / `api describe` 查询后通过 `api` 调用。
 >
-> 请求失败或参数不确定时,阅读随技能附带的 1Panel v2.4.2 完整源码 `source/`:`api describe` 输出的 `sourcePath` 可直接定位文件(路由 `source/*/router/`、DTO `source/*/app/dto/`、行为 `source/*/app/service/`)。内置路由清单 `panel_cli/data/api-v2.4.2.json` 即由该源码生成。
+> 请求失败或参数不确定时,阅读随技能附带的 1Panel v2.5.1 完整源码 `source/`:`api describe` 输出的 `sourcePath` 可直接定位文件(路由 `source/*/router/`、DTO `source/*/app/dto/`、行为 `source/*/app/service/`)。内置路由清单 `panel_cli/data/api-v2.5.1.json` 即由该源码生成。
 
 ## 会话
 
 | 命令 | 说明 |
 |---|---|
-| `init [-o PATH] [--force] [--host HOST] [--print]` | **在本机自动探测面板并生成 .env**:执行 `sudo 1pctl user-info` 获取地址/用户/初始密码;密码已掩码时读取面板数据库(`/opt/1panel/db/*.db`)并用 `EncryptKey` 解密,无需手动填写 |
+| `init [-o PATH] [--force] [--host HOST] [--print]` | **在本机自动探测面板并生成 .env**:执行 `sudo 1pctl user-info` 获取地址/用户/初始密码;密码已掩码时读取面板数据库(`/opt/1panel/db/*.db`)并用 `EncryptKey` 解密。本机 v2.5.1 的 DB 目录为 `0700 root`,CLI 会用 `sudo -n cat` 自动复制快照,无需手动填写 |
 | `login` | 使用本地账号源登录,保存会话 |
 | `status` | 检查会话并显示面板版本/版本类型 |
 | `info` | 查看脱敏后的会话信息 |
@@ -22,7 +22,7 @@
 | 命令 | 说明 |
 |---|---|
 | `apps list [--name X] [--type X] [--tag X] [--installed] [--all]` | 列出应用 |
-| `apps install <name> [--version V] [--param K=V] [--wait] [--timeout S] [--no-pull]` | 安装应用(`--no-pull` 离线场景直接用本地镜像) |
+| `apps install <name> [--version V] [--param K=V] [--wait] [--timeout S] [--no-pull]` | 安装应用(`--no-pull` 离线场景直接用本地镜像);ollama/vllm 大模型下载建议 `--timeout 3600` 或更长 |
 | `apps info <name>` | 应用详情及数据库/Redis 连接信息 |
 | `apps config <name> [--set K=V] [--compose]` | 查看/修改配置 |
 | `apps password <name> <new>` | 修改 mysql/mariadb/redis root 密码 |
@@ -83,7 +83,7 @@ CLI 会自动探测四种接口形态:
 
 | 形态 | 探测依据 | 说明 |
 |---|---|---|
-| `v240`(1Panel v2.4.0+) | `GET /hosts/firewall/rules/backups` 可用 | 删除规则提交 `targets`(`scope` + `instanceKey` + `observed`);新增 IPv6 开关/分族操作与规则备份 |
+| `v240`(1Panel v2.4.0+,含 v2.5.1) | `GET /hosts/firewall/rules/backups` 可用 | 删除规则提交 `targets`(`scope` + `instanceKey` + `observed`);新增 IPv6 开关/分族操作与规则备份 |
 | `v231`(1Panel v2.3.2) | 有 `GET /hosts/firewall/settings`,无 `rules/check`、无 `rules/backups` | 统一规则接口;删除按 `uuids`;写操作返回 `taskID` |
 | `checked`(中间版本) | 有 `GET /hosts/firewall/settings` 且有 `rules/check` | 创建前先规则检查(`checkFlag`) |
 | `legacy`(v2.2.x) | 无 `/hosts/firewall/settings` | 旧门面接口(`/firewall/search|port|ip|forward|batch`) |
@@ -140,7 +140,7 @@ v2.4.0 的 Docker 端口守护注意事项:
 | `api put <PATH> [--body JSON] [--body-file PATH]` | PUT,`--body-file -` 从标准输入读取 |
 | `api delete <PATH>` | DELETE |
 
-路径相对 `/api/v2`,请求自动带 Cookie、CSRF、`Accept-Language` 和 `CurrentNode`。内置清单由 1Panel `v2.4.2` 源码生成(821 条路由,含 22 条 MCP 管理接口,Swagger 收录 759 条)。已在 v2.4.2 面板上全量核验:788 条既有路由全部注册可调用;34 条 v2.4.1/v2.4.2 tag 新增路由(MCP ×22、API Key 删除/查看 ×2、CA 导入/上传 ×2、AI/Dashboard ×8)官方发行包尚未注册,实机 404 或 SPA 回退 HTML(详见兼容性文档),请勿调用。`api describe` 支持用真实取值匹配参数路由(如 `websites/ca/1` 可匹配 `websites/ca/:id`);调用不存在的路由或方法不符时会给出明确报错,而不是打印 HTML。
+路径相对 `/api/v2`,请求自动带 Cookie、CSRF、`Accept-Language` 和 `CurrentNode`。内置清单由 1Panel `v2.5.1` 源码生成(866 条路由,Swagger 收录 794 条)。已在 v2.5.1 面板上全量核验:845 条实调正常、20 条已知副作用路由跳过(Swagger 已收录),共 865/866 可用;仅 `POST /ai/accounts/chat`(tag 最后一个提交新增)在官方发行包中未注册,调用会 404(详见兼容性文档)。`api describe` 支持用真实取值匹配参数路由(如 `websites/ca/1` 可匹配 `websites/ca/:id`);调用不存在的路由或方法不符时会给出明确报错,而不是打印 HTML。
 
 响应默认脱敏:字段名命中 `privateKey` / `password` / `passwd` / `token` / `secret` / `accessKey` / `hmacKey` / `authorization` / `credential` 等,或值中出现 PEM 私钥块(`RSA/EC/OPENSSH/PGP ... PRIVATE KEY`),输出统一替换为 `***REDACTED***` / `***REDACTED PRIVATE KEY***`。确需原值(如读取证书私钥)时显式加全局参数 `--show-secrets`(或环境变量 `PANEL_CLI_SHOW_SECRETS=1`),并自行承担泄露风险;请求体含敏感内容时优先用 `--body-file`,不要让私钥出现在命令行参数里。
 
@@ -149,6 +149,9 @@ v2.4.0 的 Docker 端口守护注意事项:
 ```sh
 1panel-cli api list --filter firewall
 1panel-cli api describe POST hosts/firewall/rules
+1panel-cli api list --filter vms
+1panel-cli api describe POST vms/search
+1panel-cli api get vms/environment
 1panel-cli api post hosts/firewall/rules/search --body '{"page":1,"pageSize":20,"info":"","all":true,"scopes":[{"provider":"ufw","family":"ipv4","chain":"incoming","direction":"input"}]}'
 1panel-cli api post apps/search --body '{"page":1,"pageSize":10}'
 

@@ -46,7 +46,7 @@ ErrHttpReqNotFound: 'İstenen kaynak {{ .err }} bulunamadı'
 
 # hızlı geçiş
 ErrMinQuickJump: 'En az bir hızlı erişim ekle'
-ErrMaxQuickJump: '4 hızlı erişim hakkı var'
+ErrMaxQuickJump: '5 hızlı erişim hakkı var'
 
 # genel
 ErrShutDown: 'Komut manuel durduruldu'
@@ -70,14 +70,14 @@ Decrypt: 'Şifre Çöz'
 
 # ajan
 ErrAgentAccountBound: 'Hesap bir ajana bağlı'
-ErrTerminalAIAccountInUse: 'Bu model hesabi su anda Terminal AI tarafindan kullaniliyor. Terminal AI ayarlarinda baska bir hesaba gecin veya Terminal AI yi devre disi birakip tekrar deneyin.'
-ErrFileAIAccountInUse: 'Bu model hesabı dosya yönetimi yapay zekası tarafından kullanılıyor. Ayarlardan hesabı değiştirin veya yapay zekayı devre dışı bırakıp yeniden deneyin.'
+ErrTerminalAIAccountInUse: 'Bu model hizmeti su anda Terminal AI tarafindan kullaniliyor. Terminal AI ayarlarinda baska bir hesaba gecin veya Terminal AI yi devre disi birakip tekrar deneyin.'
+ErrFileAIAccountInUse: 'Bu model hizmeti dosya yönetimi yapay zekası tarafından kullanılıyor. Ayarlardan hesabı değiştirin veya yapay zekayı devre dışı bırakıp yeniden deneyin.'
 ErrAgentAccountUnavailable: 'Hesap bağlantısı yok: {{ .err }}'
 ErrAgentProviderNotSupported: 'Ajans sağlayıcısı desteklenmiyor'
 ErrAgentAccountRequired: 'Önce bir ajans hesabı seçin'
 ErrAgentAccountNotVerified: 'Ajans hesabı doğrulanmadı'
 ErrAgentAccountModelsRequired: 'Lütfen en az bir model yapılandırın'
-ErrAgentAccountSingleInitialModel: 'Hesap oluştururken yalnızca bir başlangıç modeli yapılandırılabilir'
+ErrAgentAccountSingleInitialModel: 'Bu sağlayıcı için en fazla bir model yapılandırılabilir'
 ErrAgentModelNotInAccount: 'Model seçilen hesapta yapılandırılmadı'
 ErrAgentVerifyModelInUse: 'Bu model hesap doğrulaması için kullanılıyor. Silmeden önce başka bir doğrulama modeli seçin'
 ErrAgentFallbackModelDuplicate: 'Yedek modeller tekrar edemez'
@@ -252,6 +252,7 @@ ErrSSLCertificateNotFound: 'Sertifika dosyası mevcut değil'
 ErrSSLKeyFormat: 'Özel anahtar dosyası doğrulama başarısız'
 ErrSSLCertificateFormat: 'Sertifika dosyası formatı yanlış, lütfen pem formatını kullanın'
 ErrEabKidOrEabHmacKeyCannotBlank: 'EabKid veya EabHmacKey boş olamaz'
+ErrOpenrestyInstall: "Lütfen önce uygulama mağazasından OpenResty yükleyin"
 ErrOpenrestyNotFound: 'HTTP modu için OpenResty gereklidir'
 ApplySSLStart: 'Sertifika başvurusu başlatılıyor, alan adı [{{ .domain }}] başvuru yöntemi [{{ .type }}]'
 dnsAccount: 'DNS Otomatik'
@@ -675,7 +676,7 @@ TerminalAIRequestFailed: 'AI istegi basarisiz oldu: {{ .err }}'
 
 # AI ağ geçidi
 ErrAIProxyServiceNotInstalled: '{{ .name }} servisi kurulu değil'
-ErrAIProxyModelAccountNotFound: 'Model hesabı {{ .id }} bulunamadı'
+ErrAIProxyModelAccountNotFound: 'Model hizmeti {{ .id }} bulunamadı'
 ErrAIProxyModelMapRequired: 'Bu alan zorunludur.'
 ErrAIProxyModelMapInvalid: 'Model eşlemesi geçerli bir JSON nesnesi olmalıdır: {{ .err }}'
 ErrAIProxyModelMapEmpty: 'Model eşlemesi boş olamaz'
@@ -686,6 +687,7 @@ AIProviderBailian: 'Alibaba Cloud Model Studio'
 AIProviderBailianCodingPlan: 'Alibaba Cloud Model Studio Coding Plan'
 AIProviderArk: 'Volcengine Ark'
 AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
+AIProvider1PanelGateway: '1Panel AI Ağ Geçidi'
 
 # Firewall
 ErrDockerIptablesChainUnavailable: 'Docker DOCKER-USER zinciri bulunamadı. Docker’ı yeniden başlatıp tekrar deneyin'
@@ -735,7 +737,7 @@ ErrSSHKeyMismatch: "SSH açık ve özel anahtarları eşleşmiyor"
 # sanal makine
 ErrVMNotFound: "Sanal makine mevcut değil"
 ErrVMAlreadyExists: "Sanal makine zaten mevcut"
-ErrVMCountLimit: "Professional sürümü en fazla {{ .limit }} sanal makine oluşturulmasına izin verir. Mevcut bir sanal makineyi silin veya Enterprise sürümüne yükseltip tekrar deneyin."
+ErrVMCountLimit: "Mevcut sürüm en fazla {{ .limit }} sanal makine oluşturulmasına izin verir. Mevcut bir sanal makineyi silin veya daha üst bir sürüme yükseltip tekrar deneyin."
 ErrVMImageAlreadyExists: "Sanal makine imaj dosyası zaten mevcut: {{ .detail }}"
 ErrVMStoragePathInUse: "Depolama havuzu yolu zaten [{{ .name }}] tarafından kullanılıyor"
 ErrVMHelperNotFound: "1panel-kvm bulunamadı"
@@ -802,3 +804,19 @@ ErrFeishuUpgradeMounts: "Bu bağlamalar tam yedeklenip geri yüklenemiyor. Uygul
 AgentFeishuRecoveryDisabled: "Ağ geçidi kurtarıldı, Feishu kapalı; özgün yapılandırma yedeği korundu."
 
 ContainerUpgradeWaiting: "Waiting for a container upgrade execution slot"
+ContainerImageCheckUpdate: "İmaj güncellemelerini denetle"
+ContainerImageCheckScope: "Sayfalama ve filtrelerden bağımsız olarak bu düğümdeki {{ .count }} konteynerin tümü denetleniyor"
+ContainerImageCheckItem: "Konteyner {{ .name }}, imaj {{ .image }} denetleniyor"
+ContainerImageCheckFailed: "{{ .name }} konteyneri denetlenemedi: {{ .error }}; mevcut imajla eşleşen önceki sonuçlar korunuyor"
+ContainerImageCheckSkipped: "{{ .name }} atlanıyor: etiketli bir Docker Hub imajı değil, yerel bir imaj veya digest değeri sabitlenmiş"
+ContainerImageCheckAvailable: "{{ .name }} konteyneri için güncelleme mevcut: {{ .image }} → {{ .target }}"
+ContainerImageCheckCurrent: "{{ .name }} konteyneri için güncelleme bulunamadı"
+ContainerImageCheckChanged: "{{ .name }} konteyneri silindi veya imajı değişti; sonuç kaydedilmedi"
+ContainerImageCheckSummary: "Denetim tamamlandı: denetlenen {{ .checked }}, güncellenebilir {{ .updates }}, başarısız {{ .failed }}, atlanan {{ .skipped }}"
+ContainerImageCheckFailures: "{{ .count }} konteyner denetlenemedi; görev günlüğünü inceleyin"
+
+ErrImageCheckProxyRequired: "Geçerli çalışma ortamında imaj güncellemelerini kontrol etmek için önce bir proxy sunucusu yapılandırın."
+
+ErrPHPExtensionsConflict: "Bu ada sahip ancak içeriği farklı bir PHP uzantı şablonu zaten mevcut; üzerine yazılmadı"
+
+ErrModelTokenizerDirOverlap: "Model ve tokenizer dizinleri farklı olmalı ve biri diğerini içermemelidir"

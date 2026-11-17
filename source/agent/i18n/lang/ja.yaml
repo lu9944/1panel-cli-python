@@ -46,7 +46,7 @@ ErrHttpReqNotFound: '要求されたリソース {{ .err }} が見つかりま�
 
 # クイックジャンプ
 ErrMinQuickJump: 'クイックアクセスを1件以上追加'
-ErrMaxQuickJump: '最大4件のクイックアクセス'
+ErrMaxQuickJump: '最大5件のクイックアクセス'
 
 # 共通
 ErrShutDown: 'コマンドは手動で停止されました'
@@ -70,14 +70,14 @@ Decrypt: '復号化'
 
 # エージェント
 ErrAgentAccountBound: 'アカウントはエージェントに紐づいています'
-ErrTerminalAIAccountInUse: 'このモデルアカウントは Terminal AI で使用中です。Terminal AI の設定で別のアカウントへ切り替えるか、Terminal AI を無効にしてから再試行してください。'
-ErrFileAIAccountInUse: 'このモデルアカウントはファイル管理 AI で使用中です。ファイル管理 AI の設定で別のアカウントへ切り替えるか、ファイル管理 AI を無効にしてから再試行してください。'
+ErrTerminalAIAccountInUse: 'このモデルサービスは Terminal AI で使用中です。Terminal AI の設定で別のアカウントへ切り替えるか、Terminal AI を無効にしてから再試行してください。'
+ErrFileAIAccountInUse: 'このモデルサービスはファイル管理 AI で使用中です。ファイル管理 AI の設定で別のアカウントへ切り替えるか、ファイル管理 AI を無効にしてから再試行してください。'
 ErrAgentAccountUnavailable: 'アカウント接続不可: {{ .err }}'
 ErrAgentProviderNotSupported: 'エージェントプロバイダ非対応'
 ErrAgentAccountRequired: 'まずエージェントアカウントを選択'
 ErrAgentAccountNotVerified: 'アカウント未検証です'
 ErrAgentAccountModelsRequired: '少なくとも 1 つのモデルを設定してください'
-ErrAgentAccountSingleInitialModel: 'アカウント作成時に設定できる初期モデルは 1 つだけです'
+ErrAgentAccountSingleInitialModel: 'このプロバイダーで設定できるモデルは最大 1 つです'
 ErrAgentModelNotInAccount: '選択したモデルはこのアカウントに設定されていません'
 ErrAgentVerifyModelInUse: 'このモデルはアカウント検証に使用されています。削除する前に別の検証モデルを選択してください'
 ErrAgentFallbackModelDuplicate: 'フォールバックモデルは重複できません'
@@ -252,6 +252,7 @@ ErrSSLCertificateNotFound: '証明書ファイルが存在しません'
 ErrSSLKeyFormat: '秘密鍵ファイルの検証に失敗しました'
 ErrSSLCertificateFormat: '証明書ファイルの形式が正しくありません。pem 形式を使用してください'
 ErrEabKidOrEabHmacKeyCannotBlank: 'EabKid または EabHmacKey は空白にできません'
+ErrOpenrestyInstall: "先にアプリストアから OpenResty をインストールしてください"
 ErrOpenrestyNotFound: 'HTTP モードでは OpenResty が必要です'
 ApplySSLStart: '証明書の申請を開始します。ドメイン名 [{{ .domain }}] 申請方法 [{{ .type }}]'
 dnsAccount: 'DNS 自動'
@@ -675,7 +676,7 @@ TerminalAIRequestFailed: 'AI リクエストに失敗しました: {{ .err }}'
 
 # AIゲートウェイ
 ErrAIProxyServiceNotInstalled: '{{ .name }} サービスはインストールされていません'
-ErrAIProxyModelAccountNotFound: 'モデルアカウント {{ .id }} が見つかりません'
+ErrAIProxyModelAccountNotFound: 'モデルサービス {{ .id }} が見つかりません'
 ErrAIProxyModelMapRequired: 'この項目は必須です。'
 ErrAIProxyModelMapInvalid: 'モデルマッピングは有効な JSON オブジェクトである必要があります: {{ .err }}'
 ErrAIProxyModelMapEmpty: 'モデルマッピングは空にできません'
@@ -686,6 +687,7 @@ AIProviderBailian: 'Alibaba Cloud Model Studio'
 AIProviderBailianCodingPlan: 'Alibaba Cloud Model Studio Coding Plan'
 AIProviderArk: 'Volcengine Ark'
 AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
+AIProvider1PanelGateway: '1Panel AI ゲートウェイ'
 
 # Firewall
 ErrDockerIptablesChainUnavailable: 'Docker の DOCKER-USER チェーンが見つかりません。Docker を再起動してから再試行してください'
@@ -735,7 +737,7 @@ ErrSSHKeyMismatch: "SSH 公開鍵と秘密鍵が一致しません"
 # 仮想マシン
 ErrVMNotFound: "仮想マシンが存在しません"
 ErrVMAlreadyExists: "仮想マシンは既に存在します"
-ErrVMCountLimit: "Professional 版では最大 {{ .limit }} 台の仮想マシンを作成できます。既存の仮想マシンを削除するか、Enterprise 版にアップグレードしてから再試行してください。"
+ErrVMCountLimit: "現在のエディションでは最大 {{ .limit }} 台の仮想マシンを作成できます。 既存の仮想マシンを削除するか、上位エディションにアップグレードしてから再試行してください。"
 ErrVMImageAlreadyExists: "仮想マシンのイメージファイルは既に存在します: {{ .detail }}"
 ErrVMStoragePathInUse: "ストレージプールのパスは既に [{{ .name }}] で使用されています"
 ErrVMHelperNotFound: "1panel-kvm が見つかりません"
@@ -802,3 +804,19 @@ ErrFeishuUpgradeMounts: "現在のマウントは完全なバックアップ・�
 AgentFeishuRecoveryDisabled: "ゲートウェイを復旧しました。Feishu は無効のままで、元の設定のバックアップは保持しています。"
 
 ContainerUpgradeWaiting: "Waiting for a container upgrade execution slot"
+ContainerImageCheckUpdate: "イメージの更新を確認"
+ContainerImageCheckScope: "ページ分割やフィルターに関係なく、このノードの全 {{ .count }} コンテナを確認します"
+ContainerImageCheckItem: "コンテナ {{ .name }}、イメージ {{ .image }} を確認しています"
+ContainerImageCheckFailed: "コンテナ {{ .name }} の確認に失敗しました：{{ .error }}。現在のイメージに対応する前回の結果を保持します"
+ContainerImageCheckSkipped: "{{ .name }} をスキップ：タグ付きの Docker Hub イメージではないか、ローカルイメージまたは digest 固定のイメージです"
+ContainerImageCheckAvailable: "コンテナ {{ .name }} は更新可能です：{{ .image }} → {{ .target }}"
+ContainerImageCheckCurrent: "コンテナ {{ .name }} の更新は見つかりませんでした"
+ContainerImageCheckChanged: "コンテナ {{ .name }} が削除されたか、イメージが変更されたため、結果は保存されませんでした"
+ContainerImageCheckSummary: "確認終了：成功 {{ .checked }}、更新可能 {{ .updates }}、失敗 {{ .failed }}、スキップ {{ .skipped }}"
+ContainerImageCheckFailures: "{{ .count }} コンテナの確認に失敗しました。タスクログを確認してください"
+
+ErrImageCheckProxyRequired: "現在の実行環境でイメージの更新を確認するには、先にプロキシサーバーを設定してください。"
+
+ErrPHPExtensionsConflict: "同じ名前で内容が異なる PHP 拡張機能テンプレートが既に存在するため、上書きしませんでした"
+
+ErrModelTokenizerDirOverlap: "モデルとトークナイザーのディレクトリは別々にし、一方が他方を含まないようにしてください"

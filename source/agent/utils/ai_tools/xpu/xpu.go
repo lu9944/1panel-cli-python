@@ -93,6 +93,7 @@ func (c Client) loadDeviceInfo(ctx context.Context, device discoveryDevice, wg *
 	xpu := Device{
 		ProcessStatus: "unavailable",
 		Basic: Basic{
+			DrmDevice:     device.DrmDevice,
 			UUID:          device.UUID,
 			DeviceID:      device.DeviceID,
 			DeviceName:    device.DeviceName,
@@ -121,8 +122,9 @@ func (c Client) loadDeviceInfo(ctx context.Context, device discoveryDevice, wg *
 	wgCmd.Wait()
 
 	if xpuErr != nil {
+		xpu.ReadError = fmt.Sprintf("xpu-smi device %d: %v", device.DeviceID, xpuErr)
 		mu.Lock()
-		res.Warnings = append(res.Warnings, fmt.Sprintf("xpu-smi device %d: %v", device.DeviceID, xpuErr))
+		res.Warnings = append(res.Warnings, xpu.ReadError)
 		res.Devices = append(res.Devices, xpu)
 		mu.Unlock()
 		return
@@ -130,13 +132,17 @@ func (c Client) loadDeviceInfo(ctx context.Context, device discoveryDevice, wg *
 
 	var info discoveryDevice
 	if err := json.Unmarshal([]byte(xpuData), &info); err != nil {
+		xpu.ReadError = fmt.Sprintf("xpu-smi device %d output: %v", device.DeviceID, err)
 		mu.Lock()
-		res.Warnings = append(res.Warnings, fmt.Sprintf("xpu-smi device %d output: %v", device.DeviceID, err))
+		res.Warnings = append(res.Warnings, xpu.ReadError)
 		res.Devices = append(res.Devices, xpu)
 		mu.Unlock()
 		return
 	}
 
+	if info.DrmDevice != "" {
+		xpu.Basic.DrmDevice = info.DrmDevice
+	}
 	xpu.Basic.DriverVersion = info.DriverVersion
 
 	bytes, err := strconv.ParseInt(info.MemoryPhysicalSizeByte, 10, 64)

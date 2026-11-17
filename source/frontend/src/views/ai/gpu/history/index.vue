@@ -1,7 +1,7 @@
 <template>
     <div v-loading="loading">
         <RouterMenu />
-        <template v-if="supported">
+        <template v-if="supported && options.length">
             <el-card class="history-toolbar">
                 <div class="flex flex-wrap gap-3 items-center">
                     <el-select style="max-width: 100%" class="p-w-400" v-model="selectedDevice" @change="search">
@@ -26,7 +26,10 @@
                             :clearable="false"
                             @change="changeTimeRange"
                         />
-                        <TableRefresh @search="refresh" />
+                        <TableSetting title="gpu-refresh" @search="refresh" />
+                        <el-tooltip :content="$t('aiTools.gpu.environment.recheck')">
+                            <TableRefresh :disabled="loading" @search="refresh" />
+                        </el-tooltip>
                     </div>
                 </div>
                 <div v-if="history?.sampleCount && history.bucketSeconds > 0" class="history-summary">
@@ -67,26 +70,30 @@
                 </el-col>
             </el-row>
         </template>
-        <LayoutContent v-else-if="!loading" :title="$t('aiTools.gpu.gpu')" :divider="true">
+        <LayoutContent v-else :title="$t('aiTools.gpu.monitoringTitle')">
             <template #rightToolBar>
-                <TableRefresh @search="refresh" />
+                <TableSetting title="gpu-refresh" @search="refresh" />
+                <el-tooltip :content="$t('aiTools.gpu.environment.recheck')">
+                    <TableRefresh :disabled="loading" @search="refresh" />
+                </el-tooltip>
             </template>
             <template #main>
                 <el-alert
                     v-if="failed"
+                    class="common-prompt"
                     :title="$t('aiTools.gpu.historyLoadFailed')"
                     type="error"
                     :closable="false"
                     show-icon
                 />
-                <div v-else class="app-warn">
-                    <div class="flx-center">
-                        <span>{{ $t('aiTools.gpu.gpuHelper') }}</span>
-                    </div>
-                    <div>
-                        <img src="@/assets/images/no_app.svg" />
-                    </div>
-                </div>
+                <el-empty
+                    v-else-if="!loading"
+                    :description="
+                        environment.status === 'passed'
+                            ? $t('commons.msg.noneData')
+                            : $t(`aiTools.gpu.environment.${environment.status}`, { count: environment.issueCount })
+                    "
+                />
             </template>
         </LayoutContent>
     </div>
@@ -96,8 +103,9 @@
 import { ref, computed, watch, onBeforeUnmount, h } from 'vue';
 import { useRoute } from 'vue-router';
 import { InfoFilled } from '@element-plus/icons-vue';
-import { loadGPUMonitor, getGPUOptions } from '@/api/modules/ai';
+import { loadGPUMonitor, getGPUOptions, loadGPUInfo } from '@/api/modules/ai';
 import RouterMenu from '@/views/ai/gpu/index.vue';
+import { getGPUEnvironmentState } from '../environment';
 import { shortcuts } from '@/utils/shortcuts';
 import i18n from '@/lang';
 import { AI } from '@/api/interface/ai';
@@ -108,6 +116,8 @@ const { isMobile } = useGlobalStore();
 const loading = ref(false);
 const failed = ref(false);
 const supported = ref(false);
+const gpuInfo = ref<AI.Info>();
+const environment = computed(() => getGPUEnvironmentState(gpuInfo.value, failed.value));
 const options = ref<(AI.ChartHide & { value: string; label: string })[]>([]);
 const selectedDevice = ref('');
 const aggregation = ref<'avg' | 'max'>('avg');
@@ -362,6 +372,11 @@ const loadOptions = async () => {
                     .replace(/^(\d+) - /, `${item.type === 'xpu' ? 'XPU' : 'GPU'} $1 · `)
                     .replace(' - ', ' · '),
             }));
+        if (!options.value.length) {
+            const infoResult = await loadGPUInfo(true);
+            if (id !== requestID) return;
+            gpuInfo.value = infoResult.data;
+        }
         if (!currentDevice.value && !route.query.deviceID) selectedDevice.value = options.value[0]?.value || '';
         await search();
     } catch {
@@ -371,6 +386,7 @@ const loadOptions = async () => {
     }
 };
 const refresh = () => {
+    if (loading.value) return;
     if (followNow) timeRangeGlobal.value = [timeRangeGlobal.value[0], new Date()];
     void loadOptions();
 };

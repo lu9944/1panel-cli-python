@@ -11,6 +11,7 @@
                 <ComplexTable
                     :data="items"
                     :pagination-config="pagination"
+                    :page-sizes="apiKeyPageSizes"
                     :scrollbar-always-on="isMobile"
                     @search="search"
                 >
@@ -28,7 +29,7 @@
                                 <el-tooltip
                                     v-if="row.kind === 'legacy'"
                                     :content="$t('apiKeyManagement.legacyHelp')"
-                                    placement="top"
+                                    v-bind="TABLE_TOOLTIP_OPTIONS"
                                     :trigger="isMobile ? 'click' : 'hover'"
                                     :popper-style="{ maxWidth: 'min(360px, calc(100vw - 32px))' }"
                                 >
@@ -198,7 +199,7 @@ import { generateApiKey, getUserInfo } from '@/api/modules/auth';
 import APIKeyEditor from '@/components/api-key-management/editor.vue';
 import APIKeySummary from '@/components/api-key-management/summary.vue';
 import DrawerPro from '@/components/drawer-pro/index.vue';
-import type { FuTableOperationButton } from '@/components/table/shared';
+import { TABLE_TOOLTIP_OPTIONS, type FuTableOperationButton } from '@/components/table/shared';
 import { isAnyAPIKeyIP, normalizeAPIKeyIPs } from '@/utils/api-key';
 import { MsgSuccess, MsgWarning } from '@/utils/message';
 import { copyText } from '@/utils/clipboard';
@@ -215,6 +216,7 @@ const detailVisible = ref(false);
 const secret = ref('');
 const secretBusy = ref(false);
 const secretAction = ref<'reveal' | 'copy'>('reveal');
+const apiKeyPageSizes = [5, 10, 20, 50, 100, 200, 500];
 const pagination = reactive({ currentPage: 1, pageSize: 20, total: 0 });
 let searchVersion = 0;
 let secretRequestVersion = 0;

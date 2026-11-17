@@ -136,6 +136,9 @@ export namespace Container {
         mode: string;
     }
     export interface ContainerInfo {
+        latestVersion?: string;
+        targetImage?: string;
+        hasUpdate?: boolean;
         containerID: string;
         name: string;
         imageName: string;
@@ -413,6 +416,8 @@ export namespace Container {
         isExist: boolean;
     }
     export interface DaemonJsonConf {
+        nvidia: boolean;
+        nvidiaSupported: boolean;
         isSwarm: boolean;
         isExist: boolean;
         isActive: boolean;

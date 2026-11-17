@@ -12,7 +12,7 @@
                 <TableSetting title="backup-account-refresh" @search="search()" />
             </template>
             <template #main>
-                <el-alert type="info" :closable="false" class="common-div" v-if="!isFxplay">
+                <el-alert type="info" :closable="false" class="common-div">
                     <template #title>
                         <span>
                             {{ $t('setting.backupAlert') }}
@@ -28,6 +28,7 @@
                     </template>
                 </el-alert>
                 <ComplexTable
+                    :cache-pagination="false"
                     :pagination-config="paginationConfig"
                     @sort-change="search"
                     @search="search"
@@ -56,7 +57,7 @@
                     <el-table-column :label="$t('commons.table.type')" :min-width="100" prop="type">
                         <template #default="{ row }">
                             <el-tag>{{ $t('setting.' + row.type) }}</el-tag>
-                            <el-tooltip v-if="hasTokenRefresh(row)">
+                            <el-tooltip v-if="hasTokenRefresh(row)" v-bind="TABLE_TOOLTIP_OPTIONS">
                                 <template #content>
                                     {{ $t('setting.clickToRefresh') }}
                                     <br />
@@ -120,6 +121,7 @@
     </div>
 </template>
 <script setup lang="ts">
+import { TABLE_TOOLTIP_OPTIONS } from '@/components/table/shared';
 import { useSearchState } from '@/utils/search-reset';
 import { dateFormat } from '@/utils/date';
 import { toRef, onMounted, ref } from 'vue';
@@ -132,7 +134,7 @@ import { MsgSuccess } from '@/utils/message';
 import { Base64 } from 'js-base64';
 import { useGlobalStore } from '@/composables/useGlobalStore';
 
-const { isProductPro, isFxplay, docsUrl, isMobile } = useGlobalStore();
+const { isProductPro, docsUrl, isMobile } = useGlobalStore();
 const loading = ref();
 const data = ref();
 const paginationConfig = reactive({
@@ -160,7 +162,7 @@ const search = async () => {
         page: paginationConfig.currentPage,
         pageSize: paginationConfig.pageSize,
         type: paginationConfig.type,
-        name: paginationConfig.name,
+        info: paginationConfig.name,
     };
     loading.value = true;
     await searchBackup(params)

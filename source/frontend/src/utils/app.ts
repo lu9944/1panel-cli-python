@@ -38,15 +38,12 @@ export const jumpToInstall = (type: string, key: string) => {
                 },
             });
             return true;
-        case 'ollama':
-            router.push({ path: '/ai/model/local', query: { engine: 'ollama', uncached: 'true', open: 'create' } });
-            return true;
         case 'vllm':
-            if (globalStore.isProductPro) {
+            if (globalStore.isProductPro && router.hasRoute('LocalModel')) {
                 router.push({
-                    path: '/ai/model/local',
+                    path: '/ai/vllm/deployments',
                     query: {
-                        tab: 'vllm',
+                        engine: 'vllm',
                         uncached: 'true',
                         open: 'create',
                     },

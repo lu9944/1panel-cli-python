@@ -13,6 +13,9 @@
                 <el-button v-permission type="primary" plain @click="onOpenPull">
                     {{ $t('container.imagePull') }}
                 </el-button>
+                <el-button v-permission type="primary" plain @click="remoteSearchRef.open()">
+                    {{ $t('container.imageRemoteSearch') }}
+                </el-button>
                 <el-button v-permission type="primary" plain @click="onOpenLoad">
                     {{ $t('container.importImage') }}
                 </el-button>
@@ -33,6 +36,7 @@
             </template>
             <template #main>
                 <ComplexTable
+                    :cache-pagination="false"
                     :pagination-config="paginationConfig"
                     :data="data"
                     @sort-change="search"
@@ -47,6 +51,7 @@
                             </el-text>
                             <div class="float-right">
                                 <el-tooltip
+                                    v-bind="TABLE_TOOLTIP_OPTIONS"
                                     :content="row.isPinned ? $t('commons.table.unpin') : $t('commons.table.pin')"
                                 >
                                     <el-button
@@ -145,6 +150,7 @@
 
         <OpDialog ref="opRef" @submit="onSubmitDelete" />
         <Pull ref="dialogPullRef" @search="search" />
+        <RemoteSearch ref="remoteSearchRef" @pull="onRemotePull" />
         <Tag ref="dialogTagRef" @search="search" />
         <Push ref="dialogPushRef" @search="search" />
         <Save ref="dialogSaveRef" @search="search" />
@@ -157,13 +163,16 @@
 </template>
 
 <script lang="ts" setup>
+import { TABLE_TOOLTIP_OPTIONS } from '@/components/table/shared';
 import { useSearchState } from '@/utils/search-reset';
-import { toRef, reactive, ref, computed } from 'vue';
+import { toRef, reactive, ref, computed, watch, onActivated, onDeactivated, onBeforeUnmount } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { dateFormat } from '@/utils/date';
 import { newUUID } from '@/utils/id';
 import { computeSize2 } from '@/utils/size';
 import { Container } from '@/api/interface/container';
 import Pull from '@/views/container/image/pull/index.vue';
+import RemoteSearch from '@/views/container/image/remote/index.vue';
 import Tag from '@/views/container/image/tag/index.vue';
 import Push from '@/views/container/image/push/index.vue';
 import Save from '@/views/container/image/save/index.vue';
@@ -174,14 +183,25 @@ import Prune from '@/views/container/image/prune/index.vue';
 import DockerStatus from '@/views/container/docker-status/index.vue';
 import CodemirrorDrawer from '@/components/codemirror-pro/drawer.vue';
 import TaskLog from '@/components/log/task/index.vue';
-import { searchImage, listImageRepo, imageRemove, inspect, containerPrune, imagePull } from '@/api/modules/container';
+import {
+    searchImage,
+    listImageRepo,
+    imageRemove,
+    inspect,
+    containerPrune,
+    imagePull,
+    loadDockerStatus,
+} from '@/api/modules/container';
 import i18n from '@/lang';
 import { ElMessageBox } from 'element-plus';
 import { updateCommonDescription } from '@/api/modules/setting';
 import { MsgError, MsgSuccess } from '@/utils/message';
 import { useGlobalStore } from '@/composables/useGlobalStore';
 
-const { isMobile } = useGlobalStore();
+const { isMobile, currentNode, globalStore } = useGlobalStore();
+const route = useRoute();
+const router = useRouter();
+let pageActive = true;
 const taskLogRef = ref();
 
 const loading = ref(false);
@@ -256,9 +276,31 @@ const search = async (column?: any) => {
             loading.value = false;
         });
 };
-const loadRepos = async () => {
-    const res = await listImageRepo();
-    repos.value = res.data || [];
+let repoRequest: Promise<void> | undefined;
+let repoGeneration = 0;
+let pullGeneration = 0;
+const resetRepos = () => {
+    repoGeneration++;
+    pullGeneration++;
+    repoRequest = undefined;
+    repos.value = undefined;
+};
+watch(currentNode, resetRepos, { flush: 'sync' });
+onBeforeUnmount(() => {
+    pageActive = false;
+    resetRepos();
+});
+const loadRepos = () => {
+    if (repoRequest) return repoRequest;
+    const version = repoGeneration;
+    repoRequest = listImageRepo()
+        .then((res) => {
+            if (version === repoGeneration) repos.value = res.data || [];
+        })
+        .finally(() => {
+            if (version === repoGeneration) repoRequest = undefined;
+        });
+    return repoRequest;
 };
 
 const onDelete = (row: Container.ImageInfo) => {
@@ -316,6 +358,85 @@ const onInspect = async (id: string) => {
     };
     myDetail.value!.acceptParams(param);
 };
+
+const remoteSearchRef = ref();
+const onRemotePull = async (imageName: string) => {
+    const version = ++pullGeneration;
+    const node = currentNode.value;
+    try {
+        if (!repos.value) await loadRepos();
+        if (
+            version !== pullGeneration ||
+            !pageActive ||
+            route.name !== 'Image' ||
+            node !== currentNode.value ||
+            !isActive.value ||
+            !isExist.value ||
+            !globalStore.hasPermission('container_manage')
+        )
+            return;
+        dialogPullRef.value!.acceptParams({ repos: repos.value, imageName });
+    } catch {
+        // The request interceptor displays errors.
+    }
+};
+
+let openingPullQuery = false;
+const openRequestedPull = async () => {
+    if (openingPullQuery || !pageActive || route.name !== 'Image' || route.query.pull === undefined) return;
+    openingPullQuery = true;
+    const imageName = route.query.pull;
+    const requestPath = route.fullPath;
+    const node = currentNode.value;
+    const version = pullGeneration;
+    const isCurrent = () =>
+        pageActive && route.name === 'Image' && node === currentNode.value && version === pullGeneration;
+    const query = { ...route.query };
+    delete query.pull;
+    try {
+        const failure = await router.replace({ path: route.path, query, hash: route.hash });
+        if (
+            failure ||
+            !isCurrent() ||
+            !globalStore.hasPermission('container_manage') ||
+            typeof imageName !== 'string' ||
+            !/^[a-zA-Z0-9][a-z:@A-Z0-9_/.-]{0,255}$/.test(imageName)
+        )
+            return;
+        const { data: status } = await loadDockerStatus();
+        if (!isCurrent()) return;
+        const needsSearch = !isActive.value || !isExist.value;
+        isActive.value = status.isActive;
+        isExist.value = status.isExist;
+        if (!isActive.value || !isExist.value) return;
+        if (needsSearch) void search();
+        await onRemotePull(imageName);
+    } catch {
+        // Navigation and request errors use their existing handlers.
+    } finally {
+        openingPullQuery = false;
+        if (
+            pageActive &&
+            route.name === 'Image' &&
+            route.query.pull !== undefined &&
+            (route.fullPath !== requestPath || node !== currentNode.value || version !== pullGeneration)
+        )
+            void openRequestedPull();
+    }
+};
+watch(
+    () => route.fullPath,
+    () => void openRequestedPull(),
+    { immediate: true, flush: 'post' },
+);
+onActivated(() => {
+    pageActive = true;
+    void openRequestedPull();
+});
+onDeactivated(() => {
+    pageActive = false;
+    pullGeneration++;
+});
 
 const onOpenPull = () => {
     let params = {

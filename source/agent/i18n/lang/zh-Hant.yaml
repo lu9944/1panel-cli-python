@@ -46,7 +46,7 @@ ErrHttpReqNotFound: '無法找到要求的資源{{ .err }}'
 
 # 快速跳轉
 ErrMinQuickJump: '請至少設定一個快速跳轉入口！'
-ErrMaxQuickJump: '最多可設定四個快速跳轉入口！'
+ErrMaxQuickJump: '最多可設定五個快速跳轉入口！'
 
 # 通用
 ErrShutDown: '指令被手動結束！'
@@ -70,14 +70,14 @@ Decrypt: '解密'
 
 # 智慧體
 ErrAgentAccountBound: '該帳號已綁定到智能體，無法刪除，請重試。'
-ErrTerminalAIAccountInUse: '該模型帳號正被終端 AI 使用，請在終端 AI 設定中更換帳號或關閉終端 AI 後再試。'
-ErrFileAIAccountInUse: '該模型帳號正被檔案管理 AI 使用，請在檔案管理 AI 設定中更換帳號或關閉檔案管理 AI 後再試。'
+ErrTerminalAIAccountInUse: '該模型服務正被終端 AI 使用，請在終端 AI 設定中更換帳號或關閉終端 AI 後再試。'
+ErrFileAIAccountInUse: '該模型服務正被檔案管理 AI 使用，請在檔案管理 AI 設定中更換帳號或關閉檔案管理 AI 後再試。'
 ErrAgentAccountUnavailable: '帳號連線資訊不可用，錯誤：{{ .err }}，請重試'
 ErrAgentProviderNotSupported: '暫不支援該智能體提供商，請重試'
 ErrAgentAccountRequired: '請選擇智能體帳號後重試'
 ErrAgentAccountNotVerified: '帳號未驗證通過，請重試'
 ErrAgentAccountModelsRequired: '請至少配置一個模型'
-ErrAgentAccountSingleInitialModel: '建立帳號時只能配置一個初始模型'
+ErrAgentAccountSingleInitialModel: '目前提供商最多可設定一個模型'
 ErrAgentModelNotInAccount: '所選模型未配置在當前帳號中，請重試'
 ErrAgentVerifyModelInUse: '該模型正用於驗證帳號，請先選擇其他驗證模型後再刪除'
 ErrAgentFallbackModelDuplicate: '備用模型不能重複'
@@ -252,6 +252,7 @@ ErrSSLCertificateNotFound: '憑證檔案不存在'
 ErrSSLKeyFormat: '私鑰檔案驗證失敗'
 ErrSSLCertificateFormat: '憑證檔案格式錯誤，請使用 pem 格式'
 ErrEabKidOrEabHmacKeyCannotBlank: 'EabKid 或 EabHmacKey 不可為空'
+ErrOpenrestyInstall: "請先在應用程式商店安裝 OpenResty"
 ErrOpenrestyNotFound: 'HTTP 模式需要先安裝 OpenResty'
 ApplySSLStart: '開始申請憑證，網域名稱[{{ .domain }}] 申請方式[{{ .type }}]'
 dnsAccount: 'DNS 自動'
@@ -675,7 +676,7 @@ TerminalAIRequestFailed: 'AI 請求失敗：{{ .err }}'
 
 # AI 閘道
 ErrAIProxyServiceNotInstalled: '{{ .name }} 服務未安裝'
-ErrAIProxyModelAccountNotFound: '模型帳號 {{ .id }} 不存在'
+ErrAIProxyModelAccountNotFound: '模型服務 {{ .id }} 不存在'
 ErrAIProxyModelMapRequired: '請填寫必填項'
 ErrAIProxyModelMapInvalid: '模型映射必須是合法的 JSON 物件：{{ .err }}'
 ErrAIProxyModelMapEmpty: '模型映射不能為空'
@@ -686,6 +687,7 @@ AIProviderBailian: '阿里雲百煉'
 AIProviderBailianCodingPlan: '阿里雲百煉 Coding Plan'
 AIProviderArk: '火山方舟'
 AIProviderArkCodingPlan: '火山方舟 Coding Plan'
+AIProvider1PanelGateway: '1Panel AI 閘道'
 
 # 防火牆
 ErrDockerIptablesChainUnavailable: '未偵測到 Docker 的 DOCKER-USER 鏈，請重新啟動 Docker 後再試'
@@ -735,7 +737,7 @@ ErrSSHKeyMismatch: "SSH 公鑰與私鑰不相符"
 # 虛擬機
 ErrVMNotFound: "虛擬機不存在"
 ErrVMAlreadyExists: "虛擬機已存在"
-ErrVMCountLimit: "專業版最多可建立 {{ .limit }} 台虛擬機，請刪除現有虛擬機或升級企業版後重試。"
+ErrVMCountLimit: "目前版本最多可建立 {{ .limit }} 台虛擬機。 請刪除現有虛擬機或升級版本後重試。"
 ErrVMImageAlreadyExists: "虛擬機映像檔已存在: {{ .detail }}"
 ErrVMStoragePathInUse: "儲存池路徑已被 [{{ .name }}] 使用"
 ErrVMHelperNotFound: "1panel-kvm 不存在"
@@ -802,3 +804,19 @@ ErrFeishuUpgradeMounts: "目前掛載無法完整備份或還原，請使用應�
 AgentFeishuRecoveryDisabled: "閘道已恢復，飛書保持停用；原設定備份已保留。"
 
 ContainerUpgradeWaiting: "等待容器升級任務執行名額"
+ContainerImageCheckUpdate: "檢查更新映像"
+ContainerImageCheckScope: "檢查目前節點全部 {{ .count }} 個容器，不受分頁和篩選影響"
+ContainerImageCheckItem: "檢查容器 {{ .name }}，映像 {{ .image }}"
+ContainerImageCheckFailed: "容器 {{ .name }} 檢查失敗：{{ .error }}；保留符合目前映像的上次結果"
+ContainerImageCheckSkipped: "略過 {{ .name }}：非 Docker Hub 標籤映像、本機映像或固定 digest"
+ContainerImageCheckAvailable: "容器 {{ .name }} 可升級：{{ .image }} → {{ .target }}"
+ContainerImageCheckCurrent: "容器 {{ .name }} 未發現更新"
+ContainerImageCheckChanged: "容器 {{ .name }} 已刪除或映像已變更，未儲存本次結果"
+ContainerImageCheckSummary: "檢查結束：成功 {{ .checked }}，可升級 {{ .updates }}，失敗 {{ .failed }}，略過 {{ .skipped }}"
+ContainerImageCheckFailures: "{{ .count }} 個容器檢查失敗，請查看任務日誌"
+
+ErrImageCheckProxyRequired: "目前運行環境下，如需檢查映像是否更新，請先設定代理伺服器"
+
+ErrPHPExtensionsConflict: "同名 PHP 擴充模版已存在且內容不同，未覆蓋"
+
+ErrModelTokenizerDirOverlap: "模型目錄和分詞器目錄不能相同或互相包含"

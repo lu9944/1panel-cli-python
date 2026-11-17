@@ -40,7 +40,7 @@
                     <el-option :label="$t('setting.UPYUN')" value="UPYUN"></el-option>
                 </el-select>
                 <span v-if="isALIYUNYUN()" class="input-help">{{ $t('setting.ALIYUNHelper') }}</span>
-                <span v-if="dialogData.rowData?.type === 'GoogleDrive' && !isFxplay" class="input-help">
+                <span v-if="dialogData.rowData?.type === 'GoogleDrive'" class="input-help">
                     {{ $t('setting.googleHelper', [$t('setting.' + dialogData.rowData?.type)]) }}
                     <el-link
                         style="font-size: 12px; margin-left: 5px"
@@ -84,7 +84,7 @@
                 :rules="Rules.requiredInput"
             >
                 <el-input v-model="dialogData.rowData!.varsJson['address']" />
-                <span class="input-help" v-if="!isFxplay">
+                <span class="input-help">
                     {{ $t('setting.WebDAVAlist') }}
                     <el-link
                         style="font-size: 12px; margin-left: 5px"
@@ -183,6 +183,15 @@
                         </el-select>
                     </template>
                 </el-input>
+            </el-form-item>
+            <el-form-item v-if="supportsCustomCA" :label="$t('setting.backupCACert')" prop="varsJson.caCertPEM">
+                <el-input
+                    v-model="dialogData.rowData!.varsJson['caCertPEM']"
+                    type="textarea"
+                    :rows="5"
+                    :spellcheck="false"
+                />
+                <span class="input-help">{{ $t('setting.backupCACertHelp') }}</span>
             </el-form-item>
             <el-form-item v-if="hasAccessKey()" label="Bucket" prop="bucket" :rules="Rules.requiredInput">
                 <el-checkbox v-model="dialogData.rowData!.bucketInput" :label="$t('container.input')" />
@@ -300,7 +309,7 @@
                         <el-button class="append-button" @click="loadFromTokenForAliyun()">
                             {{ $t('setting.analysis') }}
                         </el-button>
-                        <span class="input-help" v-if="!isFxplay">
+                        <span class="input-help">
                             {{ $t('setting.analysisHelper') }}
                             <el-link
                                 style="font-size: 12px; margin-left: 5px"
@@ -327,7 +336,7 @@
                         <el-radio-button :value="false">{{ $t('setting.isNotCN') }}</el-radio-button>
                         <el-radio-button :value="true">{{ $t('setting.isCN') }}</el-radio-button>
                     </el-radio-group>
-                    <span class="input-help" v-if="!isFxplay">
+                    <span class="input-help">
                         {{ $t('setting.onedrive_helper') }}
                         <el-link
                             style="font-size: 12px; margin-left: 5px"
@@ -425,7 +434,7 @@ import { spliceHttp, splitHttp } from '@/utils/validate';
 import { MsgError, MsgSuccess } from '@/utils/message';
 import { Base64 } from 'js-base64';
 import { useGlobalStore } from '@/composables/useGlobalStore';
-const { docsUrl, isFxplay, isProductPro } = useGlobalStore();
+const { docsUrl, isProductPro } = useGlobalStore();
 
 const loading = ref(false);
 type FormInstance = InstanceType<typeof ElForm>;
@@ -452,10 +461,27 @@ const dialogData = ref<DialogProps>({
     title: '',
 });
 
+const supportsCustomCA = computed(() => {
+    const row = dialogData.value.rowData;
+    if (!row) return false;
+    if (row.type === 'S3' || row.type === 'MINIO') return domainProto.value === 'https';
+    return row.type === 'WebDAV' && /^https:\/\//i.test(String(row.varsJson?.['address'] || '').trim());
+});
+
 const formWatcher = computed(() => {
     const { type, isPublic, accessKey, bucket, credential, backupPath, bucketInput, varsJson } =
         dialogData.value.rowData || {};
-    return { type, isPublic, accessKey, bucket, credential, backupPath, bucketInput, varsJson };
+    return {
+        type,
+        isPublic,
+        accessKey,
+        bucket,
+        credential,
+        backupPath,
+        bucketInput,
+        varsJson,
+        protocol: domainProto.value,
+    };
 });
 const startWatcher = () => {
     if (stopWatch.value) {

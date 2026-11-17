@@ -4,9 +4,10 @@
 1. `sudo 1pctl user-info` — 面板地址(含协议/端口/安全入口)、用户名、初始密码;
 2. 面板本地 SQLite DB(默认 /opt/1panel/db/{core,agent}.db)——
    当 user-info 因已登录过而掩码密码时,读取设置表中的 Password/EncryptKey
-   并用 AES 解密,无需用户手填。DB 文件通常全局可读(0644),无需 sudo。
+   并用 AES 解密,无需用户手填。1Panel 的 DB 目录(本机 v2.5.1 为 0700 root)不能直接读取时
+   自动用 `sudo -n cat` 复制快照(与 user-info 一样需要免密 sudo)。
 
-对应 1Panel v2.4.2 源码(技能目录内 `source/`):
+对应 1Panel v2.5.1 源码(技能目录内 `source/`):
 - source/core/cmd/server/cmd/user-info.go — user-info 输出与掩码逻辑(有成功登录记录即掩码)
 - source/core/utils/encrypt/encrypt.go    — StringDecrypt: base64(iv + AES-CBC(PKCS7))
 """
@@ -156,26 +157,42 @@ def _read_settings(core_db: Path, agent_db: Path, read_only: bool = True) -> dic
 
 
 def _sudo_snapshot(core_db: Path, agent_db: Path) -> tuple[Path, Path] | None:
-    """DB 不可读时用 sudo -n 复制一份到私有临时目录(副本含 WAL 可正常打开)。"""
+    """DB 不可读时用 sudo -n 复制一份到私有临时目录(副本含 WAL 可正常打开)。
+
+    1Panel 的 /opt/1panel/db 在本机 v2.5.1 上为 0700 root,普通用户连 ``Path.exists()``
+    都会因目录不可遍历而返回 False,因此这里不再先用 exists() 过滤,而是直接让
+    sudo 判断/复制。
+    """
+    if not shutil.which("sudo"):
+        return None
     tmp_dir = Path(tempfile.mkdtemp(prefix="1panel-cli-db-"))
     os.chmod(tmp_dir, 0o700)
     try:
         for src in (core_db, agent_db):
             for suffix in ("", "-wal", "-shm"):
                 source = Path(str(src) + suffix)
-                if not source.exists():
-                    continue
                 target = tmp_dir / (src.name + suffix)
-                proc = subprocess.run(
-                    ["sudo", "-n", "cp", "-f", str(source), str(target)],
-                    capture_output=True,
-                    timeout=30,
-                )
-                if proc.returncode != 0 and suffix == "":
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
-                    return None
-                if suffix != "" and proc.returncode != 0:
-                    pass  # WAL/SHM 可能不存在或复制失败,尝试直接用 db 副本
+                # 用 sudo cat 写入当前用户创建的临时文件:cp 会保留 root:root 0600,
+                # 复制完成后普通用户仍然无法打开。
+                try:
+                    with open(target, "wb") as handle:
+                        proc = subprocess.run(
+                            ["sudo", "-n", "cat", str(source)],
+                            stdout=handle,
+                            stderr=subprocess.DEVNULL,
+                            timeout=30,
+                        )
+                except (OSError, subprocess.TimeoutExpired):
+                    if suffix == "":
+                        shutil.rmtree(tmp_dir, ignore_errors=True)
+                        return None
+                    continue
+                if proc.returncode != 0:
+                    target.unlink(missing_ok=True)
+                    if suffix == "":
+                        shutil.rmtree(tmp_dir, ignore_errors=True)
+                        return None
+                # WAL/SHM 可能不存在或复制失败,尝试直接用 db 副本
         return tmp_dir / core_db.name, tmp_dir / agent_db.name
     except (OSError, subprocess.TimeoutExpired):
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -185,20 +202,24 @@ def _sudo_snapshot(core_db: Path, agent_db: Path) -> tuple[Path, Path] | None:
 def read_panel_settings(core_db: Path | None = None, agent_db: Path | None = None) -> dict:
     core_db = Path(core_db or CORE_DB)
     agent_db = Path(agent_db or AGENT_DB)
-    if not core_db.exists():
-        raise CliError(f"未找到面板数据库: {core_db}(init 需在 1Panel 所在主机执行)")
+    read_error: Exception | None = None
     try:
-        return _read_settings(core_db, agent_db, read_only=True)
+        if core_db.exists():
+            return _read_settings(core_db, agent_db, read_only=True)
     except (sqlite3.Error, OSError) as exc:
-        snapshot = _sudo_snapshot(core_db, agent_db)
-        if snapshot is None:
-            raise CliError(f"读取面板数据库失败: {exc}") from exc
-        try:
-            return _read_settings(snapshot[0], snapshot[1], read_only=False)
-        except (sqlite3.Error, OSError) as inner:
-            raise CliError(f"读取面板数据库副本失败: {inner}") from inner
-        finally:
-            shutil.rmtree(snapshot[0].parent, ignore_errors=True)
+        read_error = exc
+
+    snapshot = _sudo_snapshot(core_db, agent_db)
+    if snapshot is None:
+        if read_error is not None:
+            raise CliError(f"读取面板数据库失败: {read_error}") from read_error
+        raise CliError(f"未找到面板数据库: {core_db}(init 需在 1Panel 所在主机执行或允许 sudo -n)")
+    try:
+        return _read_settings(snapshot[0], snapshot[1], read_only=False)
+    except (sqlite3.Error, OSError) as inner:
+        raise CliError(f"读取面板数据库副本失败: {inner}") from inner
+    finally:
+        shutil.rmtree(snapshot[0].parent, ignore_errors=True)
 
 
 def address_from_settings(settings: dict) -> str:

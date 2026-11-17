@@ -16,6 +16,9 @@ func (s *ContainerRouter) InitRouter(Router *gin.RouterGroup) {
 		baRouter.POST("", baseApi.ContainerCreate)
 		baRouter.POST("/update", baseApi.ContainerUpdate)
 		baRouter.POST("/upgrade", baseApi.ContainerUpgrade)
+		baRouter.GET("/image-updates", baseApi.GetContainerImageCheckUpdateStatus)
+		baRouter.POST("/image-updates/check", baseApi.ContainerImageCheckUpdate)
+		baRouter.POST("/image-updates/schedule", baseApi.SetContainerImageCheckUpdateSchedule)
 		baRouter.POST("/info", baseApi.ContainerInfo)
 		baRouter.POST("/search", baseApi.SearchContainer)
 		baRouter.POST("/list", baseApi.ListContainer)
@@ -64,6 +67,7 @@ func (s *ContainerRouter) InitRouter(Router *gin.RouterGroup) {
 		baRouter.POST("/template", baseApi.CreateComposeTemplate)
 		baRouter.POST("/template/del", baseApi.DeleteComposeTemplate)
 
+		baRouter.POST("/image/remote/search", baseApi.SearchRemoteImages)
 		baRouter.GET("/image", baseApi.ListImage)
 		baRouter.GET("/image/all", baseApi.ListAllImage)
 		baRouter.POST("/image/search", baseApi.SearchImage)

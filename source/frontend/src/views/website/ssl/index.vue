@@ -23,7 +23,7 @@
                 </el-button>
             </template>
             <template #rightToolBar>
-                <TableSearch @search="search()" v-model:searchName="req.domain" />
+                <TableSearch @search="searchByDomain" v-model:searchName="req.domain" />
                 <TableRefresh @search="search()" />
                 <fu-table-column-select
                     :columns="columns"
@@ -36,6 +36,7 @@
             <template #main>
                 <ComplexTable
                     :data="data"
+                    :cache-pagination="false"
                     :pagination-config="paginationConfig"
                     @search="search()"
                     v-model:selects="selects"
@@ -58,7 +59,7 @@
                             <el-tooltip
                                 v-if="row.dnsAccount && row.dnsAccount.type === 'DnsPod'"
                                 :content="$t('ssl.dnsPodRemovedSSLTip')"
-                                placement="top"
+                                v-bind="TABLE_TOOLTIP_OPTIONS"
                             >
                                 <el-tag type="danger" size="small" class="ml-2">
                                     DnsPod {{ $t('ssl.dnsPodRemoved') }}
@@ -218,6 +219,7 @@
 </template>
 
 <script lang="ts" setup>
+import { TABLE_TOOLTIP_OPTIONS } from '@/components/table/shared';
 import { useSearchState } from '@/utils/search-reset';
 import { toRef, defineAsyncComponent, onMounted, reactive, ref } from 'vue';
 import { deleteSSL, downloadFile, pushSSLToNode, searchSSL, updateSSL } from '@/api/modules/website';
@@ -432,6 +434,11 @@ const search = () => {
         .finally(() => {
             loading.value = false;
         });
+};
+
+const searchByDomain = () => {
+    paginationConfig.currentPage = 1;
+    search();
 };
 
 const updateDesc = (row: Website.SSLDTO, bulr: Function) => {

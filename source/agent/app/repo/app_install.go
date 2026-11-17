@@ -31,9 +31,11 @@ type IAppInstallRepo interface {
 	GetFirst(opts ...DBOption) (model.AppInstall, error)
 	Create(ctx context.Context, install *model.AppInstall) error
 	Save(ctx context.Context, install *model.AppInstall) error
+	UpdateStatus(install *model.AppInstall) error
 	DeleteBy(opts ...DBOption) error
 	Delete(ctx context.Context, install model.AppInstall) error
 	Page(page, size int, opts ...DBOption) (int64, []model.AppInstall, error)
+	PageWithContext(ctx context.Context, page, size int, opts ...DBOption) (int64, []model.AppInstall, error)
 	BatchUpdateBy(maps map[string]interface{}, opts ...DBOption) error
 	LoadBaseInfo(key string, name string) (*RootInfo, error)
 	LoadInstallAppByKeyAndName(key string, name string) (*model.AppInstall, error)
@@ -43,6 +45,11 @@ type IAppInstallRepo interface {
 
 func NewIAppInstallRepo() IAppInstallRepo {
 	return &AppInstallRepo{}
+}
+
+func (a *AppInstallRepo) UpdateStatus(install *model.AppInstall) error {
+	return getDb().Model(&model.AppInstall{}).Where("id = ? AND updated_at = ?", install.ID, install.UpdatedAt).
+		Updates(map[string]interface{}{"status": install.Status, "message": install.Message, "container_name": install.ContainerName}).Error
 }
 
 func (a *AppInstallRepo) WithDetailIdsIn(detailIds []uint) DBOption {
@@ -157,8 +164,12 @@ func (a *AppInstallRepo) Delete(ctx context.Context, install model.AppInstall) e
 }
 
 func (a *AppInstallRepo) Page(page, size int, opts ...DBOption) (int64, []model.AppInstall, error) {
+	return a.PageWithContext(context.Background(), page, size, opts...)
+}
+
+func (a *AppInstallRepo) PageWithContext(ctx context.Context, page, size int, opts ...DBOption) (int64, []model.AppInstall, error) {
 	var apps []model.AppInstall
-	db := getDb(opts...).Model(&model.AppInstall{})
+	db := getTx(ctx, opts...).WithContext(ctx).Model(&model.AppInstall{})
 	count := int64(0)
 	db = db.Count(&count)
 	err := db.Limit(size).Offset(size * (page - 1)).Preload("App").Find(&apps).Error

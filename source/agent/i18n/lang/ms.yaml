@@ -46,7 +46,7 @@ ErrHttpReqNotFound: 'Sumber yang diminta {{ .err }} tidak dapat ditemui'
 
 # lompat pantas
 ErrMinQuickJump: 'Tambah sekurang-kurangnya satu pintasan pantas'
-ErrMaxQuickJump: 'Maksimum 4 pintasan pantas'
+ErrMaxQuickJump: 'Maksimum 5 pintasan pantas'
 
 # umum
 ErrShutDown: 'Arahan diberhentikan manual'
@@ -70,14 +70,14 @@ Decrypt: 'Dekripsi'
 
 # ejen
 ErrAgentAccountBound: 'Akaun terikat kepada ejen'
-ErrTerminalAIAccountInUse: 'Akaun model ini sedang digunakan oleh Terminal AI. Tukar akaun dalam tetapan Terminal AI atau nyahaktifkan Terminal AI, kemudian cuba lagi.'
-ErrFileAIAccountInUse: 'Akaun model ini sedang digunakan oleh AI pengurusan fail. Tukar akaun dalam tetapannya atau nyahaktifkan AI tersebut, kemudian cuba lagi.'
+ErrTerminalAIAccountInUse: 'Perkhidmatan model ini sedang digunakan oleh Terminal AI. Tukar akaun dalam tetapan Terminal AI atau nyahaktifkan Terminal AI, kemudian cuba lagi.'
+ErrFileAIAccountInUse: 'Perkhidmatan model ini sedang digunakan oleh AI pengurusan fail. Tukar akaun dalam tetapannya atau nyahaktifkan AI tersebut, kemudian cuba lagi.'
 ErrAgentAccountUnavailable: 'Sambungan akaun tidak tersedia: {{ .err }}'
 ErrAgentProviderNotSupported: 'Penyedia ejen tidak disokong'
 ErrAgentAccountRequired: 'Pilih akaun ejen terlebih dahulu'
 ErrAgentAccountNotVerified: 'Akaun ejen belum disahkan'
 ErrAgentAccountModelsRequired: 'Sila konfigur sekurang-kurangnya satu model'
-ErrAgentAccountSingleInitialModel: 'Hanya satu model awal boleh dikonfigurasi semasa mencipta akaun'
+ErrAgentAccountSingleInitialModel: 'Penyedia ini membenarkan paling banyak satu model dikonfigurasi'
 ErrAgentModelNotInAccount: 'Model tidak dikonfigurasikan dalam akaun yang dipilih'
 ErrAgentVerifyModelInUse: 'Model ini digunakan untuk mengesahkan akaun. Pilih model pengesahan lain sebelum memadamkannya'
 ErrAgentFallbackModelDuplicate: 'Model fallback tidak boleh berulang'
@@ -252,6 +252,7 @@ ErrSSLCertificateNotFound: 'Fail sijil tidak wujud'
 ErrSSLKeyFormat: 'Pengesahan fail kunci peribadi gagal'
 ErrSSLCertificateFormat: 'Format fail sijil tidak betul, sila gunakan format pem'
 ErrEabKidOrEabHmacKeyCannotBlank: 'EabKid atau EabHmacKey tidak boleh kosong'
+ErrOpenrestyInstall: "Sila pasang OpenResty daripada gedung aplikasi terlebih dahulu"
 ErrOpenrestyNotFound: 'Mod HTTP memerlukan OpenResty dipasang terlebih dahulu'
 ApplySSLStart: 'Mula memohon sijil, nama domain [{{ .domain }}] kaedah permohonan [{{ .type }}]'
 dnsAccount: 'DNS automatik'
@@ -675,7 +676,7 @@ TerminalAIRequestFailed: 'Permintaan AI gagal: {{ .err }}'
 
 # gerbang AI
 ErrAIProxyServiceNotInstalled: 'Perkhidmatan {{ .name }} belum dipasang'
-ErrAIProxyModelAccountNotFound: 'Akaun model {{ .id }} tidak ditemui'
+ErrAIProxyModelAccountNotFound: 'Perkhidmatan model {{ .id }} tidak ditemui'
 ErrAIProxyModelMapRequired: 'Medan ini wajib diisi.'
 ErrAIProxyModelMapInvalid: 'Pemetaan model mestilah objek JSON yang sah: {{ .err }}'
 ErrAIProxyModelMapEmpty: 'Pemetaan model tidak boleh kosong'
@@ -686,6 +687,7 @@ AIProviderBailian: 'Alibaba Cloud Model Studio'
 AIProviderBailianCodingPlan: 'Alibaba Cloud Model Studio Coding Plan'
 AIProviderArk: 'Volcengine Ark'
 AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
+AIProvider1PanelGateway: 'Gerbang AI 1Panel'
 
 # Firewall
 ErrDockerIptablesChainUnavailable: 'Rantaian DOCKER-USER Docker tidak ditemui. Mulakan semula Docker dan cuba lagi'
@@ -735,7 +737,7 @@ ErrSSHKeyMismatch: "Kunci awam dan peribadi SSH tidak sepadan"
 # mesin maya
 ErrVMNotFound: "Mesin maya tidak wujud"
 ErrVMAlreadyExists: "Mesin maya sudah wujud"
-ErrVMCountLimit: "Edisi Professional membenarkan penciptaan sehingga {{ .limit }} mesin maya. Padamkan mesin maya sedia ada atau naik taraf kepada Enterprise dan cuba lagi."
+ErrVMCountLimit: "Edisi semasa membenarkan penciptaan sehingga {{ .limit }} mesin maya. Padamkan mesin maya sedia ada atau naik taraf edisi anda dan cuba lagi."
 ErrVMImageAlreadyExists: "Fail imej mesin maya sudah wujud: {{ .detail }}"
 ErrVMStoragePathInUse: "Laluan kolam storan sudah digunakan oleh [{{ .name }}]"
 ErrVMHelperNotFound: "1panel-kvm tidak ditemui"
@@ -802,3 +804,19 @@ ErrFeishuUpgradeMounts: "Lekapan ini tidak boleh disandar dan dipulihkan sepenuh
 AgentFeishuRecoveryDisabled: "Gerbang dipulihkan dengan Feishu dinyahaktifkan; sandaran konfigurasi asal dikekalkan."
 
 ContainerUpgradeWaiting: "Waiting for a container upgrade execution slot"
+ContainerImageCheckUpdate: "Semak kemas kini imej"
+ContainerImageCheckScope: "Menyemak kesemua {{ .count }} kontena pada nod ini tanpa mengira pembahagian halaman atau penapis"
+ContainerImageCheckItem: "Menyemak kontena {{ .name }}, imej {{ .image }}"
+ContainerImageCheckFailed: "Semakan kontena {{ .name }} gagal: {{ .error }}; keputusan terdahulu yang sepadan dengan imej semasa dikekalkan"
+ContainerImageCheckSkipped: "Melangkau {{ .name }}: bukan imej Docker Hub bertag, imej setempat atau digest ditetapkan"
+ContainerImageCheckAvailable: "Kontena {{ .name }} mempunyai kemas kini: {{ .image }} → {{ .target }}"
+ContainerImageCheckCurrent: "Tiada kemas kini ditemui untuk kontena {{ .name }}"
+ContainerImageCheckChanged: "Kontena {{ .name }} telah dipadam atau imejnya berubah; keputusan tidak disimpan"
+ContainerImageCheckSummary: "Semakan selesai: disemak {{ .checked }}, boleh dikemas kini {{ .updates }}, gagal {{ .failed }}, dilangkau {{ .skipped }}"
+ContainerImageCheckFailures: "Semakan {{ .count }} kontena gagal; lihat log tugas"
+
+ErrImageCheckProxyRequired: "Untuk menyemak kemas kini imej dalam persekitaran semasa, sila konfigurasikan pelayan proksi terlebih dahulu."
+
+ErrPHPExtensionsConflict: "Templat sambungan PHP dengan nama ini sudah wujud tetapi kandungannya berbeza; tidak ditulis ganti"
+
+ErrModelTokenizerDirOverlap: "Direktori model dan tokenizer mestilah berbeza dan tidak boleh mengandungi satu sama lain"

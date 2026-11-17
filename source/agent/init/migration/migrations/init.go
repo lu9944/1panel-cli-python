@@ -816,7 +816,10 @@ var InitLocalSSHConn = &gormigrate.Migration{
 			itemPath = path.Join(currentInfo.HomeDir, ".ssh/id_ed25519_1panel")
 		}
 		if _, err := os.Stat(itemPath); err != nil {
-			_ = service.NewISSHService().CreateRootCert(dto.RootCertOperate{EncryptionMode: "ed25519", Name: "id_ed25519_1panel", Description: "1Panel Terminal"})
+			if err := service.NewISSHService().CreateRootCert(dto.RootCertOperate{Mode: "generate", EncryptionMode: "ed25519", Name: "id_ed25519_1panel", Description: "1Panel Terminal"}); err != nil {
+				global.LOG.Errorf("initialize local SSH key failed: %v", err)
+				return nil
+			}
 		}
 		privateKey, _ := os.ReadFile(itemPath)
 		connWithKey := ssh.ConnInfo{
@@ -826,9 +829,11 @@ var InitLocalSSHConn = &gormigrate.Migration{
 			AuthMode:   "key",
 			PrivateKey: privateKey,
 		}
-		if _, err := ssh.NewClient(connWithKey); err != nil {
+		client, err := ssh.NewClient(connWithKey)
+		if err != nil {
 			return nil
 		}
+		defer client.Close()
 		var conn model.LocalConnInfo
 		_ = copier.Copy(&conn, &connWithKey)
 		conn.PrivateKey = string(privateKey)
@@ -976,13 +981,6 @@ var UpdateWebsiteSSLAddColumn = &gormigrate.Migration{
 	},
 }
 
-var AddTensorRTLLMModel = &gormigrate.Migration{
-	ID: "20251018-add-tensorrt-llm-model",
-	Migrate: func(tx *gorm.DB) error {
-		return tx.AutoMigrate(&model.TensorRTLLM{})
-	},
-}
-
 var UpdateMonitorInterval = &gormigrate.Migration{
 	ID: "20251026-update-monitor-interval",
 	Migrate: func(tx *gorm.DB) error {
@@ -1018,13 +1016,6 @@ var UpdateCronJob = &gormigrate.Migration{
 	ID: "20251105-update-cronjob",
 	Migrate: func(tx *gorm.DB) error {
 		return tx.AutoMigrate(&model.Cronjob{})
-	},
-}
-
-var UpdateTensorrtLLM = &gormigrate.Migration{
-	ID: "20251110-update-tensorrt-llm",
-	Migrate: func(tx *gorm.DB) error {
-		return tx.AutoMigrate(&model.TensorRTLLM{})
 	},
 }
 
@@ -1850,13 +1841,6 @@ var AddAcceleratorMetrics = &gormigrate.Migration{
 	},
 }
 
-var AddVLLMMonitor = &gormigrate.Migration{
-	ID: "20260928-vllm-monitor",
-	Migrate: func(tx *gorm.DB) error {
-		return global.VLLMMonitorDB.AutoMigrate(&model.MonitorVLLM{})
-	},
-}
-
 var AddMonitorSettings = &gormigrate.Migration{
 	ID: "20260929-monitor-settings",
 	Migrate: func(tx *gorm.DB) error {
@@ -1865,27 +1849,11 @@ var AddMonitorSettings = &gormigrate.Migration{
 			if err := tx.Where("key = ?", key).First(&setting).Error; err != nil {
 				return err
 			}
-			for _, prefix := range []string{"GPU", "VLLM"} {
-				if err := tx.Where("key = ?", prefix+key).FirstOrCreate(&model.Setting{Key: prefix + key, Value: setting.Value}).Error; err != nil {
-					return err
-				}
+			if err := tx.Where("key = ?", "GPU"+key).FirstOrCreate(&model.Setting{Key: "GPU" + key, Value: setting.Value}).Error; err != nil {
+				return err
 			}
 		}
 		return nil
-	},
-}
-
-var AddVLLMRequestMetrics = &gormigrate.Migration{
-	ID: "20261010-vllm-request-metrics",
-	Migrate: func(tx *gorm.DB) error {
-		return global.VLLMMonitorDB.AutoMigrate(&model.MonitorVLLM{})
-	},
-}
-
-var AddVLLMSampleInterval = &gormigrate.Migration{
-	ID: "20261016-vllm-sample-interval",
-	Migrate: func(tx *gorm.DB) error {
-		return global.VLLMMonitorDB.AutoMigrate(&model.MonitorVLLM{})
 	},
 }
 
@@ -1937,5 +1905,54 @@ var AddOllamaModelAccountSync = &gormigrate.Migration{
 			}
 		}
 		return nil
+	},
+}
+
+var AddModelQuickJump = &gormigrate.Migration{
+	ID: "20261030-add-model-quick-jump",
+	Migrate: func(tx *gorm.DB) error {
+		return tx.Where("name = ?", "ModelServices").FirstOrCreate(&model.QuickJump{
+			Name:      "ModelServices",
+			Title:     "aiTools.model.model",
+			Recommend: 0,
+			IsShow:    true,
+			Router:    "/ai/model",
+		}).Error
+	},
+}
+
+var UpdateModelServicesQuickJumpRouter = &gormigrate.Migration{
+	ID: "20261105-update-model-services-quick-jump-router",
+	Migrate: func(tx *gorm.DB) error {
+		return tx.Model(&model.QuickJump{}).
+			Where("name = ? AND router IN ?", "ModelServices", []string{"/ai/model", "/ai/model/account"}).
+			Update("router", "/ai/model-services").Error
+	},
+}
+
+var AddAgentAccountVerificationResult = &gormigrate.Migration{
+	ID: "20261106-add-agent-account-verification-settings",
+	Migrate: func(tx *gorm.DB) error {
+		if err := tx.AutoMigrate(&model.AgentAccount{}); err != nil {
+			return err
+		}
+		return tx.Model(&model.AgentAccount{}).Where("validate_availability IS NULL").Update("validate_availability", true).Error
+	},
+}
+
+var AddGPUGroup = &gormigrate.Migration{
+	ID: "20261108-add-gpu-groups",
+	Migrate: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.GPUGroup{})
+	},
+}
+
+var AddCronjobURLItems = &gormigrate.Migration{
+	ID: "20261109-cronjob-url-items",
+	Migrate: func(tx *gorm.DB) error {
+		if tx.Migrator().HasColumn(&model.Cronjob{}, "URLItemsJSON") {
+			return nil
+		}
+		return tx.Migrator().AddColumn(&model.Cronjob{}, "URLItemsJSON")
 	},
 }

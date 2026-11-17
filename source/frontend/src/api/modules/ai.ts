@@ -43,12 +43,19 @@ export const updateBindDomain = (req: AI.BindDomain) => {
     return http.post(`/ai/domain/update`, req);
 };
 
-export const loadModelGPUDevices = () => {
-    return http.get<{ devices: AI.ModelGPUDevice[]; warnings: string[] }>('/ai/model/gpu/devices');
+export const loadModelGPUDevices = (currentNode?: string) => {
+    return http.get<{ devices: AI.ModelGPUDevice[]; warnings: string[]; numaNodes: AI.ModelNUMANode[] }>(
+        '/ai/model/gpu/devices',
+        {},
+        { headers: currentNode ? { CurrentNode: currentNode } : undefined },
+    );
 };
 
-export const loadGPUInfo = () => {
-    return http.get<AI.Info>(`/ai/gpu/load`);
+export const loadGPUInfo = (refresh = false, currentNode?: string) => {
+    return http.get<AI.Info>(`/ai/gpu/load`, refresh ? { refresh: true } : {}, {
+        timeout: TimeoutEnum.T_40S,
+        headers: currentNode ? { CurrentNode: currentNode } : undefined,
+    });
 };
 export const getGPUOptions = (currentNode?: string) => {
     return http.get<AI.MonitorGPUOptions>(
@@ -108,26 +115,6 @@ export const getMcpDomain = () => {
 
 export const updateMcpDomain = (req: AI.McpBindDomainUpdate) => {
     return http.post(`/ai/mcp/domain/update`, req);
-};
-
-export const pageTensorRTLLM = (req: AI.TensorRTLLMSearch) => {
-    return http.post<ResPage<AI.TensorRTLLMDTO>>(`/ai/tensorrt/search`, req);
-};
-
-export const createTensorRTLLM = (req: AI.TensorRTLLM) => {
-    return http.post(`/ai/tensorrt/create`, req);
-};
-
-export const updateTensorRTLLM = (req: AI.TensorRTLLM) => {
-    return http.post(`/ai/tensorrt/update`, req);
-};
-
-export const deleteTensorRTLLM = (req: AI.TensorRTLLMDelete) => {
-    return http.post(`/ai/tensorrt/delete`, req);
-};
-
-export const operateTensorRTLLM = (req: AI.TensorRTLLMOperate) => {
-    return http.post(`/ai/tensorrt/operate`, req);
 };
 
 export const createAgent = (req: AI.AgentCreateReq) => {
@@ -228,11 +215,17 @@ export const getAgentProviders = () => {
 };
 
 export const createAgentAccount = (req: AI.AgentAccountCreateReq) => {
-    return http.post(`/ai/accounts`, req);
+    return http.postWithConfig(`/ai/accounts`, req, {
+        timeout: TimeoutEnum.T_60S,
+        errorMessageMode: 'manual',
+    });
 };
 
 export const updateAgentAccount = (req: AI.AgentAccountUpdateReq) => {
-    return http.post(`/ai/accounts/update`, req);
+    return http.postWithConfig(`/ai/accounts/update`, req, {
+        timeout: TimeoutEnum.T_60S,
+        errorMessageMode: 'manual',
+    });
 };
 
 export const pageAgentAccounts = (req: AI.AgentAccountSearch, currentNode?: string) => {
@@ -252,6 +245,10 @@ export const getAgentAccountModels = (req: AI.AgentAccountModelReq) => {
     return http.post<AI.AgentAccountModel[]>(`/ai/accounts/models`, req);
 };
 
+export const updateAgentAccountVerifyModel = (req: AI.AgentAccountVerifyModelUpdateReq) => {
+    return http.post(`/ai/accounts/models/verify-model`, req);
+};
+
 export const discoverAgentAccountModels = (req: AI.AgentAccountModelDiscoverReq) => {
     return http.post<AI.AgentAccountModel[]>(`/ai/accounts/models/discover`, req);
 };
@@ -262,6 +259,14 @@ export const createAgentAccountModel = (req: AI.AgentAccountModelCreateReq) => {
 
 export const updateAgentAccountModel = (req: AI.AgentAccountModelUpdateReq) => {
     return http.post(`/ai/accounts/models/update`, req);
+};
+
+export const verifyAgentAccount = (req: { id: number }, currentNode: string) => {
+    return http.postWithConfig(`/ai/accounts/verify`, req, {
+        timeout: TimeoutEnum.T_60S,
+        errorMessageMode: 'manual',
+        headers: { CurrentNode: currentNode },
+    });
 };
 
 export const deleteAgentAccountModel = (req: AI.AgentAccountModelDeleteReq) => {
@@ -415,3 +420,16 @@ export const uninstallAgentSkill = (req: AI.AgentSkillUninstallReq) => {
 export const approveAgentChannelPairing = (req: AI.AgentChannelPairingApproveReq) => {
     return http.post(`/ai/agents/channel/pairing/approve`, req, TimeoutEnum.T_5M);
 };
+
+export const listGPUGroups = (currentNode?: string) =>
+    http.get<AI.GPUGroup[]>('/ai/gpu/groups', {}, { headers: currentNode ? { CurrentNode: currentNode } : undefined });
+export const saveGPUGroup = (data: Pick<AI.GPUGroup, 'id' | 'name' | 'description' | 'imageType' | 'gpu'>) =>
+    http.post('/ai/gpu/groups/save', data);
+export const deleteGPUGroup = (id: number) => http.post('/ai/gpu/groups/del', { id });
+
+export const loadModelGPUUsage = (params: {
+    dockerCompose: string;
+    env: string;
+    imageType: string;
+    excludeInstallID: number;
+}) => http.post<AI.ModelGPUUsage>('/ai/model/gpu/usage', params);

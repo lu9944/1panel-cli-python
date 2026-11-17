@@ -61,6 +61,7 @@
                 <ComplexTable
                     :selection-context="() => [req.name, req.type, req.websiteGroupId]"
                     row-key="id"
+                    :cache-pagination="false"
                     :pagination-config="paginationConfig"
                     :default-sort="tableSort.order ? tableSort : undefined"
                     v-model:view-mode="viewMode"
@@ -72,9 +73,6 @@
                     :columns="columns"
                     localKey="websiteColumn"
                     v-model:selects="selects"
-                    :tooltip-options="{
-                        placement: 'bottom-start',
-                    }"
                 >
                     <el-table-column type="selection" width="32" />
                     <el-table-column

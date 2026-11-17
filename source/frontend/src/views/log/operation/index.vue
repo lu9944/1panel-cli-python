@@ -78,7 +78,13 @@
                 <TableSetting title="operation-log-refresh" @search="search()" />
             </template>
             <template #main>
-                <ComplexTable :pagination-config="paginationConfig" :data="data" @search="search" :heightDiff="330">
+                <ComplexTable
+                    :cache-pagination="false"
+                    :pagination-config="paginationConfig"
+                    :data="data"
+                    @search="search"
+                    :heightDiff="330"
+                >
                     <el-table-column :label="$t('logs.resource')" prop="group" fix>
                         <template #default="{ row }">
                             <span v-if="row.source && row.source.indexOf('-') === -1">
@@ -98,7 +104,7 @@
                             <el-tooltip
                                 v-if="row.authMethod === 'api_key' && row.apiKeyID"
                                 :content="row.apiKeyID"
-                                placement="top"
+                                v-bind="TABLE_TOOLTIP_OPTIONS"
                             >
                                 <el-text type="info" size="small">
                                     API Key · {{ row.apiKeyName || row.apiKeyID }}
@@ -139,6 +145,7 @@
 </template>
 
 <script setup lang="ts">
+import { TABLE_TOOLTIP_OPTIONS } from '@/components/table/shared';
 import { useSearchState } from '@/utils/search-reset';
 import ConfirmDialog from '@/components/confirm-dialog/index.vue';
 import LogRouter from '@/views/log/router/index.vue';

@@ -63,6 +63,7 @@ type Info struct {
 }
 
 type Device struct {
+	ReadError     string      `json:"-"`
 	Tiles         []TileStats `json:"tiles"`
 	ProcessStatus string      `json:"processStatus"`
 
@@ -72,7 +73,8 @@ type Device struct {
 }
 
 type Basic struct {
-	UUID string `json:"uuid"`
+	DrmDevice string `json:"-"`
+	UUID      string `json:"uuid"`
 
 	DeviceID      int    `json:"deviceID"`
 	DeviceName    string `json:"deviceName"`

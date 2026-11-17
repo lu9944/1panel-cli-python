@@ -6,20 +6,20 @@ description: >-
   phpmyadmin 等)、查看应用连接信息、修改数据库密码、创建/管理网站与域名(含反向代理、
   HTTPS、SPA 前端路由回退)、读写
   nginx 配置、配置 HTTPS/SSL、上传解压网站文件、管理 MySQL/MariaDB 数据库与用户、
-  管理 Redis、防火墙端口/IP/转发规则,或发现和调用面板 API 时使用本 skill。执行前先
+  管理 Redis、防火墙端口/IP/转发规则、虚拟机,或发现和调用面板 API 时使用本 skill。执行前先
   运行 `1panel-cli doctor`;原始 API 调用前先用 `api list` / `api describe` 查询,不要猜测路径。
-  请求失败或参数不确定时,阅读随技能附带的 1Panel v2.4.2 完整源码(技能目录内 `source/`)。
+  请求失败或参数不确定时,阅读随技能附带的 1Panel v2.5.1 完整源码(技能目录内 `source/`)。
 compatibility: opencode
 metadata:
   tool: 1panel-cli
   panel: 1Panel
   language: python
-  verified-panel-version: v2.4.2
+  verified-panel-version: v2.5.1
 ---
 
 # 1panel-cli — 1Panel v2 面板管理(Python)
 
-通过 1Panel 官方 API 管理面板。当前验证基线是 **1Panel v2.4.2 stable**;内置 API 路由清单即由随技能附带的 v2.4.2 源码 `source/` 生成(821 条,含 22 条 MCP 管理接口;其中 34 条为 v2.4.1/v2.4.2 tag 新增,官方发行包尚未注册,见下)。代码同时保留了旧版统一防火墙接口(带规则检查)与 v2.2.x 旧防火墙接口的自动探测:连接 v2.4.x 面板时使用统一规则接口(删除提交 `scope + instanceKey + observed`,写操作为异步任务,CLI 自动轮询并汇报结果),连接 v2.3.2 / 中间版本 / 旧版面板时自动回退对应接口。
+通过 1Panel 官方 API 管理面板。当前验证基线是 **1Panel v2.5.1 stable**;内置 API 路由清单即由随技能附带的 v2.5.1 源码 `source/` 生成(866 条,Swagger 收录 794 条)。v2.5.1 新增虚拟机(41 条)、GPU 组/NUMA、模型账户校验、容器镜像更新检查、PHP 扩展模板等接口;移除 TensorRT-LLM、vLLM 监控与 `/core/auth/welcome`。官方 v2.5.1 发行包仅缺 `POST /ai/accounts/chat` 1 条(tag 最后一个提交新增)。代码同时保留了旧版统一防火墙接口(带规则检查)与 v2.2.x 旧防火墙接口的自动探测:连接 v2.4.0+(含 v2.5.1)面板时使用统一规则接口(删除提交 `scope + instanceKey + observed`,写操作为异步任务,CLI 自动轮询并汇报结果),连接 v2.3.2 / 中间版本 / 旧版面板时自动回退对应接口。
 
 实现为**纯 Python 标准库**,无需安装任何第三方包。
 
@@ -31,9 +31,9 @@ metadata:
 2. `<仓库>/bin/1panel-cli`
 3. `PATH` 中的 `1panel-cli`
 
-要求系统自带 `python3`(3.9+,验证环境 3.12),入口脚本已带 shebang,可直接执行。若入口无执行权限,可用 `python3 <路径>/bin/1panel-cli` 运行,或 `chmod +x`。
+要求系统自带 `python3`(3.9+,验证环境 3.14),入口脚本已带 shebang,可直接执行。若入口无执行权限,可用 `python3 <路径>/bin/1panel-cli` 运行,或 `chmod +x`。
 
-**首次使用**:面板与本工具在同一台主机时,运行 `1panel-cli init` 自动生成 `.env`(执行 `sudo 1pctl user-info` 取地址/用户名,密码已掩码时读取面板数据库解密),无需手填。若无法本机执行,再把 `.env.example` 复制为 `.env` 并至少填写 `PANEL_URL`、`PANEL_USERNAME`、`PANEL_PASSWORD`;启用安全入口时填写 `PANEL_ENTRANCE`。多节点面板可设置 `PANEL_NODE` 或传全局参数 `--node`。会话保存在 `~/.config/1panel-cli/<profile>.json`。全局参数(`--env` / `--profile` / `--node`)放在子命令前后均可。
+**首次使用**:面板与本工具在同一台主机时,运行 `1panel-cli init` 自动生成 `.env`(执行 `sudo 1pctl user-info` 取地址/用户名;密码已掩码时读取面板数据库解密,本机 v2.5.1 的 `/opt/1panel/db` 为 `0700 root`,CLI 会自动用 `sudo -n cat` 复制快照),无需手填。若无法本机执行,再把 `.env.example` 复制为 `.env` 并至少填写 `PANEL_URL`、`PANEL_USERNAME`、`PANEL_PASSWORD`;启用安全入口时填写 `PANEL_ENTRANCE`。多节点面板可设置 `PANEL_NODE` 或传全局参数 `--node`。会话保存在 `~/.config/1panel-cli/<profile>.json`。全局参数(`--env` / `--profile` / `--node`)放在子命令前后均可。
 
 ## 操作流程
 
@@ -51,11 +51,11 @@ metadata:
 1panel-cli api post websites/templates/search --body '{"page":1,"pageSize":20}'
 ```
 
-`api list` 基于 1Panel v2.4.2 源码(技能目录内 `source/`)生成的 821 条路由清单,并尝试读取当前面板 Swagger;它能显示 Swagger 未收录但源码已注册的路由。注意:34 条 v2.4.1/v2.4.2 tag 新增路由(MCP 管理接口 22 条 + `/core/auth/api/keys/{delete,reveal}` ×2 + CA 导入/上传 ×2 + AI/Dashboard ×8)在官方 v2.4.2 发行包中尚未注册——调用会 404 或返回 SPA 回退 HTML,详见 `references/compatibility-v2.4.2.md`。
+`api list` 基于 1Panel v2.5.1 源码(技能目录内 `source/`)生成的 866 条路由清单,并尝试读取当前面板 Swagger;它能显示 Swagger 未收录但源码已注册的路由。注意:`POST /api/v2/ai/accounts/chat` 由 v2.5.1 tag 最后一个提交新增,官方发行包(本机实测 v2.5.1)尚未注册,调用会返回 `404 page not found`;其余 865 条均已核验可用,详见 `references/compatibility-v2.5.1.md`。企业版 xpack 路由只在运行时 Swagger 中出现,不在内置开源清单内。
 
 ## 源码参考 `source/`
 
-技能目录内附带 **1Panel v2.4.2 完整源码** `source/`(与内置 821 条路由清单同源)。当请求失败(404、方法不符、参数校验错误、返回 HTML)或参数不确定时,**先查源码再重试,不要猜测**:
+技能目录内附带 **1Panel v2.5.1 完整源码** `source/`(与内置 866 条路由清单同源)。当请求失败(404、方法不符、参数校验错误、返回 HTML)或参数不确定时,**先查源码再重试,不要猜测**:
 
 | 查阅内容 | 位置 |
 |---|---|
@@ -134,6 +134,11 @@ metadata:
 1panel-cli firewall ipv6 enable
 1panel-cli firewall ipv6 disable
 
+# 虚拟机(v2.5.1+;本机需 /dev/kvm 与 libvirt)
+1panel-cli api list --filter vms
+1panel-cli api describe POST vms/search
+1panel-cli api get vms/environment
+
 # API 发现与调用
 1panel-cli api list --filter openclaw
 1panel-cli api describe POST ai/agents/plugins/search
@@ -149,9 +154,9 @@ metadata:
 2. `api` 路径相对 `/api/v2`;也接受完整的 `/api/v2/...` 路径。
 3. 登录使用本地密码源 `authSource=local`;LDAP/OIDC/SAML 等企业认证登录不由此 CLI 代办。
 4. 多节点面板务必选择正确的 `PANEL_NODE` / `--node`;未指定时发送 `CurrentNode: local`。
-5. 防火墙接口有四种形态,由 CLI 自动探测:1Panel v2.4.0/v2.4.1/v2.4.2 走统一规则接口(`/hosts/firewall/rules*`,删除提交 `targets` = `scope + instanceKey + observed`,并自动跳过白名单/受保护规则);v2.3.2 仍按 `uuids` 删除;中间版本创建前会先调用 `rules/check`(`checkFlag` 签名);v2.2.x 走旧门面接口。v2.3.2+ 写操作均为异步任务(返回 `taskID`,CLI 自动轮询 `logs/tasks/search` 并在任务失败时报错)。不要绕过探测手拼写请求。
+5. 防火墙接口有四种形态,由 CLI 自动探测:1Panel v2.4.0+(含 v2.4.1/v2.4.2/v2.5.1)走统一规则接口(`/hosts/firewall/rules*`,删除提交 `targets` = `scope + instanceKey + observed`,并自动跳过白名单/受保护规则);v2.3.2 仍按 `uuids` 删除;中间版本创建前会先调用 `rules/check`(`checkFlag` 签名);v2.2.x 走旧门面接口。v2.3.2+ 写操作均为异步任务(返回 `taskID`,CLI 自动轮询 `logs/tasks/search` 并在任务失败时报错)。不要绕过探测手拼写请求。
 6. nginx 配置保存后面板会 reload;写入前先读取原配置。生产密码与 Cookie 不应写入日志或提交仓库。
-7. Swagger 不是完整路由清单;以 `source/` 的 1Panel v2.4.2 源码为准(内置清单 `panel_cli/data/api-v2.4.2.json` 即由其生成;官方发行包与 tag 源码的 34 条路由差异见 `references/compatibility-v2.4.2.md`)。企业版闭源扩展接口不在该清单内。
+7. Swagger 不是完整路由清单;以 `source/` 的 1Panel v2.5.1 源码为准(内置清单 `panel_cli/data/api-v2.5.1.json` 即由其生成;官方发行包与 tag 源码的 1 条路由差异见 `references/compatibility-v2.5.1.md`)。企业版闭源扩展接口不在该清单内。
 8. `firewall docker` 等接口仅在 v2.3.x+ 面板存在;v2.2.x 会自动回退旧防火墙接口。v2.4.0 的 Docker 守护策略只对 `managementTarget=container_guard` 的端口生效,流量由宿主机防火墙接管的端口要用 `firewall port/ip` 规则(`firewall docker ports` 会标注)。v2.4.0 已移除 `docker/sync`、`rules/adopt`、`rules/sync*`,新增 `rules/backups`、`family/operate`、`settings/ipv6`;`firewall ipv6` 已封装 IPv6 开关。
 9. 请求失败或参数不确定时,按上表到 `source/` 阅读对应 router / DTO / service 源码确认路径、字段与行为,再修正调用。
 10. 应用 key 与实例名自动兼容 `local` 前缀:配套离线包(patched agent)的本地应用以规范 key 注册
@@ -162,4 +167,6 @@ metadata:
     - 删除网站时旧版面板固定按 `openresty` 查询应用 key,会报 `record not found` → 用 `web delete <domain> --force`(需本工具与面板同机,自动备份 agent.db 并还原应用 key)。
 12. 反代 React/Vue 等 SPA:后端对深层路由返回 404 时用 `--spa` / `web spa` 开启回退(自动写入 `proxy_intercept_errors on` + `error_page 404`,否则上游 404 不会触发回退);回退排除 API 前缀、静态资源与隐藏路径,默认 `api,auth,health,linear`,可用 `--spa-api-prefixes` 调整。
 13. 本机用 curl 验证 127.0.0.1 上的网站时,注意 `http_proxy` / `https_proxy` 环境变量会拦截请求(表现为 503),加 `--noproxy '*'`。
-14. `api` 响应默认脱敏:敏感字段(`privateKey` / `password` / `token` / `secret` 等)与任意位置出现的 PEM 私钥块输出为 `***REDACTED***` / `***REDACTED PRIVATE KEY***`,避免私钥、口令进入日志或智能体上下文;确需原值时显式加全局参数 `--show-secrets`(或 `PANEL_CLI_SHOW_SECRETS=1`)。含私钥的请求体用 `api post/put --body-file <文件>`(支持 `-` 读 stdin),不要把私钥写进命令行参数。
+14. v2.5.1 新增的虚拟机、GPU 组、容器镜像更新检查、PHP 扩展模板等模块暂无专用命令,先用 `api list` / `api describe` 查询后通过 `api` 调用;`source/` 中对应 `router` / `dto` / `service` 已同步为 v2.5.1。
+15. v2.5.1 的网站创建/HTTPS/域名接口新增监听端口冲突检查(同域名同端口会报 `ErrDomainIsUsed`),请求字段未变;应用安装/升级对 ollama/vllm 改为任务化,CLI 轮询 `logs/tasks/search` 的逻辑仍然适用。ollama/vllm 安装任务在服务端没有超时,`apps install --wait` 默认只等 600 秒,大模型下载请显式加 `--timeout 3600` 或更长。
+16. `api` 响应默认脱敏:敏感字段(`privateKey` / `password` / `token` / `secret` 等)与任意位置出现的 PEM 私钥块输出为 `***REDACTED***` / `***REDACTED PRIVATE KEY***`,避免私钥、口令进入日志或智能体上下文;确需原值时显式加全局参数 `--show-secrets`(或 `PANEL_CLI_SHOW_SECRETS=1`)。含私钥的请求体用 `api post/put --body-file <文件>`(支持 `-` 读 stdin),不要把私钥写进命令行参数。

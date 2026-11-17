@@ -290,3 +290,48 @@ export const updateIpv6Option = (fixedCidrV6: string, ip6Tables: boolean, experi
 export const updateDaemonJsonByfile = (params: Container.DaemonJsonUpdateByFile) => {
     return http.post(`/containers/daemonjson/update/byfile`, params, TimeoutEnum.T_3M);
 };
+
+export interface RemoteImage {
+    name: string;
+    description: string;
+}
+export const searchRemoteImages = (
+    params: { query: string; page: number; pageSize: number },
+    node: string,
+    signal?: AbortSignal,
+) =>
+    http.postWithConfig<ResPage<RemoteImage> & { proxyRequired: boolean }>('/containers/image/remote/search', params, {
+        headers: { CurrentNode: node },
+        signal,
+        timeout: TimeoutEnum.T_40S,
+    });
+
+export interface ContainerImageCheckUpdateStatus {
+    taskID: string;
+    enabled: boolean;
+    running: boolean;
+    checked: number;
+    updates: number;
+    failed: number;
+    skipped: number;
+    error: string;
+    finishedAt: number;
+}
+export const getContainerImageCheckUpdateStatus = (node: string, signal?: AbortSignal) =>
+    http.get<ContainerImageCheckUpdateStatus>(
+        '/containers/image-updates',
+        {},
+        { headers: { CurrentNode: node }, signal },
+    );
+export const runContainerImageCheckUpdate = (node: string) =>
+    http.postWithConfig<ContainerImageCheckUpdateStatus>(
+        '/containers/image-updates/check',
+        {},
+        { headers: { CurrentNode: node } },
+    );
+export const setContainerImageCheckUpdateSchedule = (enabled: boolean, node: string) =>
+    http.postWithConfig<ContainerImageCheckUpdateStatus>(
+        '/containers/image-updates/schedule',
+        { enabled },
+        { headers: { CurrentNode: node } },
+    );

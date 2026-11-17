@@ -46,7 +46,7 @@ ErrHttpReqNotFound: 'Requested resource not found: {{ .err }}'
 
 # quick jump
 ErrMinQuickJump: 'Set at least one quick jump entry'
-ErrMaxQuickJump: 'At most 4 quick jump entries'
+ErrMaxQuickJump: 'At most 5 quick jump entries'
 
 # common
 ErrShutDown: 'Command stopped manually'
@@ -70,14 +70,14 @@ Decrypt: "Decrypt"
 
 # agent
 ErrAgentAccountBound: 'Account is bound to an agent and cannot be deleted'
-ErrTerminalAIAccountInUse: 'This model account is currently used by Terminal AI. Switch the account in Terminal AI settings or disable Terminal AI and try again.'
-ErrFileAIAccountInUse: 'This model account is currently used by File Management AI. Switch the account in File Management AI settings or disable File Management AI and try again.'
+ErrTerminalAIAccountInUse: 'This model service is currently used by Terminal AI. Switch the account in Terminal AI settings or disable Terminal AI and try again.'
+ErrFileAIAccountInUse: 'This model service is currently used by File Management AI. Switch the account in File Management AI settings or disable File Management AI and try again.'
 ErrAgentAccountUnavailable: 'Account connection unavailable: {{ .err }}'
 ErrAgentProviderNotSupported: 'Unsupported agent provider'
 ErrAgentAccountRequired: 'Select an agent account first'
 ErrAgentAccountNotVerified: 'Agent account not verified'
 ErrAgentAccountModelsRequired: 'Please configure at least one model'
-ErrAgentAccountSingleInitialModel: 'Only one initial model can be configured during account creation'
+ErrAgentAccountSingleInitialModel: 'This provider supports configuring at most one model'
 ErrAgentModelNotInAccount: 'Model is not configured in the selected account'
 ErrAgentVerifyModelInUse: 'This model is used to verify the account. Select another verification model before deleting it'
 ErrAgentFallbackModelDuplicate: 'Fallback models cannot be duplicated'
@@ -252,6 +252,7 @@ ErrSSLCertificateNotFound: 'The certificate file does not exist'
 ErrSSLKeyFormat: 'Private key file verification failed'
 ErrSSLCertificateFormat: 'Invalid certificate format; use PEM'
 ErrEabKidOrEabHmacKeyCannotBlank: 'EabKid or EabHmacKey cannot be blank'
+ErrOpenrestyInstall: "Please install OpenResty from the App Store first"
 ErrOpenrestyNotFound: 'HTTP mode requires OpenResty'
 ApplySSLStart: 'Starting certificate request. Domain: [{{ .domain }}], method: [{{ .type }}]'
 dnsAccount: 'DNS Auto'
@@ -675,7 +676,7 @@ TerminalAIRequestFailed: 'AI request failed: {{ .err }}'
 
 # AI gateway
 ErrAIProxyServiceNotInstalled: '{{ .name }} service is not installed'
-ErrAIProxyModelAccountNotFound: 'Model account {{ .id }} not found'
+ErrAIProxyModelAccountNotFound: 'Model service {{ .id }} not found'
 ErrAIProxyModelMapRequired: 'This field is required.'
 ErrAIProxyModelMapInvalid: 'Model mapping must be a valid JSON object: {{ .err }}'
 ErrAIProxyModelMapEmpty: 'Model mapping cannot be empty'
@@ -686,6 +687,7 @@ AIProviderBailian: 'Alibaba Cloud Model Studio'
 AIProviderBailianCodingPlan: 'Alibaba Cloud Model Studio Coding Plan'
 AIProviderArk: 'Volcengine Ark'
 AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
+AIProvider1PanelGateway: '1Panel AI Gateway'
 
 # Firewall
 ErrDockerIptablesChainUnavailable: 'The Docker DOCKER-USER chain was not found. Restart Docker and try again'
@@ -735,7 +737,7 @@ ErrSSHKeyMismatch: "The SSH public and private keys do not match"
 # virtual machine
 ErrVMNotFound: "Virtual machine does not exist"
 ErrVMAlreadyExists: "Virtual machine already exists"
-ErrVMCountLimit: "The Professional edition supports up to {{ .limit }} virtual machines. Delete an existing VM or upgrade to Enterprise to create more."
+ErrVMCountLimit: "The current edition supports up to {{ .limit }} virtual machines. Delete an existing VM or upgrade your edition and try again."
 ErrVMImageAlreadyExists: "Virtual machine image already exists: {{ .detail }}"
 ErrVMStoragePathInUse: "Storage pool path is already used by [{{ .name }}]"
 ErrVMHelperNotFound: "1panel-kvm not found"
@@ -802,3 +804,19 @@ ErrFeishuUpgradeMounts: "These mounts cannot be fully backed up or restored. Use
 AgentFeishuRecoveryDisabled: "Gateway recovered with Feishu disabled; the original configuration backup is retained."
 
 ContainerUpgradeWaiting: "Waiting for a container upgrade execution slot"
+ContainerImageCheckUpdate: "Check for image updates"
+ContainerImageCheckScope: "Checking all {{ .count }} containers on this node, regardless of pagination or filters"
+ContainerImageCheckItem: "Checking container {{ .name }}, image {{ .image }}"
+ContainerImageCheckFailed: "Container {{ .name }} check failed: {{ .error }}; retaining previous results matching the current image"
+ContainerImageCheckSkipped: "Skipping {{ .name }}: not a tagged Docker Hub image, a local image, or pinned digest"
+ContainerImageCheckAvailable: "Container {{ .name }} has an update: {{ .image }} -> {{ .target }}"
+ContainerImageCheckCurrent: "No update found for container {{ .name }}"
+ContainerImageCheckChanged: "Container {{ .name }} was removed or its image changed; result was not saved"
+ContainerImageCheckSummary: "Check finished: {{ .checked }} checked, {{ .updates }} upgradable, {{ .failed }} failed, {{ .skipped }} skipped"
+ContainerImageCheckFailures: "{{ .count }} container checks failed; see the task log"
+
+ErrImageCheckProxyRequired: "To check for image updates in the current runtime environment, please configure a proxy server first."
+
+ErrPHPExtensionsConflict: "A PHP extension template with this name exists with different content"
+
+ErrModelTokenizerDirOverlap: "The model and tokenizer directories must be different, and neither can contain the other"

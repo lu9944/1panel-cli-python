@@ -46,7 +46,7 @@ ErrHttpReqNotFound: 'O recurso solicitado {{ .err }} não pôde ser encontrado'
 
 # atalho rápido
 ErrMinQuickJump: 'Adicione pelo menos um atalho rápido'
-ErrMaxQuickJump: 'Máximo 4 atalhos rápidos'
+ErrMaxQuickJump: 'Máximo 5 atalhos rápidos'
 
 # comum
 ErrShutDown: 'Comando parado manualmente'
@@ -70,14 +70,14 @@ Decrypt: 'Descriptografar'
 
 # agente
 ErrAgentAccountBound: 'Conta vinculada a agente'
-ErrTerminalAIAccountInUse: 'Esta conta de modelo esta sendo usada pelo Terminal AI. Troque a conta nas configuracoes do Terminal AI ou desative o Terminal AI e tente novamente.'
-ErrFileAIAccountInUse: 'Esta conta de modelo está sendo usada pela IA do gerenciador de arquivos. Troque a conta nas configurações ou desative a IA e tente novamente.'
+ErrTerminalAIAccountInUse: 'Este serviço de modelo esta sendo usado pelo Terminal AI. Troque a conta nas configuracoes do Terminal AI ou desative o Terminal AI e tente novamente.'
+ErrFileAIAccountInUse: 'Este serviço de modelo está sendo usado pela IA do gerenciador de arquivos. Troque a conta nas configurações ou desative a IA e tente novamente.'
 ErrAgentAccountUnavailable: 'Conexão da conta indisponível: {{ .err }}'
 ErrAgentProviderNotSupported: 'Provedor de agente não suportado'
 ErrAgentAccountRequired: 'Selecione uma conta de agente primeiro'
 ErrAgentAccountNotVerified: 'Conta de agente não verificada'
 ErrAgentAccountModelsRequired: 'Configure pelo menos um modelo'
-ErrAgentAccountSingleInitialModel: 'Apenas um modelo inicial pode ser configurado ao criar a conta'
+ErrAgentAccountSingleInitialModel: 'Este provedor permite configurar no máximo um modelo'
 ErrAgentModelNotInAccount: 'O modelo não está configurado na conta selecionada'
 ErrAgentVerifyModelInUse: 'Este modelo é usado para verificar a conta. Selecione outro modelo de verificação antes de excluí-lo'
 ErrAgentFallbackModelDuplicate: 'Os modelos de fallback não podem ser duplicados'
@@ -252,6 +252,7 @@ ErrSSLCertificateNotFound: 'O arquivo de certificado não existe'
 ErrSSLKeyFormat: 'Falha na verificação do arquivo de chave privada'
 ErrSSLCertificateFormat: 'O formato do arquivo de certificado está incorreto, use o formato pem'
 ErrEabKidOrEabHmacKeyCannotBlank: 'EabKid ou EabHmacKey não podem estar em branco'
+ErrOpenrestyInstall: "Instale primeiro o OpenResty pela loja de aplicativos"
 ErrOpenrestyNotFound: 'O modo HTTP requer o OpenResty instalado'
 ApplySSLStart: 'Comece a solicitar um certificado, nome de domínio [{{ .domain }}] método de solicitação [{{ .type }}]'
 dnsAccount: 'DNS Automático'
@@ -675,7 +676,7 @@ TerminalAIRequestFailed: 'Falha na solicitação de AI: {{ .err }}'
 
 # gateway de IA
 ErrAIProxyServiceNotInstalled: 'O serviço {{ .name }} não está instalado'
-ErrAIProxyModelAccountNotFound: 'Conta de modelo {{ .id }} não encontrada'
+ErrAIProxyModelAccountNotFound: 'Serviço de modelo {{ .id }} não encontrado'
 ErrAIProxyModelMapRequired: 'Este campo é obrigatório.'
 ErrAIProxyModelMapInvalid: 'O mapeamento de modelos deve ser um objeto JSON válido: {{ .err }}'
 ErrAIProxyModelMapEmpty: 'O mapeamento de modelos não pode estar vazio'
@@ -686,6 +687,7 @@ AIProviderBailian: 'Alibaba Cloud Model Studio'
 AIProviderBailianCodingPlan: 'Alibaba Cloud Model Studio Coding Plan'
 AIProviderArk: 'Volcengine Ark'
 AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
+AIProvider1PanelGateway: 'Gateway de IA do 1Panel'
 
 # Firewall
 ErrDockerIptablesChainUnavailable: 'A cadeia DOCKER-USER do Docker não foi encontrada. Reinicie o Docker e tente novamente'
@@ -735,7 +737,7 @@ ErrSSHKeyMismatch: "As chaves pública e privada SSH não correspondem"
 # máquina virtual
 ErrVMNotFound: "Máquina virtual não existe"
 ErrVMAlreadyExists: "Máquina virtual já existe"
-ErrVMCountLimit: "A edição Professional permite criar até {{ .limit }} máquinas virtuais. Exclua uma máquina virtual existente ou atualize para Enterprise e tente novamente."
+ErrVMCountLimit: "A edição atual permite criar até {{ .limit }} máquinas virtuais. Exclua uma máquina virtual existente ou atualize para uma edição superior e tente novamente."
 ErrVMImageAlreadyExists: "A imagem da máquina virtual já existe: {{ .detail }}"
 ErrVMStoragePathInUse: "O caminho do pool de armazenamento já é usado por [{{ .name }}]"
 ErrVMHelperNotFound: "1panel-kvm não encontrado"
@@ -802,3 +804,19 @@ ErrFeishuUpgradeMounts: "Estas montagens não permitem backup e restauração co
 AgentFeishuRecoveryDisabled: "Gateway recuperado com Feishu desativado; o backup da configuração original foi mantido."
 
 ContainerUpgradeWaiting: "Waiting for a container upgrade execution slot"
+ContainerImageCheckUpdate: "Verificar atualizações de imagens"
+ContainerImageCheckScope: "Verificando todos os {{ .count }} contêineres deste nó, independentemente da paginação e dos filtros"
+ContainerImageCheckItem: "Verificando o contêiner {{ .name }}, imagem {{ .image }}"
+ContainerImageCheckFailed: "Falha ao verificar o contêiner {{ .name }}: {{ .error }}; os resultados anteriores correspondentes à imagem atual serão mantidos"
+ContainerImageCheckSkipped: "Ignorando {{ .name }}: não é uma imagem do Docker Hub com tag, é uma imagem local ou tem digest fixo"
+ContainerImageCheckAvailable: "O contêiner {{ .name }} tem uma atualização: {{ .image }} → {{ .target }}"
+ContainerImageCheckCurrent: "Nenhuma atualização encontrada para o contêiner {{ .name }}"
+ContainerImageCheckChanged: "O contêiner {{ .name }} foi removido ou sua imagem mudou; o resultado não foi salvo"
+ContainerImageCheckSummary: "Verificação concluída: verificados {{ .checked }}, atualizáveis {{ .updates }}, falhas {{ .failed }}, ignorados {{ .skipped }}"
+ContainerImageCheckFailures: "Falha na verificação de {{ .count }} contêineres; consulte o log da tarefa"
+
+ErrImageCheckProxyRequired: "Para verificar atualizações de imagens no ambiente atual, configure primeiro um servidor proxy."
+
+ErrPHPExtensionsConflict: "Já existe um modelo de extensões PHP com este nome e conteúdo diferente; ele não foi sobrescrito"
+
+ErrModelTokenizerDirOverlap: "Os diretórios de modelos e tokenizadores devem ser diferentes e nenhum pode conter o outro"

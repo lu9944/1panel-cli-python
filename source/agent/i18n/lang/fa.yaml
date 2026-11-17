@@ -46,7 +46,7 @@ ErrHttpReqNotFound: 'منبع درخواستی یافت نشد: {{ .err }}'
 
 # پرش سریع
 ErrMinQuickJump: 'حداقل یک ورودی پرش سریع تنظیم کنید'
-ErrMaxQuickJump: 'حداکثر ۴ ورودی پرش سریع'
+ErrMaxQuickJump: 'حداکثر ۵ ورودی پرش سریع'
 
 # عمومی
 ErrShutDown: 'دستور به صورت دستی متوقف شد'
@@ -70,14 +70,14 @@ Decrypt: "رمزگشایی"
 
 # عامل
 ErrAgentAccountBound: 'حساب به یک عامل متصل است و قابل حذف نیست'
-ErrTerminalAIAccountInUse: 'این حساب مدل در حال حاضر توسط ترمینال هوش مصنوعی استفاده می‌شود. حساب را در تنظیمات ترمینال هوش مصنوعی تغییر دهید یا ترمینال هوش مصنوعی را غیرفعال کرده و دوباره تلاش کنید.'
-ErrFileAIAccountInUse: 'این حساب مدل توسط هوش مصنوعی مدیریت فایل استفاده می‌شود. حساب را در تنظیمات آن تغییر دهید یا هوش مصنوعی مدیریت فایل را غیرفعال کرده و دوباره تلاش کنید.'
+ErrTerminalAIAccountInUse: 'این سرویس مدل در حال حاضر توسط ترمینال هوش مصنوعی استفاده می‌شود. حساب را در تنظیمات ترمینال هوش مصنوعی تغییر دهید یا ترمینال هوش مصنوعی را غیرفعال کرده و دوباره تلاش کنید.'
+ErrFileAIAccountInUse: 'این سرویس مدل توسط هوش مصنوعی مدیریت فایل استفاده می‌شود. حساب را در تنظیمات آن تغییر دهید یا هوش مصنوعی مدیریت فایل را غیرفعال کرده و دوباره تلاش کنید.'
 ErrAgentAccountUnavailable: 'اتصال حساب در دسترس نیست: {{ .err }}'
 ErrAgentProviderNotSupported: 'ارائه‌دهنده عامل پشتیبانی نمی‌شود'
 ErrAgentAccountRequired: 'ابتدا یک حساب عامل انتخاب کنید'
 ErrAgentAccountNotVerified: 'حساب عامل تأیید نشده است'
 ErrAgentAccountModelsRequired: 'لطفاً حداقل یک مدل پیکربندی کنید'
-ErrAgentAccountSingleInitialModel: 'فقط یک مدل اولیه می‌تواند در هنگام ایجاد حساب پیکربندی شود'
+ErrAgentAccountSingleInitialModel: 'برای این ارائه‌دهنده حداکثر یک مدل می‌توان پیکربندی کرد'
 ErrAgentModelNotInAccount: 'مدل در حساب انتخاب شده پیکربندی نشده است'
 ErrAgentVerifyModelInUse: 'این مدل برای بررسی حساب استفاده می‌شود. پیش از حذف، مدل بررسی دیگری انتخاب کنید'
 ErrAgentFallbackModelDuplicate: 'مدل‌های جایگزین نمی‌توانند تکراری باشند'
@@ -252,6 +252,7 @@ ErrSSLCertificateNotFound: 'فایل گواهی وجود ندارد'
 ErrSSLKeyFormat: 'تأیید فایل کلید خصوصی ناموفق بود'
 ErrSSLCertificateFormat: 'فرمت گواهی نامعتبر است؛ از PEM استفاده کنید'
 ErrEabKidOrEabHmacKeyCannotBlank: 'EabKid یا EabHmacKey نمی‌توانند خالی باشند'
+ErrOpenrestyInstall: "لطفاً ابتدا OpenResty را از فروشگاه برنامه‌ها نصب کنید"
 ErrOpenrestyNotFound: 'حالت HTTP نیاز به OpenResty دارد'
 ApplySSLStart: 'شروع درخواست گواهی. دامنه: [{{ .domain }}]، روش: [{{ .type }}]'
 dnsAccount: 'خودکار DNS'
@@ -676,7 +677,7 @@ TerminalAIRequestFailed: 'درخواست هوش مصنوعی ناموفق بود
 
 # دروازه هوش مصنوعی
 ErrAIProxyServiceNotInstalled: 'سرویس {{ .name }} نصب نشده است'
-ErrAIProxyModelAccountNotFound: 'حساب مدل {{ .id }} یافت نشد'
+ErrAIProxyModelAccountNotFound: 'سرویس مدل {{ .id }} یافت نشد'
 ErrAIProxyModelMapRequired: 'این فیلد الزامی است.'
 ErrAIProxyModelMapInvalid: 'نگاشت مدل باید یک شی JSON معتبر باشد: {{ .err }}'
 ErrAIProxyModelMapEmpty: 'نگاشت مدل نمی‌تواند خالی باشد'
@@ -687,6 +688,7 @@ AIProviderBailian: 'Alibaba Cloud Model Studio'
 AIProviderBailianCodingPlan: 'Alibaba Cloud Model Studio Coding Plan'
 AIProviderArk: 'Volcengine Ark'
 AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
+AIProvider1PanelGateway: 'درگاه هوش مصنوعی 1Panel'
 
 # Firewall
 ErrDockerIptablesChainUnavailable: 'زنجیره DOCKER-USER داکر یافت نشد. داکر را راه‌اندازی مجدد کنید و دوباره تلاش کنید'
@@ -736,7 +738,7 @@ ErrSSHKeyMismatch: "کلید عمومی و خصوصی SSH مطابقت ندار�
 # ماشین مجازی
 ErrVMNotFound: "ماشین مجازی وجود ندارد"
 ErrVMAlreadyExists: "ماشین مجازی از قبل وجود دارد"
-ErrVMCountLimit: "در نسخه Professional می‌توانید حداکثر {{ .limit }} ماشین مجازی ایجاد کنید. یک ماشین مجازی موجود را حذف کنید یا به نسخه Enterprise ارتقا دهید و دوباره تلاش کنید."
+ErrVMCountLimit: "در نسخه فعلی می‌توانید حداکثر {{ .limit }} ماشین مجازی ایجاد کنید. یک ماشین مجازی موجود را حذف کنید یا به نسخه بالاتر ارتقا دهید و دوباره تلاش کنید."
 ErrVMImageAlreadyExists: "فایل ایمیج ماشین مجازی از قبل وجود دارد: {{ .detail }}"
 ErrVMStoragePathInUse: "مسیر استخر ذخیره‌سازی قبلاً توسط [{{ .name }}] استفاده شده است"
 ErrVMHelperNotFound: "1panel-kvm یافت نشد"
@@ -803,3 +805,19 @@ ErrFeishuUpgradeMounts: "این اتصال‌های ذخیره‌سازی کام
 AgentFeishuRecoveryDisabled: "دروازه بازیابی شد و Feishu غیرفعال است؛ پشتیبان تنظیمات اصلی حفظ شد."
 
 ContainerUpgradeWaiting: "Waiting for a container upgrade execution slot"
+ContainerImageCheckUpdate: "بررسی به‌روزرسانی ایمیج‌ها"
+ContainerImageCheckScope: "در حال بررسی همه {{ .count }} کانتینر این گره، بدون توجه به صفحه‌بندی و فیلترها"
+ContainerImageCheckItem: "در حال بررسی کانتینر {{ .name }}، ایمیج {{ .image }}"
+ContainerImageCheckFailed: "بررسی کانتینر {{ .name }} ناموفق بود: {{ .error }}؛ نتایج قبلیِ منطبق با ایمیج فعلی حفظ می‌شوند"
+ContainerImageCheckSkipped: "کانتینر {{ .name }} رد شد: ایمیج تگ‌دار Docker Hub نیست، ایمیج محلی است یا digest ثابت دارد"
+ContainerImageCheckAvailable: "برای کانتینر {{ .name }} به‌روزرسانی موجود است: {{ .image }} → {{ .target }}"
+ContainerImageCheckCurrent: "به‌روزرسانی برای کانتینر {{ .name }} یافت نشد"
+ContainerImageCheckChanged: "کانتینر {{ .name }} حذف شده یا ایمیج آن تغییر کرده است؛ نتیجه ذخیره نشد"
+ContainerImageCheckSummary: "بررسی پایان یافت: بررسی‌شده {{ .checked }}، قابل ارتقا {{ .updates }}، ناموفق {{ .failed }}، ردشده {{ .skipped }}"
+ContainerImageCheckFailures: "بررسی {{ .count }} کانتینر ناموفق بود؛ گزارش وظیفه را مشاهده کنید"
+
+ErrImageCheckProxyRequired: "برای بررسی به‌روزرسانی تصاویر در محیط فعلی، ابتدا یک سرور پروکسی پیکربندی کنید."
+
+ErrPHPExtensionsConflict: "قالب افزونه PHP با این نام و محتوای متفاوت از قبل وجود دارد؛ بازنویسی نشد"
+
+ErrModelTokenizerDirOverlap: "پوشه‌های مدل و توکن‌ساز باید متفاوت باشند و هیچ‌کدام نباید درون دیگری قرار گیرد"

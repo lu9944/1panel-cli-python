@@ -42,7 +42,7 @@
                 :title="$t('toolbox.ftp.ftp', 2)"
                 :class="{ mask: baseLoaded && !form.isActive }"
             >
-                <template #prompt v-if="!isFxplay">
+                <template #prompt>
                     <el-alert type="info" :closable="false">
                         <template #title>
                             {{ $t('toolbox.common.toolboxHelper') }}
@@ -68,6 +68,7 @@
                 </template>
                 <template #main>
                     <ComplexTable
+                        :cache-pagination="false"
                         :pagination-config="paginationConfig"
                         v-model:selects="selects"
                         @sort-change="search"
@@ -185,7 +186,7 @@ import { Toolbox } from '@/api/interface/toolbox';
 import { useGlobalStore } from '@/composables/useGlobalStore';
 import { routerToFileWithPath } from '@/utils/router';
 import { getRandomStr } from '@/utils/id';
-const { docsUrl, isFxplay } = useGlobalStore();
+const { docsUrl } = useGlobalStore();
 
 const loading = ref(true);
 const baseLoaded = ref(false);

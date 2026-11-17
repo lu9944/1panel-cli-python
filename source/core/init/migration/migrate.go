@@ -73,5 +73,10 @@ func coreMigrations() []*gormigrate.Migration {
 		migrations.UpdateAiMenuOrderV2,
 		migrations.AddPanelMCP,
 		migrations.AddAPIKeyDeletedAt,
+		migrations.MoveVirtualMachineMenuToTopLevel,
+		migrations.UpdateAiModelManagementMenus,
+		migrations.AddModelServicesMenu,
+		migrations.UpdateAiMenus,
+		migrations.MoveOpsReportMenuToAgent,
 	}
 }

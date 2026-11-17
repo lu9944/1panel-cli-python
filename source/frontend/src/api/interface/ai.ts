@@ -2,13 +2,40 @@ import { ReqPage } from '.';
 
 export namespace AI {
     export interface ModelGPUDevice {
+        index?: number;
         id: string;
         name: string;
         type: string;
         uuid?: string;
+        numaNode?: number;
         available: boolean;
     }
+    export interface ModelGPUUsage {
+        devices: (ModelGPUDevice & {
+            memoryUsed: string;
+            memoryTotal: string;
+            possible: boolean;
+            deployments: { name: string; status: string; possible: boolean }[];
+        })[];
+        warnings: string[];
+    }
+    export interface ModelNUMANode {
+        id: number;
+        cpus: string;
+        memory: boolean;
+    }
+    export interface GPUGroup {
+        description: string;
+        id: number;
+        name: string;
+        imageType: string;
+        revision: number;
+        gpu: ModelGPUConfig;
+        deployments: string[];
+    }
     export interface ModelGPUConfig {
+        group?: { id: number; name: string; revision: number };
+        numa?: { mode: 'off' | 'auto' | 'manual'; nodes: number[] };
         mode: 'all' | 'count' | 'devices';
         count?: number;
         error?: string;
@@ -37,6 +64,28 @@ export namespace AI {
         info?: string;
     }
 
+    export interface GPUEnvironmentCheck {
+        vendor: string;
+        item: 'driver' | 'toolkit' | 'docker';
+        status: 'passed' | 'missing' | 'unconfigured' | 'failed' | 'unknown';
+        code?: string;
+        version?: string;
+        reason?: string;
+    }
+    export interface GPUEnvironment {
+        checkedAt: string;
+        hardwareStatus: 'detected' | 'not_detected' | 'unknown';
+        checks: GPUEnvironmentCheck[];
+    }
+    export interface GPUSummary {
+        vendor: string;
+        driverVersion: string;
+        cudaVersion: string;
+        cardCount: number | null;
+        memoryTotal: number | null;
+        sharedMemoryTotal: number | null;
+        memoryPartial: boolean;
+    }
     export interface Info {
         collectedAt?: string;
         warnings?: string[];
@@ -47,6 +96,8 @@ export namespace AI {
         npu: NPU[];
         xpuDriverVersion: string;
         xpu: XpuInfo['xpu'];
+        environment?: GPUEnvironment;
+        summaries?: GPUSummary[];
     }
     export interface GPU {
         sharedMemory?: boolean;
@@ -290,6 +341,7 @@ export namespace AI {
     export interface Volume {
         source: string;
         target: string;
+        mode: string;
     }
 
     export interface McpServer {
@@ -384,61 +436,6 @@ export namespace AI {
         ssePath: string;
         containerName: string;
         environments: Environment[];
-    }
-
-    export interface ExposedPort {
-        hostPort: number;
-        containerPort: number;
-        hostIP: string;
-        protocol?: string;
-    }
-
-    export interface Environment {
-        key: string;
-        value: string;
-    }
-    export interface Volume {
-        source: string;
-        target: string;
-        mode: string;
-    }
-
-    export interface ExtraHosts {
-        hostname: string;
-        ip: string;
-    }
-
-    export interface TensorRTLLM {
-        gpu?: ModelGPUConfig;
-        id?: number;
-        name: string;
-        containerName: string;
-        version: string;
-        modelDir: string;
-        status?: string;
-        message?: string;
-        createdAt?: string;
-        exposedPorts?: ExposedPort[];
-        environments?: Environment[];
-        volumes?: Volume[];
-        extraHosts?: ExtraHosts[];
-    }
-
-    export interface TensorRTLLMDTO extends TensorRTLLM {
-        dir?: string;
-    }
-
-    export interface TensorRTLLMSearch extends ReqPage {
-        name: string;
-    }
-
-    export interface TensorRTLLMDelete {
-        id: number;
-    }
-
-    export interface TensorRTLLMOperate {
-        id: number;
-        operate: string;
     }
 
     export interface AgentCreateReq {
@@ -663,6 +660,12 @@ export namespace AI {
         recordId: number;
         id: string;
         name: string;
+        isVerifyModel?: boolean;
+    }
+
+    export interface AgentAccountVerifyModelUpdateReq {
+        accountId: number;
+        recordId: number;
     }
 
     export interface AgentAccountModelReq {
@@ -677,6 +680,7 @@ export namespace AI {
     }
 
     export interface AgentAccountModelCreateReq {
+        taskID?: string;
         accountId: number;
         model: AgentAccountModel;
     }
@@ -687,6 +691,7 @@ export namespace AI {
     }
 
     export interface AgentAccountModelDeleteReq {
+        deleteFiles?: boolean;
         accountId: number;
         recordId: number;
     }
@@ -737,6 +742,7 @@ export namespace AI {
         baseURL: string;
         apiType: string;
         authMode: string;
+        models?: AgentAccountModel[];
         verifyModel: string;
         validateAvailability: boolean;
         remark: string;
@@ -770,6 +776,9 @@ export namespace AI {
         authMode: string;
         verifyModel: string;
         verified: boolean;
+        validateAvailability: boolean;
+        verifiedAt?: string | null;
+        verifyError?: string;
         remark: string;
         createdAt: string;
     }

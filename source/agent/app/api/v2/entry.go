@@ -11,16 +11,17 @@ var ApiGroupApp = new(ApiGroup)
 type BaseApi struct{}
 
 var (
+	gpuGroupService  = &service.GPUGroupService{}
+	vmService        = service.NewIVMService()
 	dashboardService = service.NewIDashboardService()
 
 	appService              = service.NewIAppService()
 	appInstallService       = service.NewIAppInstalledService()
 	appIgnoreUpgradeService = service.NewIAppIgnoreUpgradeService()
 
-	aiToolService      = service.NewIAIToolService()
-	mcpServerService   = service.NewIMcpServerService()
-	tensorrtLLMService = service.NewITensorRTLLMService()
-	agentService       = service.NewIAgentService()
+	aiToolService    = service.NewIAIToolService()
+	mcpServerService = service.NewIMcpServerService()
+	agentService     = service.NewIAgentService()
 
 	containerService       = service.NewIContainerService()
 	composeTemplateService = service.NewIComposeTemplateService()

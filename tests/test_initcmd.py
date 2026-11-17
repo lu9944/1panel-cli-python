@@ -159,6 +159,24 @@ class TestReadSettings(unittest.TestCase):
                     Path(tmp) / "nope.db", Path(tmp) / "nope2.db"
                 )
 
+    def test_uses_sudo_snapshot_when_db_is_not_visible(self):
+        # 1Panel 的 /opt/1panel/db(本机 v2.5.1)为 0700 root:普通用户连 exists() 都为 False
+        with tempfile.TemporaryDirectory() as tmp:
+            core = Path(tmp) / "core.db"
+            agent = Path(tmp) / "agent.db"
+            _create_db(core, {"UserName": "admin", "Password": "p"})
+            _create_db(agent, {"SystemIP": "1.2.3.4"})
+            invisible = Path(tmp) / "invisible-root" / "core.db"
+            with mock.patch.object(
+                initcmd, "_sudo_snapshot", return_value=(core, agent)
+            ) as snapshot:
+                settings = initcmd.read_panel_settings(
+                    invisible, Path(tmp) / "invisible-root" / "agent.db"
+                )
+            snapshot.assert_called_once()
+            self.assertEqual(settings["UserName"], "admin")
+            self.assertEqual(settings["SystemIP"], "1.2.3.4")
+
 
 class TestWriteEnv(unittest.TestCase):
     def test_write_and_force(self):

@@ -28,6 +28,7 @@
                 <ComplexTable
                     :selection-context="() => [searchName]"
                     row-key="name"
+                    :cache-pagination="false"
                     :pagination-config="paginationConfig"
                     v-model:selects="selects"
                     :data="data"
@@ -87,7 +88,7 @@
                         prop="mountpoint"
                     >
                         <template #default="{ row }">
-                            <el-tooltip :content="row.mountpoint">
+                            <el-tooltip :content="row.mountpoint" v-bind="TABLE_TOOLTIP_OPTIONS">
                                 <el-button
                                     v-permission:view="'host_file_view'"
                                     type="primary"
@@ -124,6 +125,7 @@
 </template>
 
 <script lang="ts" setup>
+import { TABLE_TOOLTIP_OPTIONS } from '@/components/table/shared';
 import { useSearchState } from '@/utils/search-reset';
 import CreateDialog from '@/views/container/volume/create/index.vue';
 import CodemirrorDrawer from '@/components/codemirror-pro/drawer.vue';

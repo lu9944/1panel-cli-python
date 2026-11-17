@@ -4,7 +4,7 @@
             <span>{{ $t('tool.supervisor.notStartWarn') }}</span>
         </el-card>
         <LayoutContent :title="$t('tool.supervisor.list', 2)" v-loading="loading">
-            <template #prompt v-if="!isFxplay">
+            <template #prompt>
                 <el-alert type="info" :closable="false">
                     <template #title>
                         {{ $t('toolbox.common.toolboxHelper') }}
@@ -112,7 +112,7 @@
                                             <span>{{ $t('tool.supervisor.' + row.status[0].status) }}</span>
                                         </el-button>
                                     </template>
-                                    <el-table :data="row.status">
+                                    <el-table :data="row.status" :tooltip-options="TABLE_OVERFLOW_TOOLTIP_OPTIONS">
                                         <el-table-column
                                             property="name"
                                             :label="$t('commons.table.name')"
@@ -173,6 +173,7 @@
 </template>
 
 <script setup lang="ts">
+import { TABLE_OVERFLOW_TOOLTIP_OPTIONS } from '@/components/table/shared';
 import Log from './log/index.vue';
 
 import SuperVisorStatus from './status/index.vue';
@@ -189,7 +190,7 @@ import { HostTool } from '@/api/interface/host-tool';
 import { MsgSuccess } from '@/utils/message';
 import { routerToFileWithPath } from '@/utils/router';
 
-const { docsUrl, isFxplay, isMobile } = useGlobalStore();
+const { docsUrl, isMobile } = useGlobalStore();
 
 const loading = ref(false);
 const setSuperVisor = ref(false);

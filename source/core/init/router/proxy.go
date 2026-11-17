@@ -40,6 +40,7 @@ type agentProxyPolicy struct {
 func Proxy(policies ...agentProxyPolicy) gin.HandlerFunc {
 	policies = append([]agentProxyPolicy(nil), policies...)
 	return func(c *gin.Context) {
+		c.Request.Header.Del("X-1Panel-VM-Limit")
 		terminalsession.ClearForwardedHeaders(c)
 		mcpapi.ClearForwardedHeaders(c.Request.Header)
 		for _, policy := range policies {
@@ -119,7 +120,14 @@ func Proxy(policies ...agentProxyPolicy) gin.HandlerFunc {
 		for _, policy := range policies {
 			if policy.grant != nil {
 				policy.grant(c, useLocalAgent)
+				if c.IsAborted() {
+					return
+				}
 			}
+		}
+
+		if reqPath == "/api/v2/vms" || strings.HasPrefix(reqPath, "/api/v2/vms/") {
+			c.Request.Header.Set("X-1Panel-VM-Limit", strconv.Itoa(xpack.VMCountLimit(c)))
 		}
 
 		if reqPath == "/api/v2/hosts/terminal/local" && useLocalAgent {
@@ -149,6 +157,7 @@ func isInternalOnlyAgentEndpoint(reqPath string) bool {
 	normalizedPath := path.Clean(reqPath)
 	return normalizedPath == "/api/v2/xpack/alert/offline/email" ||
 		strings.HasPrefix(normalizedPath, "/api/v2/internal/mcp/") ||
+		strings.HasPrefix(normalizedPath, "/api/v2/internal/ops-report/") ||
 		normalizedPath == "/api/v2/xpack/alert/offline/webhook" ||
 		normalizedPath == "/api/v2/hosts/firewall/port" ||
 		normalizedPath == "/api/v2/internal/terminal/sessions/revoke" ||
@@ -194,5 +203,7 @@ func checkSession(c *gin.Context, refresh bool) bool {
 }
 
 func isLocalAPI(urlPath string) bool {
-	return urlPath == "/api/v2/core/xpack/sync/ssl" || urlPath == "/api/v2/core/xpack/settings/search"
+	return urlPath == "/api/v2/core/xpack/sync/ssl" ||
+		urlPath == "/api/v2/core/xpack/sync/php/extensions" ||
+		urlPath == "/api/v2/core/xpack/settings/search"
 }

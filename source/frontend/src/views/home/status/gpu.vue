@@ -1,6 +1,6 @@
 <template>
-    <div class="gpu-status">
-        <div class="gpu-summary">
+    <div class="gpu-status" :class="{ 'gpu-status-single': devices.length === 1 }">
+        <div v-if="devices.length !== 1" class="gpu-summary">
             <div class="gpu-summary-header">
                 <div class="device-counts">
                     <strong v-for="group in deviceGroups" :key="group.type">
@@ -16,7 +16,7 @@
                         </el-icon>
                     </el-button>
                     <el-button link type="primary" size="small" @click="$emit('open')">
-                        {{ $t('aiTools.gpu.gpu') }}
+                        {{ $t('aiTools.gpu.viewHistory') }}
                         <el-icon><ArrowRight /></el-icon>
                     </el-button>
                 </div>
@@ -38,10 +38,7 @@
         <div class="gpu-grid">
             <article v-for="device in visibleDevices" :key="device.key" class="gpu-card">
                 <div class="device-header">
-                    <div class="device-identity">
-                        <span class="device-id">{{ device.id }}</span>
-                        <h3 :title="device.name">{{ device.name }}</h3>
-                    </div>
+                    <h3 class="device-id">{{ device.id }}</h3>
                     <el-popover :width="360" trigger="click" popper-class="dashboard-gpu-popover">
                         <el-descriptions :title="device.name" :column="1" size="small">
                             <el-descriptions-item
@@ -56,16 +53,20 @@
                             <el-button link type="primary" size="small">{{ $t('commons.button.view') }}</el-button>
                         </template>
                     </el-popover>
+                    <el-button v-if="devices.length === 1" link type="primary" size="small" @click="$emit('open')">
+                        {{ $t('aiTools.gpu.viewHistory') }}
+                        <el-icon><ArrowRight /></el-icon>
+                    </el-button>
                 </div>
                 <div class="device-metrics">
-                    <div class="device-metric metric-utilization">
+                    <div class="device-metric">
                         <div class="metric-heading">
                             <span class="metric-label">
                                 {{ device.type === 'NPU' ? $t('aiTools.gpu.aiCore') : $t('aiTools.gpu.gpuUtil') }}
                             </span>
                             <strong>{{ device.utilization === null ? '—' : `${device.utilization}%` }}</strong>
                         </div>
-                        <el-progress :percentage="device.utilization ?? 0" :show-text="false" :stroke-width="5" />
+                        <el-progress :percentage="device.utilization ?? 0" :show-text="false" :stroke-width="3" />
                     </div>
                     <div class="device-metric">
                         <div class="metric-heading">
@@ -83,8 +84,8 @@
                         <el-progress
                             :percentage="device.memoryPercent ?? 0"
                             :show-text="false"
-                            :stroke-width="5"
-                            color="var(--el-color-success)"
+                            :stroke-width="3"
+                            color="var(--el-color-primary)"
                         />
                     </div>
                 </div>
@@ -276,6 +277,9 @@ const usedMemory = computed(() =>
     gap: 4px 16px;
     font-size: 14px;
 }
+.device-counts > strong {
+    font-weight: 500;
+}
 .summary-memory {
     display: flex;
     align-items: baseline;
@@ -285,7 +289,8 @@ const usedMemory = computed(() =>
 }
 .summary-memory > strong {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 400;
+    color: var(--el-text-color-regular);
 }
 .gpu-grid {
     display: grid;
@@ -306,26 +311,14 @@ const usedMemory = computed(() =>
     gap: 12px;
     margin-bottom: 10px;
 }
-.device-identity {
-    flex: 1;
-    min-width: 0;
-}
 .device-id {
-    display: block;
-    margin-bottom: 2px;
-    font-size: 12px;
-    color: var(--el-text-color-secondary);
-}
-.device-header h3 {
     flex: 1;
     min-width: 0;
     margin: 0;
     font-size: 14px;
     line-height: 20px;
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-weight: 500;
+    color: var(--el-text-color-regular);
 }
 .device-header .el-button {
     flex-shrink: 0;
@@ -348,13 +341,11 @@ const usedMemory = computed(() =>
     margin-bottom: 6px;
 }
 .metric-heading strong {
-    font-size: 15px;
-    line-height: 24px;
-    font-weight: 600;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 400;
+    color: var(--el-text-color-regular);
     font-variant-numeric: tabular-nums;
-}
-.metric-utilization strong {
-    font-size: 22px;
 }
 .metric-total {
     font-size: 12px;
@@ -378,11 +369,81 @@ const usedMemory = computed(() =>
 }
 .device-footer strong {
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 400;
+    color: var(--el-text-color-secondary);
+}
+.gpu-status-single {
+    .gpu-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .gpu-card {
+        display: grid;
+        grid-template-columns: minmax(0, 2.4fr) minmax(0, 1.35fr);
+        gap: 10px 16px;
+        padding: 10px 16px;
+    }
+
+    .device-header {
+        grid-column: 1 / -1;
+        margin-bottom: 0;
+    }
+
+    .device-metrics {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+        gap: 24px;
+    }
+
+    .device-footer {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px;
+        margin: 0;
+        padding: 0;
+        border-top: 0;
+    }
+
+    .device-footer > div {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+        padding-left: 20px;
+        border-left: 1px solid var(--el-border-color-extra-light);
+        min-width: 0;
+    }
+
+    .device-footer strong {
+        line-height: 20px;
+        font-variant-numeric: tabular-nums;
+        overflow-wrap: anywhere;
+    }
 }
 @container (max-width: 560px) {
     .gpu-grid {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .gpu-status-single {
+        .gpu-card {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 16px;
+            padding: 14px 16px;
+        }
+
+        .device-header {
+            flex-wrap: wrap;
+        }
+
+        .device-footer {
+            padding-top: 12px;
+            border-top: 1px solid var(--el-border-color-extra-light);
+        }
+
+        .device-footer > div {
+            padding-left: 0;
+            border-left: 0;
+        }
     }
 }
 </style>

@@ -140,6 +140,29 @@ func (u *ContainerService) Page(ctx context.Context, req dto.PageContainer) (int
 		backData = records[start:end]
 	}
 
+	// Batch-load persisted checks; never contact Docker Hub while rendering the list.
+	ids := make([]string, 0, len(backData))
+	for _, row := range backData {
+		ids = append(ids, row.ContainerID)
+	}
+	if len(ids) > 0 {
+		var checks []model.ContainerImageCheckUpdate
+		if err := global.DB.Where("container_id IN ?", ids).Find(&checks).Error; err != nil {
+			return 0, nil, err
+		}
+		byID := make(map[string]model.ContainerImageCheckUpdate, len(checks))
+		for _, check := range checks {
+			byID[check.ContainerID] = check
+		}
+		for i := range backData {
+			check, ok := byID[backData[i].ContainerID]
+			if ok && sameContainerImage(check.ImageID, backData[i].ImageId) && check.ImageName == backData[i].ImageName {
+				backData[i].LatestVersion = check.LatestVersion
+				backData[i].TargetImage = check.TargetImage
+				backData[i].HasUpdate = check.HasUpdate
+			}
+		}
+	}
 	for i := 0; i < len(backData); i++ {
 		install, _ := appInstallRepo.GetFirst(appInstallRepo.WithContainerName(backData[i].Name))
 		if install.ID > 0 {
@@ -851,7 +874,7 @@ func writeContainerLogMessage(w io.Writer, done <-chan struct{}, messages <-chan
 		return false
 	case message, ok := <-messages:
 		if ok {
-			_, err := fmt.Fprintf(w, "data: %s\n\n", message)
+			_, err := fmt.Fprintf(w, "data: %s\n\n", base64.StdEncoding.EncodeToString([]byte(message)))
 			return err == nil
 		}
 		// The collector closes both channels when it finishes. Drain all buffered
@@ -929,8 +952,6 @@ func collectLogs(done <-chan struct{}, params dto.StreamLog, messageChan chan<- 
 		}
 	}()
 
-	reader := bufio.NewReader(stdout)
-
 	processKilled := false
 	go func() {
 		<-done
@@ -943,27 +964,21 @@ func collectLogs(done <-chan struct{}, params dto.StreamLog, messageChan chan<- 
 		}
 	}()
 
+	buffer := make([]byte, 32*1024)
 	for {
-		line, err := reader.ReadString('\n')
+		n, err := stdout.Read(buffer)
+		if n > 0 {
+			select {
+			case messageChan <- string(buffer[:n]):
+			case <-done:
+				return
+			}
+		}
 		if err != nil {
 			if err == io.EOF {
-				if len(line) > 0 {
-					line = strings.TrimSuffix(line, "\n")
-					select {
-					case messageChan <- line:
-					case <-done:
-						return
-					}
-				}
 				break
 			}
 			errorChan <- fmt.Errorf("reader error: %v", err)
-			return
-		}
-		line = strings.TrimSuffix(line, "\n")
-		select {
-		case messageChan <- line:
-		case <-done:
 			return
 		}
 	}

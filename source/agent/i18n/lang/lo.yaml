@@ -32,7 +32,7 @@ ErrApiConfigKeyTimeInvalid: 'ເວລາ (Timestamp) ຂອງ API ບໍ່ຖ
 ErrShutDown: 'ຄຳສັ່ງຖືກຢຸດດ້ວຍຕົນເອງ'
 
 ErrMinQuickJump: 'ກະລຸນາຕັ້ງຄ່າລາຍການທາງລັດຢ່າງໜ້ອຍໜຶ່ງລາຍການ'
-ErrMaxQuickJump: 'ສາມາດຕັ້ງຄ່າລາຍການທາງລັດໄດ້ສູງສຸດ 4 ລາຍການ'
+ErrMaxQuickJump: 'ສາມາດຕັ້ງຄ່າລາຍການທາງລັດໄດ້ສູງສຸດ 5 ລາຍການ'
 
 #common
 ErrUsernameIsExist: 'ຊື່ຜູ້ໃຊ້ມີຢູ່ໃນລະບົບແລ້ວ'
@@ -55,14 +55,14 @@ Decrypt: "ຖອດລະຫັດ"
 
 #agent
 ErrAgentAccountBound: 'ບັນຊີຖືກຜູກມັດກັບຕົວແທນ (Agent) ແລະບໍ່ສາມາດລຶບໄດ້'
-ErrTerminalAIAccountInUse: 'ບັນຊີໂມເດລນີ້ກຳລັງຖືກໃຊ້ໂດຍ Terminal AI. ກະລຸນາປ່ຽນບັນຊີໃນການຕັ້ງຄ່າ Terminal AI ຫຼື ປິດໃຊ້ງານ Terminal AI ແລ້ວລອງໃໝ່.'
-ErrFileAIAccountInUse: 'ບັນຊີໂມເດລນີ້ກຳລັງຖືກໃຊ້ໂດຍ AI ຈັດການໄຟລ໌. ກະລຸນາປ່ຽນບັນຊີໃນການຕັ້ງຄ່າ AI ຈັດການໄຟລ໌ ຫຼື ປິດໃຊ້ງານແລ້ວລອງໃໝ່.'
+ErrTerminalAIAccountInUse: 'ບໍລິການໂມເດລນີ້ກຳລັງຖືກໃຊ້ໂດຍ Terminal AI. ກະລຸນາປ່ຽນບັນຊີໃນການຕັ້ງຄ່າ Terminal AI ຫຼື ປິດໃຊ້ງານ Terminal AI ແລ້ວລອງໃໝ່.'
+ErrFileAIAccountInUse: 'ບໍລິການໂມເດລນີ້ກຳລັງຖືກໃຊ້ໂດຍ AI ຈັດການໄຟລ໌. ກະລຸນາປ່ຽນບັນຊີໃນການຕັ້ງຄ່າ AI ຈັດການໄຟລ໌ ຫຼື ປິດໃຊ້ງານແລ້ວລອງໃໝ່.'
 ErrAgentAccountUnavailable: 'ການເຊື່ອມຕໍ່ບັນຊີບໍ່ສາມາດໃຊ້ງານໄດ້: {{ .err }}'
 ErrAgentProviderNotSupported: 'ບໍ່ຮອງຮັບຜູ້ໃຫ້ບໍລິການຕົວແທນນີ້'
 ErrAgentAccountRequired: 'ກະລຸນາເລືອກບັນຊີຕົວແທນກ່ອນ'
 ErrAgentAccountNotVerified: 'ບັນຊີຕົວແທນຍັງບໍ່ໄດ້ຮັບການຢືນຢັນ'
 ErrAgentAccountModelsRequired: 'ກະລຸນາກຳນົດຄ່າໂມເດລຢ່າງໜ້ອຍໜຶ່ງຕົວ'
-ErrAgentAccountSingleInitialModel: 'ສາມາດກຳນົດຄ່າໂມເດລເລີ່ມຕົ້ນໄດ້ພຽງຕົວດຽວໃນລະຫວ່າງການສ້າງບັນຊີ'
+ErrAgentAccountSingleInitialModel: 'ຜູ້ໃຫ້ບໍລິການນີ້ສາມາດກຳນົດຄ່າໄດ້ສູງສຸດໜຶ່ງໂມເດວ'
 ErrAgentModelNotInAccount: 'ໂມເດລບໍ່ໄດ້ຖືກກຳນົດຄ່າໃນບັນຊີທີ່ເລືອກ'
 ErrAgentVerifyModelInUse: 'ໂມເດລນີ້ຖືກໃຊ້ສຳລັບກວດສອບບັນຊີ. ກະລຸນາເລືອກໂມເດລກວດສອບອື່ນກ່ອນລຶບ.'
 ErrAgentFallbackModelDuplicate: 'ໂມເດລສຳຮອງ (Fallback) ບໍ່ສາມາດຊ້ຳກັນໄດ້'
@@ -242,6 +242,7 @@ ErrSSLCertificateNotFound: 'ບໍ່ມີໄຟລ໌ໃບຮັບຮອງ�
 ErrSSLKeyFormat: 'ການກວດສອບໄຟລ໌ກຸນແຈສ່ວນຕົວລົ້ມເຫຼວ'
 ErrSSLCertificateFormat: 'ຮູບແບບໃບຮັບຮອງບໍ່ຖືກຕ້ອງ; ກະລຸນາໃຊ້ PEM'
 ErrEabKidOrEabHmacKeyCannotBlank: 'EabKid ຫຼື EabHmacKey ບໍ່ສາມາດປະຫວ່າງໄດ້'
+ErrOpenrestyInstall: "ກະລຸນາຕິດຕັ້ງ OpenResty ຈາກຮ້ານແອັບກ່ອນ"
 ErrOpenrestyNotFound: 'ໂໝດ HTTP ຕ້ອງການ OpenResty'
 ApplySSLStart: 'ກຳລັງເລີ່ມການຮ້ອງຂໍໃບຮັບຮອງ. ໂດເມນ: [{{ .domain }}], ວິທີການ: [{{ .type }}]'
 dnsAccount: 'DNS ອັດຕະໂນມັດ'
@@ -666,7 +667,7 @@ FileAISearchEmptyDir: 'ບໍ່ພົບໄຟລ໌ ຫຼື ໂຟນເດ�
 
 # ai proxy
 ErrAIProxyServiceNotInstalled: 'ຍັງບໍ່ໄດ້ຕິດຕັ້ງບໍລິການ {{ .name }}'
-ErrAIProxyModelAccountNotFound: 'ບໍ່ພົບບັນຊີໂມເດລ {{ .id }}'
+ErrAIProxyModelAccountNotFound: 'ບໍ່ພົບບໍລິການໂມເດລ {{ .id }}'
 ErrAIProxyModelMapRequired: 'ຟິວ (Field) ນີ້ຈຳເປັນຕ້ອງມີ.'
 ErrAIProxyModelMapInvalid: 'ການຈັບຄູ່ໂມເດລຕ້ອງເປັນວັດຖຸ JSON ທີ່ຖືກຕ້ອງ: {{ .err }}'
 ErrAIProxyModelMapEmpty: 'ການຈັບຄູ່ໂມເດລບໍ່ສາມາດຫວ່າງເປົ່າໄດ້'
@@ -677,6 +678,7 @@ AIProviderBailian: 'Alibaba Cloud Model Studio'
 AIProviderBailianCodingPlan: 'Alibaba Cloud Model Studio Coding Plan'
 AIProviderArk: 'Volcengine Ark'
 AIProviderArkCodingPlan: 'Volcengine Ark Coding Plan'
+AIProvider1PanelGateway: 'ເກດເວ AI ຂອງ 1Panel'
 
 # Firewall
 ErrDockerIptablesChainUnavailable: 'ບໍ່ພົບ chain DOCKER-USER ຂອງ Docker. ກະລຸນາເລີ່ມ Docker ໃໝ່ແລ້ວລອງອີກຄັ້ງ'
@@ -726,7 +728,7 @@ ErrSSHKeyMismatch: "ຄີສາທາລະນະ ແລະ ຄີສ່ວນ�
 # virtual machine
 ErrVMNotFound: "ບໍ່ມີເຄື່ອງສະເໝືອນ"
 ErrVMAlreadyExists: "ມີເຄື່ອງສະເໝືອນຢູ່ແລ້ວ"
-ErrVMCountLimit: "ລຸ້ນ Professional ສາມາດສ້າງເຄື່ອງສະເໝືອນໄດ້ສູງສຸດ {{ .limit }} ເຄື່ອງ. ກະລຸນາລຶບເຄື່ອງສະເໝືອນທີ່ມີຢູ່ ຫຼື ອັບເກຣດເປັນລຸ້ນ Enterprise ແລ້ວລອງອີກຄັ້ງ."
+ErrVMCountLimit: "ລຸ້ນປັດຈຸບັນສາມາດສ້າງເຄື່ອງສະເໝືອນໄດ້ສູງສຸດ {{ .limit }} ເຄື່ອງ. ກະລຸນາລຶບເຄື່ອງສະເໝືອນທີ່ມີຢູ່ ຫຼື ອັບເກຣດລຸ້ນ ແລ້ວລອງອີກຄັ້ງ."
 ErrVMImageAlreadyExists: "ມີອິມເມຈເຄື່ອງສະເໝືອນຢູ່ແລ້ວ: {{ .detail }}"
 ErrVMStoragePathInUse: "ເສັ້ນທາງພູນຈັດເກັບຖືກໃຊ້ໂດຍ [{{ .name }}] ແລ້ວ"
 ErrVMHelperNotFound: "ບໍ່ພົບ 1panel-kvm"
@@ -793,3 +795,19 @@ ErrFeishuUpgradeMounts: "ຈຸດເຊື່ອມຂໍ້ມູນນີ້�
 AgentFeishuRecoveryDisabled: "ເກດເວກູ້ຄືນແລ້ວ ແຕ່ Feishu ຍັງປິດ; ສຳຮອງການຕັ້ງຄ່າເດີມຍັງຖືກເກັບໄວ້."
 
 ContainerUpgradeWaiting: "Waiting for a container upgrade execution slot"
+ContainerImageCheckUpdate: "ກວດສອບການອັບເດດອິມເມຈ"
+ContainerImageCheckScope: "ກຳລັງກວດສອບທັງໝົດ {{ .count }} ຄອນເທນເນີໃນໂນດນີ້ ໂດຍບໍ່ຂຶ້ນກັບການແບ່ງໜ້າ ຫຼື ຕົວກອງ"
+ContainerImageCheckItem: "ກຳລັງກວດສອບຄອນເທນເນີ {{ .name }}, ອິມເມຈ {{ .image }}"
+ContainerImageCheckFailed: "ກວດສອບຄອນເທນເນີ {{ .name }} ລົ້ມເຫຼວ: {{ .error }}; ເກັບຜົນກ່ອນໜ້າທີ່ກົງກັບອິມເມຈປັດຈຸບັນໄວ້"
+ContainerImageCheckSkipped: "ຂ້າມ {{ .name }}: ບໍ່ແມ່ນອິມເມຈ Docker Hub ທີ່ມີແທັກ, ເປັນອິມເມຈພາຍໃນ ຫຼື ກຳນົດ digest ຄົງທີ່"
+ContainerImageCheckAvailable: "ຄອນເທນເນີ {{ .name }} ມີອັບເດດ: {{ .image }} → {{ .target }}"
+ContainerImageCheckCurrent: "ບໍ່ພົບອັບເດດສຳລັບຄອນເທນເນີ {{ .name }}"
+ContainerImageCheckChanged: "ຄອນເທນເນີ {{ .name }} ຖືກລຶບ ຫຼື ອິມເມຈປ່ຽນແປງ; ບໍ່ໄດ້ບັນທຶກຜົນ"
+ContainerImageCheckSummary: "ກວດສອບສິ້ນສຸດ: ກວດແລ້ວ {{ .checked }}, ອັບເກຣດໄດ້ {{ .updates }}, ລົ້ມເຫຼວ {{ .failed }}, ຂ້າມ {{ .skipped }}"
+ContainerImageCheckFailures: "ກວດສອບ {{ .count }} ຄອນເທນເນີລົ້ມເຫຼວ; ກະລຸນາເບິ່ງບັນທຶກວຽກ"
+
+ErrImageCheckProxyRequired: "ເພື່ອກວດສອບການອັບເດດອິມເມຈໃນສະພາບແວດລ້ອມປັດຈຸບັນ ກະລຸນາຕັ້ງຄ່າພຣັອກຊີເຊີບເວີກ່ອນ."
+
+ErrPHPExtensionsConflict: "ມີແມ່ແບບສ່ວນຂະຫຍາຍ PHP ຊື່ນີ້ຢູ່ແລ້ວແຕ່ເນື້ອຫາຕ່າງກັນ; ບໍ່ໄດ້ຂຽນທັບ"
+
+ErrModelTokenizerDirOverlap: "ໂຟນເດີໂມເດວ ແລະ tokenizer ຕ້ອງແຕກຕ່າງກັນ ແລະ ບໍ່ສາມາດຢູ່ພາຍໃນກັນໄດ້"

@@ -15,16 +15,23 @@ type NginxStatus struct {
 type NginxParam struct {
 	Name   string   `json:"name"`
 	Params []string `json:"params"`
+	// Source is the included file that sets an http-level directive missing
+	// from nginx.conf. Empty when the value comes from nginx.conf itself.
+	Source string `json:"source,omitempty"`
 }
 
 // NginxBrotliRes carries the brotli settings together with where they live.
 // ManagedExternally is true when the user defined brotli by hand, in which
 // case the panel only reports the values and must not write its own copy.
-// ManagedUnavailable is true when the panel could not wire the managed
+// ManagedPending is true when nginx does not load the managed configuration
+// yet but saving will wire it in, so the reported values are not in effect
+// until then.
+// ManagedUnavailable is true when the panel cannot wire the managed
 // configuration into nginx.conf at all, so the reported values are inert.
 type NginxBrotliRes struct {
 	Params             []NginxParam `json:"params"`
 	ManagedExternally  bool         `json:"managedExternally"`
+	ManagedPending     bool         `json:"managedPending"`
 	ManagedUnavailable bool         `json:"managedUnavailable"`
 }
 

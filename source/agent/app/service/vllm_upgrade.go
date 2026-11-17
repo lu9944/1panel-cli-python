@@ -5,22 +5,22 @@ import (
 	"strings"
 
 	"github.com/1Panel-dev/1Panel/agent/buserr"
+	"github.com/1Panel-dev/1Panel/agent/utils/ai_tools/vllm"
 	"github.com/1Panel-dev/1Panel/agent/utils/common"
 	"github.com/1Panel-dev/1Panel/agent/utils/xpack"
 )
 
 const (
-	vllmAppKeyForUpgrade  = "vllm"
-	vllmGB10VersionPrefix = "nvidia-gb10-dspark-"
-	vllmImageEnvKey       = "IMAGE"
-	vllmImageTypeNvidia   = "nvidia"
-	vllmImageTypeIntel    = "intel"
-	vllmImageTypeAscend   = "ascend"
+	vllmAppKeyForUpgrade = "vllm"
+	vllmImageEnvKey      = "IMAGE"
+	vllmImageTypeNvidia  = "nvidia"
+	vllmImageTypeIntel   = "intel"
+	vllmImageTypeAscend  = "ascend"
 )
 
 func isVllmProOnlyVersion(appKey, version string) bool {
 	return strings.EqualFold(strings.TrimSpace(appKey), vllmAppKeyForUpgrade) &&
-		strings.HasPrefix(strings.ToLower(strings.TrimSpace(version)), vllmGB10VersionPrefix)
+		vllm.IsGB10Version(version)
 }
 
 func canAccessVllmVersion(appKey, version string) bool {
@@ -68,24 +68,15 @@ func trimVllmVersionFamily(version string) string {
 }
 
 func buildDefaultVllmImageByVersion(version string) string {
-	tag := trimVllmVersionFamily(version)
-	family := resolveVllmVersionFamily(version, "")
-	if family == vllmImageTypeIntel {
-		return "intel/llm-scaler-vllm:" + tag
-	}
-	if tag != "" && !strings.HasPrefix(strings.ToLower(tag), "v") {
-		tag = "v" + tag
-	}
-	if family == vllmImageTypeAscend {
-		return "quay.io/ascend/vllm-ascend:" + tag
-	}
-	return "vllm/vllm-openai:" + tag
+	return vllm.ResolveImage("", resolveVllmVersionFamily(version, ""), trimVllmVersionFamily(version))
 }
 
 func isVllmUpgradeVersionAllowed(currentVersion, targetVersion, currentImage string) bool {
 	currentFamily := resolveVllmVersionFamily(currentVersion, currentImage)
 	targetFamily := resolveVllmVersionFamily(targetVersion, "")
-	return currentFamily == targetFamily
+	_, currentSuffix, _ := strings.Cut(trimVllmVersionFamily(currentVersion), "-")
+	_, targetSuffix, _ := strings.Cut(trimVllmVersionFamily(targetVersion), "-")
+	return currentFamily == targetFamily && currentSuffix == targetSuffix
 }
 
 func hasVllmVersionFamilyPrefix(version string) bool {
@@ -102,7 +93,7 @@ func isVllmUpgradeCandidate(currentVersion, targetVersion, currentImage string) 
 	if !isVllmUpgradeVersionAllowed(currentVersion, targetVersion, currentImage) {
 		return false
 	}
-	if common.CompareVersion(targetVersion, currentVersion) {
+	if common.CompareVersion(trimVllmVersionFamily(targetVersion), trimVllmVersionFamily(currentVersion)) {
 		return true
 	}
 	return !hasVllmVersionFamilyPrefix(currentVersion) &&
@@ -111,8 +102,8 @@ func isVllmUpgradeCandidate(currentVersion, targetVersion, currentImage string) 
 }
 
 func buildVllmUpgradeImage(currentImage, currentVersion, targetVersion string) string {
-	trimmedImage := strings.TrimSpace(currentImage)
-	if trimmedImage == "" || trimmedImage == buildDefaultVllmImageByVersion(currentVersion) {
+	trimmedImage := vllm.ResolveImage(currentImage, resolveVllmVersionFamily(currentVersion, currentImage), trimVllmVersionFamily(currentVersion))
+	if trimmedImage == buildDefaultVllmImageByVersion(currentVersion) {
 		return buildDefaultVllmImageByVersion(targetVersion)
 	}
 	return trimmedImage

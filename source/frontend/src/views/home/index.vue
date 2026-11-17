@@ -47,7 +47,7 @@
                     <template #body>
                         <div class="h-overview">
                             <el-row>
-                                <el-col :span="6" v-for="item in baseInfo.quickJump" :key="item.name">
+                                <el-col class="overview-item" v-for="item in baseInfo.quickJump" :key="item.name">
                                     <span>{{ $t(item.title, 2) }}</span>
                                     <div class="count">
                                         <QuickDirectories
@@ -99,6 +99,9 @@
                         >
                             <el-radio-button value="network">{{ $t('home.network') }}</el-radio-button>
                             <el-radio-button value="io">{{ $t('home.io') }}</el-radio-button>
+                            <el-radio-button v-if="hasVllm" value="vllm">
+                                {{ $t('aiTools.vllmMonitor.tokenThroughput') }}
+                            </el-radio-button>
                         </el-radio-group>
                         <el-select
                             v-if="chartOption === 'network'"
@@ -127,6 +130,30 @@
                                 :label="item == 'all' ? $t('commons.table.all') : item"
                                 :value="item"
                             />
+                        </el-select>
+                        <el-select
+                            v-if="chartOption === 'vllm'"
+                            v-model="vllmID"
+                            class="p-w-200 float-right"
+                            :placeholder="$t('aiTools.model.deployments')"
+                            @visible-change="(visible) => visible && loadVllmOptions()"
+                        >
+                            <el-option
+                                v-for="item in vllmOptions"
+                                :key="item.id"
+                                :label="
+                                    (item.alias || item.name) +
+                                    (item.servedModelName ? ' · ' + item.servedModelName : '')
+                                "
+                                :value="item.id"
+                                :disabled="item.source !== 'external' && item.status !== 'Running'"
+                            >
+                                <span>
+                                    {{ item.alias || item.name
+                                    }}{{ item.servedModelName ? ' · ' + item.servedModelName : '' }}
+                                </span>
+                                <Status class="ml-2" :status="item.status" />
+                            </el-option>
                         </el-select>
                     </template>
                     <template #body>
@@ -169,6 +196,47 @@
                                     :dataZoom="true"
                                 />
                             </div>
+                            <template v-if="chartOption === 'vllm'">
+                                <div class="monitor-tags" :style="monitorTagsStyle">
+                                    <el-tag>
+                                        {{ $t('aiTools.vllmMonitor.promptThroughput') }}:
+                                        {{ formatVllmMetric(vllmCurrent?.promptThroughput) }} tokens/s
+                                    </el-tag>
+                                    <el-tag>
+                                        {{ $t('aiTools.vllmMonitor.generationThroughput') }}:
+                                        {{ formatVllmMetric(vllmCurrent?.generationThroughput) }} tokens/s
+                                    </el-tag>
+                                    <el-tag>
+                                        {{ $t('aiTools.vllmMonitor.processing') }}:
+                                        {{ formatVllmMetric(vllmCurrent?.running) }}
+                                    </el-tag>
+                                    <el-tag>
+                                        {{ $t('aiTools.vllmMonitor.queued') }}:
+                                        {{ formatVllmMetric(vllmCurrent?.waiting) }}
+                                    </el-tag>
+                                </div>
+                                <div class="mobile-monitor-chart">
+                                    <v-charts
+                                        height="383px"
+                                        id="vllmChart"
+                                        type="line"
+                                        :option="vllmChartOption"
+                                        :dataZoom="true"
+                                    />
+                                </div>
+                                <div class="vllm-monitor-footer">
+                                    <span>{{ vllmMonitorMessage }}</span>
+                                    <el-button
+                                        v-if="selectedVllm"
+                                        link
+                                        type="primary"
+                                        @click="vllmMonitorRef?.acceptParams(selectedVllm)"
+                                    >
+                                        {{ $t('commons.button.view') }}
+                                    </el-button>
+                                </div>
+                                <VllmMonitor v-if="selectedVllm" ref="vllmMonitorRef" />
+                            </template>
                         </div>
                     </template>
                 </CardWithHeader>
@@ -434,20 +502,16 @@
                     </el-carousel-item>
                 </el-carousel>
 
-                <AppLauncher ref="appRef" class="card-interval dashboard-app" />
+                <AppLauncher ref="appRef" class="dashboard-app" />
             </el-col>
         </el-row>
 
         <QuickJump @search="onLoadBaseInfo(false, 'all')" ref="quickJumpRef" />
-
-        <DialogPro v-model="welcomeOpen" size="w-70" id="welcomeDialog">
-            <div ref="shadowContainer" />
-        </DialogPro>
     </div>
 </template>
 
 <script lang="ts" setup>
-import { onMounted, onBeforeUnmount, ref, reactive, computed, nextTick } from 'vue';
+import { onMounted, onBeforeUnmount, ref, reactive, computed, nextTick, watch, defineAsyncComponent } from 'vue';
 import SystemStatus from '@/views/home/status/index.vue';
 import AppLauncher from '@/views/home/app/index.vue';
 import VCharts from '@/components/v-charts/index.vue';
@@ -474,7 +538,6 @@ import {
     updateSetting,
 } from '@/api/modules/setting';
 import { routerToNameWithQuery, routerToPath } from '@/utils/router';
-import { getWelcomePage } from '@/api/modules/auth';
 import {
     clearDashboardCache,
     clearDashboardCacheByPrefix,
@@ -483,6 +546,9 @@ import {
 } from '@/utils/dashboardCache';
 import { MsgSuccess } from '@/utils/message';
 import { useCan } from '@/composables/useMenuManagePermission';
+import { readPages } from '@/utils/pagination';
+import { loadExtensionComponent } from '@/extensions/optional';
+import type { ReqPage, ResPage, ResultData } from '@/api/interface';
 const router = useRouter();
 import { useGlobalStore } from '@/composables/useGlobalStore';
 const {
@@ -494,7 +560,152 @@ const {
     hasNewVersion,
     isAdminOrNodeAdmin,
     isXpackOrEE,
+    isProductPro,
+    isEnterprise,
+    currentNode,
 } = useGlobalStore();
+
+interface VllmDeployment {
+    id: number;
+    alias: string;
+    source?: 'local' | 'external';
+    name: string;
+    servedModelName: string;
+    status: string;
+}
+interface VllmSnapshot {
+    appInstallID: number;
+    isExternal: boolean;
+    vllmID: number;
+    createdAt: string;
+    status: string;
+    intervalSeconds: number;
+    promptThroughput: number | null;
+    generationThroughput: number | null;
+    running: number | null;
+    waiting: number | null;
+    metrics?: Record<string, Record<string, number>>;
+}
+const vllmModules = import.meta.glob<{
+    pageVllm: (req: ReqPage & { info: string }) => Promise<ResultData<ResPage<VllmDeployment>>>;
+    loadVllmCurrent: (id: number, signal: AbortSignal) => Promise<ResultData<VllmSnapshot>>;
+}>('@/xpack/api/modules/vllm.ts', { eager: true });
+const vllmMetricsModules = import.meta.glob<{
+    calculateCurrentMetrics: (snapshot: VllmSnapshot, previous?: VllmSnapshot) => VllmSnapshot;
+}>('@/xpack/views/vllm/monitor/current.ts', { eager: true });
+const vllmAPI = Object.values(vllmModules)[0];
+const vllmMetrics = Object.values(vllmMetricsModules)[0];
+const VllmMonitor = defineAsyncComponent(() => loadExtensionComponent('/vllm/monitor/index.vue'));
+const vllmMonitorRef = ref();
+const canViewVllm = useCan('ai_model_view');
+const vllmOptions = ref<VllmDeployment[]>([]);
+const vllmID = ref<number>();
+const vllmCurrent = ref<VllmSnapshot>();
+const vllmLoadFailed = ref(false);
+const vllmPoints = ref<Array<{ time: string; prompt: number | null; generation: number | null }>>([]);
+let vllmTimer: ReturnType<typeof setTimeout>;
+let vllmController: AbortController;
+let vllmOptionsVersion = 0;
+const hasVllm = computed(() => isProductPro.value && canViewVllm.value && vllmOptions.value.length > 0);
+const selectedVllm = computed(() => vllmOptions.value.find((item) => item.id === vllmID.value));
+const formatVllmMetric = (value?: number | null) =>
+    value == null || !Number.isFinite(value) ? '--' : Number(value.toFixed(2)).toString();
+const vllmMonitorMessage = computed(() => {
+    if (!selectedVllm.value) return i18n.global.t('aiTools.model.readinessNotRunning');
+    if (vllmLoadFailed.value) return i18n.global.t('aiTools.vllmMonitor.loadFailed');
+    if (vllmCurrent.value?.status === 'unavailable') return i18n.global.t('aiTools.vllmMonitor.unavailable');
+    if (vllmCurrent.value?.status === 'no_data') return i18n.global.t('aiTools.vllmMonitor.noMetrics');
+    if (!vllmCurrent.value?.intervalSeconds) return i18n.global.t('commons.table.statusWaiting');
+    return `${i18n.global.t('aiTools.vllmMonitor.sampleWindow')}: ${formatVllmMetric(vllmCurrent.value.intervalSeconds)} s`;
+});
+const vllmChartOption = computed(() => ({
+    xData: loadMonitorChartTime(vllmPoints.value.map((point) => point.time)),
+    yData: [
+        {
+            name: i18n.global.t('aiTools.vllmMonitor.promptThroughput'),
+            data: loadMonitorChartData(vllmPoints.value.map((point) => point.prompt)),
+        },
+        {
+            name: i18n.global.t('aiTools.vllmMonitor.generationThroughput'),
+            data: loadMonitorChartData(vllmPoints.value.map((point) => point.generation)),
+        },
+    ],
+    grid: monitorChartGrid,
+    legend: monitorChartLegend,
+    formatStr: 'tokens/s',
+    yAxis: [
+        {
+            type: 'value',
+            name: '( tokens/s )',
+            min: 0,
+            max: ({ max }: { max: number }) => (max > 0 ? undefined : 1),
+        },
+    ],
+    tooltip: {
+        trigger: 'axis',
+        valueFormatter: (value: number | null) => `${formatVllmMetric(value)} tokens/s`,
+    },
+}));
+
+const loadVllmOptions = async () => {
+    if (!isProductPro.value || !canViewVllm.value || !vllmAPI || !vllmMetrics) return;
+    const version = ++vllmOptionsVersion;
+    const node = currentNode.value;
+    try {
+        const items = await readPages((page) => {
+            if (version !== vllmOptionsVersion || node !== currentNode.value) throw new Error('node changed');
+            return vllmAPI.pageVllm({ ...page, info: '' });
+        });
+        if (version !== vllmOptionsVersion || node !== currentNode.value) return;
+        vllmOptions.value = items;
+        if (
+            !items.some((item) => item.id === vllmID.value && (item.source === 'external' || item.status === 'Running'))
+        ) {
+            vllmID.value = items.find((item) => item.source === 'external' || item.status === 'Running')?.id;
+        }
+        if (!items.length && chartOption.value === 'vllm') chartOption.value = 'network';
+    } catch {
+        if (version === vllmOptionsVersion) vllmLoadFailed.value = true;
+    }
+};
+
+const stopVllmMonitor = (resetData = true) => {
+    clearTimeout(vllmTimer);
+    vllmController?.abort();
+    if (resetData) {
+        vllmCurrent.value = undefined;
+        vllmPoints.value = [];
+        vllmLoadFailed.value = false;
+    }
+};
+
+const refreshVllmMonitor = async () => {
+    const controller = new AbortController();
+    vllmController = controller;
+    try {
+        const { data } = await vllmAPI.loadVllmCurrent(vllmID.value, controller.signal);
+        if (controller.signal.aborted) return;
+        const wasUnavailable = vllmCurrent.value?.status === 'unavailable';
+        vllmCurrent.value = vllmMetrics.calculateCurrentMetrics(data, vllmCurrent.value);
+        vllmLoadFailed.value = false;
+        vllmPoints.value.push({
+            time: dateFormatForSecond(new Date(data.createdAt)),
+            prompt: vllmCurrent.value.promptThroughput,
+            generation: vllmCurrent.value.generationThroughput,
+        });
+        if (data.status === 'unavailable' && !wasUnavailable) void loadVllmOptions();
+    } catch {
+        if (controller.signal.aborted) return;
+        vllmCurrent.value = undefined;
+        vllmLoadFailed.value = true;
+        vllmPoints.value.push({ time: dateFormatForSecond(new Date()), prompt: null, generation: null });
+    } finally {
+        if (!controller.signal.aborted) {
+            vllmPoints.value = vllmPoints.value.slice(-20);
+            vllmTimer = setTimeout(refreshVllmMonitor, 3000);
+        }
+    }
+};
 
 const DASHBOARD_CACHE_TTL = {
     safeStatus: 10 * 60 * 1000,
@@ -510,7 +721,7 @@ const monitorTagsStyle = {
 const monitorChartEmptyLength = 20;
 const loadMonitorEmptyData = () => Array.from({ length: monitorChartEmptyLength }, () => null);
 const loadMonitorEmptyTime = () => Array.from({ length: monitorChartEmptyLength }, () => '');
-const loadMonitorChartData = (data: Array<number>) => (data.length === 0 ? loadMonitorEmptyData() : data);
+const loadMonitorChartData = (data: Array<number | null>) => (data.length === 0 ? loadMonitorEmptyData() : data);
 const loadMonitorChartTime = (data: Array<string>) => (data.length === 0 ? loadMonitorEmptyTime() : data);
 const loadIOChartOption = () => ({
     xData: loadMonitorChartTime(timeIODatas.value),
@@ -550,9 +761,6 @@ const appRef = ref();
 
 const isSafety = ref();
 
-const welcomeOpen = ref();
-const shadowContainer = ref();
-
 const chartOption = ref('network');
 const statusOption = ref(localStorage.getItem('dashboard_status_view') === 'gpu' ? 'gpu' : 'system');
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -587,6 +795,7 @@ const quickJumpPermissionMap = Object.fromEntries(
         ['Cronjob', 'cronjob_view'],
         ['AppInstalled', 'app_view'],
         ['File', 'host_file_view'],
+        ['ModelServices', 'ai_model_view'],
     ].map(([name, permission]) => [name, useCan(permission)]),
 ) as Record<string, ReturnType<typeof useCan>>;
 
@@ -725,6 +934,7 @@ const updateCurrentInfo = (data: Dashboard.CurrentInfo) => {
 
 const changeOption = async () => {
     isInit.value = true;
+    if (chartOption.value === 'vllm') void loadVllmOptions();
     loadData();
 };
 
@@ -858,7 +1068,7 @@ const refreshDashboard = async () => {
     clearDashboardCache();
     onLoadBaseInfo(false, '');
     hasRefreshedOptionsOnHover.value = false;
-    await Promise.allSettled([onLoadNetworkOptions(true), onLoadIOOptions(true), loadSettingInfo()]);
+    await Promise.allSettled([onLoadNetworkOptions(true), onLoadIOOptions(true), loadSettingInfo(), loadVllmOptions()]);
     MsgSuccess(i18n.global.t('commons.msg.refreshSuccess'));
 };
 
@@ -1035,7 +1245,7 @@ const saveMemo = async () => {
 const loadData = async () => {
     if (chartOption.value === 'io') {
         chartsOption.value['ioChart'] = loadIOChartOption();
-    } else {
+    } else if (chartOption.value === 'network') {
         chartsOption.value['networkChart'] = loadNetworkChartOption();
     }
 };
@@ -1045,7 +1255,7 @@ const hideEntrance = () => {
 };
 
 const loadUpgradeStatus = async () => {
-    if (!isAdmin.value) {
+    if (!isAdmin.value || isEnterprise.value) {
         return;
     }
     const res = await loadUpgradeInfo();
@@ -1104,12 +1314,14 @@ const loadSource = (row: any) => {
 const onFocus = () => {
     isActive.value = true;
     skipNextCurrentInfoDelta.value = true;
+    void loadVllmOptions();
 };
 const onBlur = () => {
     isActive.value = false;
 };
 
 const refreshOptionsOnHover = async () => {
+    void loadVllmOptions();
     if (hasRefreshedOptionsOnHover.value) return;
     if (!netOptionsFromCache.value && !ioOptionsFromCache.value) return;
     hasRefreshedOptionsOnHover.value = true;
@@ -1142,21 +1354,6 @@ const fetchData = async () => {
     }, 2000);
 };
 
-const loadWelcome = async () => {
-    await getWelcomePage().then((res) => {
-        if (res.data) {
-            welcomeOpen.value = true;
-            nextTick(() => {
-                const shadowRoot = shadowContainer.value.attachShadow({ mode: 'open' });
-                shadowRoot.innerHTML = res.data;
-            });
-            localStorage.setItem('welcomeShow', 'false');
-        } else {
-            localStorage.setItem('welcomeShow', 'false');
-        }
-    });
-};
-
 onBeforeRouteUpdate((to, from, next) => {
     if (to.name === 'home') {
         clearTimer();
@@ -1175,12 +1372,31 @@ const clearTimer = () => {
 onMounted(() => {
     fetchData();
     loadMemo();
-    if (localStorage.getItem('welcomeShow') !== 'false') {
-        loadWelcome();
+});
+
+watch(
+    [currentNode, isProductPro, canViewVllm],
+    () => {
+        vllmOptionsVersion++;
+        stopVllmMonitor();
+        vllmOptions.value = [];
+        vllmID.value = undefined;
+        if (chartOption.value === 'vllm') chartOption.value = 'network';
+        void loadVllmOptions();
+    },
+    { immediate: true, flush: 'sync' },
+);
+
+watch([chartOption, vllmID, isActive], ([, instanceID], [, previousInstanceID]) => {
+    stopVllmMonitor(instanceID !== previousInstanceID);
+    if (chartOption.value === 'vllm' && hasVllm.value && vllmID.value && isActive.value) {
+        void refreshVllmMonitor();
     }
 });
 
 onBeforeUnmount(() => {
+    vllmOptionsVersion++;
+    stopVllmMonitor();
     window.removeEventListener('focus', onFocus);
     window.removeEventListener('blur', onBlur);
     isCurrentActive.value = false;
@@ -1212,6 +1428,16 @@ onBeforeUnmount(() => {
 
 .mobile-monitor-chart {
     margin-top: 40px;
+}
+
+.vllm-monitor-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
 }
 
 @media only screen and (max-width: 767px) {
@@ -1254,6 +1480,11 @@ onBeforeUnmount(() => {
 
 .h-overview {
     text-align: center;
+
+    .overview-item {
+        flex: 1;
+        min-width: 0;
+    }
 
     span:first-child {
         font-size: 14px;
@@ -1357,7 +1588,7 @@ onBeforeUnmount(() => {
 
 .monitor-tags {
     position: absolute;
-    top: -10px;
+    top: -30px;
     display: flex;
     flex-wrap: wrap;
     gap: 10px;

@@ -1,4 +1,5 @@
 import type { VNode } from 'vue';
+import type { UseTooltipProps } from 'element-plus';
 import { hasManagePermissionAccess, hasPermissionAccess, type PermissionBindingValue } from '@/utils/permission';
 
 export { flattenVNodes } from '@/components/shared/vnode';
@@ -23,9 +24,16 @@ export interface FuTableOperationButton<Row = any> {
     type?: string;
     icon?: any;
     divided?: boolean;
+    dot?: boolean | ((row: Row) => boolean);
 }
 
 export const FU_TABLE_STORAGE_PREFIX = 'FU-T-';
+
+export const TABLE_TOOLTIP_OPTIONS: Pick<UseTooltipProps, 'placement'> = {
+    placement: 'bottom',
+};
+
+export const TABLE_OVERFLOW_TOOLTIP_OPTIONS = TABLE_TOOLTIP_OPTIONS;
 
 export const isElTableColumnVNode = (vnode: VNode) => {
     const type = vnode.type as any;

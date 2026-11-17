@@ -491,6 +491,11 @@ func deleteAppInstall(deleteReq request.AppInstallDelete) error {
 		if install.App.Key == "ollama" || install.App.Key == "vllm" {
 			CleanupLocalModelAccount(install.ID)
 		}
+		if install.App.Key == "vllm" && global.CleanupVLLMMonitor != nil {
+			if err := global.CleanupVLLMMonitor(install.ID); err != nil {
+				global.LOG.Errorf("Remove vLLM monitoring database for %d failed: %v", install.ID, err)
+			}
+		}
 
 		existApps, _ := appInstallRepo.ListBy(context.Background(), appInstallRepo.WithAppId(install.AppId))
 		if len(existApps) == 0 {
@@ -498,7 +503,11 @@ func deleteAppInstall(deleteReq request.AppInstallDelete) error {
 		}
 		return nil
 	}
-	uninstallTask.AddSubTask(task.GetTaskName(install.Name, task.TaskUninstall, task.TaskScopeApp), uninstall, nil)
+	uninstallTimeout := 30 * time.Minute
+	if install.App.Key == "ollama" || install.App.Key == "vllm" {
+		uninstallTimeout = 0
+	}
+	uninstallTask.AddSubTaskWithOps(task.GetTaskName(install.Name, task.TaskUninstall, task.TaskScopeApp), uninstall, nil, 0, uninstallTimeout)
 	go func() {
 		if err := uninstallTask.Execute(); err != nil {
 			install.Status = constant.StatusError
@@ -777,7 +786,7 @@ func getUpgradeCompose(install model.AppInstall, detail model.AppDetail) (string
 		envs[constant.ContainerName] = install.ContainerName
 	}
 	config.Advanced = true
-	if err := addDockerComposeCommonParam(composeMap, install.ServiceName, config, envs); err != nil {
+	if err := AddDockerComposeCommonParam(composeMap, install.ServiceName, config, envs, install.App.Key); err != nil {
 		return "", err
 	}
 	paramByte, err := json.Marshal(envs)
@@ -862,7 +871,7 @@ func coverEnvJsonToStr(envJson string) (string, error) {
 	envMap := make(map[string]interface{})
 	_ = json.Unmarshal([]byte(envJson), &envMap)
 	newEnvMap := make(map[string]string, len(envMap))
-	handleMap(envMap, newEnvMap)
+	MergeAppEnvironment(envMap, newEnvMap)
 	envStr, err := gotenv.Marshal(newEnvMap)
 	if err != nil {
 		return "", err
@@ -890,7 +899,7 @@ func checkRequiredAndLimit(app model.App) error {
 	return nil
 }
 
-func handleMap(params map[string]interface{}, envParams map[string]string) {
+func MergeAppEnvironment(params map[string]interface{}, envParams map[string]string) {
 	for k, v := range params {
 		switch t := v.(type) {
 		case string:
@@ -908,7 +917,7 @@ func handleMap(params map[string]interface{}, envParams map[string]string) {
 			}
 			envParams[k] = strings.Join(strArray, ",")
 		case map[string]interface{}:
-			handleMap(t, envParams)
+			MergeAppEnvironment(t, envParams)
 		}
 	}
 }
@@ -1055,7 +1064,7 @@ func copyData(task *task.Task, app model.App, appDetail model.AppDetail, appInst
 			envParams = make(map[string]string)
 		}
 	}
-	handleMap(req.Params, envParams)
+	MergeAppEnvironment(req.Params, envParams)
 	if err = env.Write(envParams, envPath); err != nil {
 		return
 	}
@@ -1224,30 +1233,51 @@ func upApp(task *task.Task, appInstall *model.AppInstall, pullImages, useLifecyc
 	}
 }
 
-func rebuildApp(appInstall model.AppInstall) error {
+func rebuildApp(appInstall model.AppInstall, taskID string, onFailure func(error)) error {
 	appInstall.Status = constant.StatusRebuilding
-	_ = appInstallRepo.Save(context.Background(), &appInstall)
-	go func() {
-		dockerComposePath := appInstall.GetComposePath()
-		out, err := compose.Down(dockerComposePath)
-		if err != nil {
-			_ = handleErr(appInstall, err, out)
-			return
+	if err := appInstallRepo.Save(context.Background(), &appInstall); err != nil {
+		return err
+	}
+	buildTask, err := task.NewTaskWithOps(appInstall.Name, task.TaskBuild, task.TaskScopeApp, taskID, appInstall.ID)
+	if err != nil {
+		return handleErr(appInstall, err, "")
+	}
+	buildTask.AddSubTaskWithOps(buildTask.Name, func(t *task.Task) error {
+		if err := resetLocalModelAccountVerification(appInstall); err != nil {
+			return err
 		}
-		out, err = compose.Up(appInstall.GetComposePath())
+		t.Log(task.GetTaskName(appInstall.Name, "Stop", task.TaskScopeApp))
+		out, err := compose.Down(appInstall.GetComposePath())
+		if strings.TrimSpace(out) != "" {
+			t.Log(out)
+		}
 		if err != nil {
-			_ = handleErr(appInstall, err, out)
-			return
+			return handleErr(appInstall, err, out)
+		}
+		t.Log(task.GetTaskName(appInstall.Name, "Run", task.TaskScopeApp))
+		out, err = compose.Up(appInstall.GetComposePath())
+		if strings.TrimSpace(out) != "" {
+			t.Log(out)
+		}
+		if err != nil {
+			return handleErr(appInstall, err, out)
 		}
 		containerNames, err := getContainerNames(appInstall)
 		if err != nil {
-			_ = handleErr(appInstall, err, out)
-			return
+			return handleErr(appInstall, err, out)
 		}
 		appInstall.ContainerName = strings.Join(containerNames, ",")
-
 		appInstall.Status = constant.StatusRunning
-		_ = appInstallRepo.Save(context.Background(), &appInstall)
+		return appInstallRepo.Save(context.Background(), &appInstall)
+	}, nil, 0, 0)
+	go func() {
+		if err := buildTask.Execute(); err != nil {
+			if onFailure != nil {
+				onFailure(err)
+				return
+			}
+			_ = handleErr(appInstall, err, "")
+		}
 	}()
 	return nil
 }
@@ -1470,6 +1500,24 @@ func doNotNeedSync(installed model.AppInstall) bool {
 
 func synAppInstall(containers map[string]container.Summary, appInstall *model.AppInstall, force bool) {
 	oldStatus := appInstall.Status
+	oldContainerName := appInstall.ContainerName
+	if appInstall.App.Key == "vllm" && !strings.Contains(appInstall.ContainerName, ",") {
+		if _, exists := containers["/"+appInstall.ContainerName]; !exists {
+			matchedNames := make(map[string]struct{})
+			for _, con := range containers {
+				if con.Labels["com.docker.compose.project.working_dir"] == appInstall.GetPath() &&
+					con.Labels["com.docker.compose.service"] == appInstall.ServiceName &&
+					!strings.EqualFold(con.Labels["com.docker.compose.oneoff"], "true") && len(con.Names) > 0 {
+					matchedNames[strings.TrimPrefix(con.Names[0], "/")] = struct{}{}
+				}
+			}
+			if len(matchedNames) == 1 {
+				for name := range matchedNames {
+					appInstall.ContainerName = name
+				}
+			}
+		}
+	}
 	containerNames := strings.Split(appInstall.ContainerName, ",")
 	if len(containers) == 0 {
 		if appInstall.Status == constant.StatusUpErr && !force {
@@ -1477,7 +1525,11 @@ func synAppInstall(containers map[string]container.Summary, appInstall *model.Ap
 		}
 		appInstall.Status = constant.StatusError
 		appInstall.Message = buserr.WithName("ErrContainerNotFound", strings.Join(containerNames, ",")).Error()
-		_ = appInstallRepo.Save(context.Background(), appInstall)
+		if appInstall.App.Key == "ollama" || appInstall.App.Key == "vllm" {
+			_ = appInstallRepo.UpdateStatus(appInstall)
+		} else {
+			_ = appInstallRepo.Save(context.Background(), appInstall)
+		}
 		return
 	}
 	notFoundNames := make([]string, 0)
@@ -1509,7 +1561,7 @@ func synAppInstall(containers map[string]container.Summary, appInstall *model.Ap
 		appInstall.Status = constant.StatusStopped
 	case runningCount == total:
 		appInstall.Status = constant.StatusRunning
-		if oldStatus == constant.StatusRunning {
+		if oldStatus == constant.StatusRunning && oldContainerName == appInstall.ContainerName {
 			return
 		}
 	case restartingCount == total:
@@ -1536,30 +1588,65 @@ func synAppInstall(containers map[string]container.Summary, appInstall *model.Ap
 		appInstall.Message = msg
 		appInstall.Status = constant.StatusUnHealthy
 	}
-	_ = appInstallRepo.Save(context.Background(), appInstall)
+	if appInstall.App.Key == "ollama" || appInstall.App.Key == "vllm" {
+		_ = appInstallRepo.UpdateStatus(appInstall)
+	} else {
+		_ = appInstallRepo.Save(context.Background(), appInstall)
+	}
 }
 
 func handleInstalled(appInstallList []model.AppInstall, updated, sync, checkUpdate bool) ([]response.AppInstallDTO, error) {
+	return handleInstalledWithContext(context.Background(), appInstallList, updated, sync, checkUpdate)
+}
+
+func handleInstalledWithContext(ctx context.Context, appInstallList []model.AppInstall, updated, sync, checkUpdate bool) ([]response.AppInstallDTO, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	var (
 		res           []response.AppInstallDTO
 		containersMap map[string]container.Summary
 	)
-	if sync {
-		cli, err := docker.NewClient()
-		if err == nil {
-			defer cli.Close()
-			containers, err := cli.ListAllContainers()
-			if err == nil {
-				containersMap = make(map[string]container.Summary, len(containers))
-				for _, contain := range containers {
-					containersMap[contain.Names[0]] = contain
-				}
-			}
+	syncContainers := sync
+	for _, installed := range appInstallList {
+		if installed.App.Key == "ollama" || installed.App.Key == "vllm" {
+			syncContainers = true
+			break
+		}
+	}
+	if syncContainers {
+		cli, err := docker.NewClientWithContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer cli.Close()
+		containers, err := cli.ListAllContainersWithContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		containersMap = make(map[string]container.Summary, len(containers))
+		for _, contain := range containers {
+			containersMap[contain.Names[0]] = contain
 		}
 	}
 
 	for _, installed := range appInstallList {
-		if sync && appInstallOperationPending(installed.Status) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		localEngine := installed.App.Key == "ollama" || installed.App.Key == "vllm"
+		if localEngine {
+			operationTask, err := taskRepo.GetExecutingTask(task.TaskScopeApp, installed.ID)
+			if err != nil {
+				return nil, err
+			}
+			installed.TaskID = operationTask.ID
+			if operationTask.ID != "" {
+				installed.Status = localEngineTaskStatus(operationTask.Operate, installed.Status)
+			} else {
+				synAppInstall(containersMap, &installed, true)
+			}
+		} else if sync && appInstallOperationPending(installed.Status) {
 			if err := syncAppInstallStatus(&installed, false); err != nil {
 				return nil, err
 			}
@@ -1568,7 +1655,7 @@ func handleInstalled(appInstallList []model.AppInstall, updated, sync, checkUpda
 			continue
 		}
 
-		if sync && !doNotNeedSync(installed) {
+		if sync && !localEngine && !doNotNeedSync(installed) {
 			synAppInstall(containersMap, &installed, false)
 		}
 
@@ -1582,6 +1669,7 @@ func handleInstalled(appInstallList []model.AppInstall, updated, sync, checkUpda
 			AppDetailID: installed.AppDetailId,
 			Version:     installed.Version,
 			Status:      installed.Status,
+			TaskID:      installed.TaskID,
 			Message:     installed.Message,
 			HttpPort:    installed.HttpPort,
 			HttpsPort:   installed.HttpsPort,
@@ -1738,7 +1826,7 @@ func updateToolApp(installed *model.AppInstall) {
 		return
 	}
 	envFileMap := make(map[string]string)
-	handleMap(envMap, envFileMap)
+	MergeAppEnvironment(envMap, envFileMap)
 	if err = env.Write(envFileMap, envPath); err != nil {
 		global.LOG.Errorf("update tool app [%s] error : %s", toolInstall.Name, err.Error())
 		return
@@ -1758,7 +1846,7 @@ func updateToolApp(installed *model.AppInstall) {
 	}
 }
 
-func addDockerComposeCommonParam(composeMap map[string]interface{}, serviceName string, req request.AppContainerConfig, params map[string]interface{}) error {
+func AddDockerComposeCommonParam(composeMap map[string]interface{}, serviceName string, req request.AppContainerConfig, params map[string]interface{}, appKey string) error {
 	services, serviceValid := composeMap["services"].(map[string]interface{})
 	if !serviceValid {
 		return buserr.New("ErrFileParse")
@@ -1784,6 +1872,11 @@ func addDockerComposeCommonParam(composeMap map[string]interface{}, serviceName 
 		return buserr.New("ErrFileParse")
 	}
 	serviceValue := service.(map[string]interface{})
+	if appKey == "vllm" {
+		if name, _ := serviceValue["container_name"].(string); strings.TrimSpace(name) == "" {
+			serviceValue["container_name"] = "${CONTAINER_NAME}"
+		}
+	}
 
 	deploy := map[string]interface{}{}
 	if de, ok := serviceValue["deploy"]; ok {
@@ -1822,15 +1915,44 @@ func addDockerComposeCommonParam(composeMap map[string]interface{}, serviceName 
 	ports, ok := serviceValue["ports"].([]interface{})
 	if ok {
 		for i, port := range ports {
-			portStr, portOK := port.(string)
-			if !portOK {
+			if config, ok := port.(map[string]interface{}); ok {
+				config["host_ip"] = "${HOST_IP}"
+				if req.Advanced && req.AllowPort && req.SpecifyIP == "" {
+					delete(config, "host_ip")
+				}
 				continue
 			}
-			portArray := strings.Split(portStr, ":")
-			if len(portArray) == 2 {
-				portArray = append([]string{"${HOST_IP}"}, portArray...)
+			portStr := fmt.Sprint(port)
+			parts := []string{}
+			depth, start := 0, 0
+			for index, char := range portStr {
+				switch char {
+				case '[', '{':
+					depth++
+				case ']', '}':
+					depth--
+				case ':':
+					if depth == 0 {
+						parts = append(parts, portStr[start:index])
+						start = index + 1
+					}
+				}
 			}
-			ports[i] = strings.Join(portArray, ":")
+			parts = append(parts, portStr[start:])
+			switch len(parts) {
+			case 1:
+				parts = []string{"", "", parts[0]}
+			case 2:
+				parts = append([]string{""}, parts...)
+			case 3:
+			default:
+				return fmt.Errorf("invalid port mapping: %s", portStr)
+			}
+			parts[0] = "${HOST_IP}"
+			if req.Advanced && req.AllowPort && strings.Contains(req.SpecifyIP, ":") {
+				parts[0] = "[${HOST_IP}]"
+			}
+			ports[i] = strings.Join(parts, ":")
 		}
 		serviceValue["ports"] = ports
 	}
@@ -2041,7 +2163,7 @@ func getAppTags(appID uint, lang string) ([]response.TagDTO, error) {
 	return res, nil
 }
 
-func prepareAppInstallSiteDirectory(app model.App, appDetail model.AppDetail, req request.AppInstallCreate, t *task.Task, hooks *appInstallHooks) error {
+func prepareAppInstallSiteDirectory(app model.App, appDetail model.AppDetail, req request.AppInstallCreate, t *task.Task, hooks *AppInstallHooks) error {
 	if hooks != nil && hooks.PrepareSiteDir != nil {
 		return hooks.PrepareSiteDir(app, appDetail, req, t)
 	}

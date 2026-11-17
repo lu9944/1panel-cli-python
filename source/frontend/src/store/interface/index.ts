@@ -66,7 +66,6 @@ export interface GlobalState {
     isEnterprise: boolean;
     isIntl: boolean;
     docWithRegion: boolean;
-    isFxplay: boolean;
     isOffline: boolean;
     // license
     isProductPro: boolean;
@@ -83,6 +82,9 @@ export interface GlobalState {
 export interface MenuState {
     isCollapse: boolean;
     menuList: RouteRecordRaw[];
+    isMenuLoaded: boolean;
+    menuRequestId: number;
+    systemVersion: string;
     withoutAnimation: boolean;
 }
 
